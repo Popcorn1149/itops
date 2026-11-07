@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect as sa_inspect, func
 from sqlalchemy.orm import Session
 
-from .db import Base, engine, get_db, SessionLocal, auto_migrate
+from .db import Base, engine, get_db, SessionLocal, run_migrations
 from . import models
 from .models import now
 from .security import (current_user, admin_user, create_token, verify_password, hash_password,
@@ -30,10 +30,12 @@ VERSION = "1.0.0"
 
 
 def init_db():
-    Base.metadata.create_all(engine)
-    added = auto_migrate()
-    if added:
-        log.warning("Đã nâng cấp CSDL, thêm cột: %s", ", ".join(added))
+    m = run_migrations()
+    if m["legacy"]:
+        log.warning("CSDL từ bản cũ (chưa có Alembic) → đã đưa về migration nền%s",
+                    f", bổ sung: {', '.join(m['added'])}" if m["added"] else "")
+    if m["from"] != m["to"]:
+        log.warning("Đã nâng cấp CSDL: %s → %s", m["from"] or "(trống)", m["to"])
     db = SessionLocal()
     try:
         ev_mod.seed_rules(db)

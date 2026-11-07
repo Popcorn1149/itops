@@ -341,10 +341,10 @@ def test_retention_and_max_rows(client, admin, clean, rx, monkeypatch):
     assert len(msgs) == 6 and all(m.startswith("moi") for m in msgs)
 
 
-def test_auto_migrate_adds_missing_columns(tmp_path):
-    """CSDL tạo bởi phiên bản cũ (bảng alerts thiếu cột mới) phải tự nâng cấp, giữ dữ liệu."""
+def test_legacy_db_upgrades_via_alembic(tmp_path):
+    """CSDL tạo bởi phiên bản cũ (chưa có Alembic, bảng alerts thiếu cột mới) phải tự nâng cấp lên head, giữ dữ liệu."""
     import sqlite3
-    from sqlalchemy import create_engine
+    from sqlalchemy import create_engine, inspect
     from app import db as dbm
     path = tmp_path / "old.db"
     c = sqlite3.connect(path)
@@ -356,11 +356,14 @@ def test_auto_migrate_adds_missing_columns(tmp_path):
     orig = dbm.engine
     dbm.engine = eng
     try:
-        dbm.Base.metadata.create_all(eng)
-        added = dbm.auto_migrate()
+        info = dbm.run_migrations()
+        again = dbm.run_migrations()          # chạy lần 2 không làm gì thêm
     finally:
         dbm.engine = orig
-    assert "alerts.source" in added and "alerts.dedupe_key" in added
+    assert info["legacy"] and "alerts.source" in info["added"] and "alerts.dedupe_key" in info["added"]
+    assert "users" in info["added"]           # bảng thiếu hẳn cũng được tạo
+    assert info["from"] == dbm.BASELINE_REV and info["to"] == again["to"] and not again["legacy"] and again["from"] == again["to"]
+    assert "alembic_version" in inspect(eng).get_table_names()
     row = sqlite3.connect(path).execute("select title, source, count from alerts").fetchone()
     assert row == ("cu", "check", 1)
 
