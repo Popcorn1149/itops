@@ -1,0 +1,69 @@
+{
+  // F5 = chạy cấu hình đang chọn ở thanh Run and Debug (Ctrl+Shift+D)
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "▶ Chạy IT Ops (dữ liệu mẫu)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--host", "127.0.0.1", "--port", "8100"],
+      "cwd": "${workspaceFolder}/backend",
+      "envFile": "${workspaceFolder}/.env.local",
+      "python": "${workspaceFolder}/backend/.venv/Scripts/python.exe",
+      "env": {
+        "DATA_DIR": "${workspaceFolder}/backend/data-v2-dev",
+        "DEMO_DATA": "true",
+        "ADMIN_USER": "admin",
+        "APP_NAME": "IT Ops Workspace v2 (chạy thử)",
+        "SYSLOG_UDP_PORT": "6514",
+        "SYSLOG_TCP_PORT": "6514",
+        "TRAP_PORT": "6162",
+        "RECEIVER_BIND": "127.0.0.1",
+        "PYTHONUTF8": "1"
+      },
+      "justMyCode": true,
+      "console": "integratedTerminal",
+      "serverReadyAction": { "pattern": "Uvicorn running on (https?://\\S+)", "uriFormat": "%s", "action": "openExternally" }
+    },
+    {
+      "name": "▶ Thiết bị thật (cổng 514/162)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--host", "0.0.0.0", "--port", "8100"],
+      "cwd": "${workspaceFolder}/backend",
+      "envFile": "${workspaceFolder}/.env.local",
+      "python": "${workspaceFolder}/backend/.venv/Scripts/python.exe",
+      "env": {
+        "DATA_DIR": "${workspaceFolder}/backend/data-v2-local",
+        "DEMO_DATA": "false",
+        "ADMIN_USER": "admin",
+        "APP_NAME": "IT Ops Workspace v2",
+        "SYSLOG_UDP_PORT": "514",
+        "SYSLOG_TCP_PORT": "514",
+        "TRAP_PORT": "162",
+        "RECEIVER_BIND": "0.0.0.0",
+        "PYTHONUTF8": "1"
+      },
+      "justMyCode": true,
+      "console": "integratedTerminal",
+      "serverReadyAction": { "pattern": "Uvicorn running on https?://\\S+:(\\d+)", "uriFormat": "http://127.0.0.1:%s", "action": "openExternally" }
+    },
+    {
+      "name": "Giao diện (sửa UI, tự tải lại)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev",
+      "cwd": "${workspaceFolder}/frontend",
+      "serverReadyAction": { "pattern": "Local:\\s+(https?://\\S+)", "uriFormat": "%s", "action": "openExternally" }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "▶ Sửa code: backend + giao diện",
+      "configurations": ["▶ Chạy IT Ops (dữ liệu mẫu)", "Giao diện (sửa UI, tự tải lại)"],
+      "stopAll": true
+    }
+  ]
+}

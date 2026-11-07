@@ -1,0 +1,55 @@
+{
+  // Ctrl+Shift+P → "Tasks: Run Task"
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "1. Cài đặt lần đầu (Python)",
+      "type": "shell",
+      "options": { "cwd": "${workspaceFolder}/backend" },
+      "windows": {
+        "command": "if (!(Test-Path .venv)) { python -m venv .venv }; .\\.venv\\Scripts\\python.exe -m pip install --upgrade pip; .\\.venv\\Scripts\\python.exe -m pip install -r requirements.txt; Write-Host ''; Write-Host 'XONG - bam F5 de chay' -ForegroundColor Green"
+      },
+      "command": "[ -d .venv ] || python3 -m venv .venv; ./.venv/bin/python -m pip install --upgrade pip && ./.venv/bin/python -m pip install -r requirements.txt && echo 'XONG - bam F5 de chay'",
+      "problemMatcher": []
+    },
+    {
+      "label": "2. Cài thư viện giao diện (Node.js – chỉ khi sửa UI)",
+      "type": "shell",
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "command": "npm install",
+      "problemMatcher": []
+    },
+    {
+      "label": "3. Build giao diện vào backend/static",
+      "type": "shell",
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "windows": { "command": "npx vite build; if (Test-Path ..\\backend\\static) { Remove-Item -Recurse -Force ..\\backend\\static }; Copy-Item -Recurse dist ..\\backend\\static" },
+      "command": "npx vite build && rm -rf ../backend/static && cp -r dist ../backend/static",
+      "problemMatcher": []
+    },
+    {
+      "label": "4. Gửi thử syslog vào máy đang chạy",
+      "type": "shell",
+      "options": { "cwd": "${workspaceFolder}/backend" },
+      "windows": { "command": ".\\.venv\\Scripts\\python.exe -c \"import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);[s.sendto(m.encode(),('127.0.0.1',6514)) for m in ['<189>1: %LINK-3-UPDOWN: Interface Gi1/0/9, changed state to down','<30>dpinger: MONITOR: WAN_FPT is down, omitting from routing group','<38>sshd[1]: Failed password for root from 1.2.3.4']];print('Da gui 3 log - xem trang Log thiet bi')\"" },
+      "command": "./.venv/bin/python -c \"import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);[s.sendto(m.encode(),('127.0.0.1',6514)) for m in ['<189>1: %LINK-3-UPDOWN: Interface Gi1/0/9, changed state to down','<30>dpinger: MONITOR: WAN_FPT is down, omitting from routing group','<38>sshd[1]: Failed password for root from 1.2.3.4']];print('Da gui 3 log')\"",
+      "problemMatcher": []
+    },
+    {
+      "label": "5. Chạy kiểm thử (pytest)",
+      "type": "shell",
+      "options": { "cwd": "${workspaceFolder}/backend" },
+      "windows": { "command": ".\\.venv\\Scripts\\python.exe -m pip install pytest aiosmtpd; .\\.venv\\Scripts\\python.exe -m pytest tests -q -p no:cacheprovider --ignore=tests/test_real_agents.py" },
+      "command": "./.venv/bin/python -m pip install pytest aiosmtpd && ./.venv/bin/python -m pytest tests -q -p no:cacheprovider",
+      "problemMatcher": []
+    },
+    {
+      "label": "6. Xoá dữ liệu chạy thử (làm lại từ đầu)",
+      "type": "shell",
+      "options": { "cwd": "${workspaceFolder}/backend" },
+      "windows": { "command": "Remove-Item -Recurse -Force data-v2-dev -ErrorAction SilentlyContinue; Write-Host 'Da xoa data-v2-dev'" },
+      "command": "rm -rf data-v2-dev && echo 'Da xoa data-v2-dev'",
+      "problemMatcher": []
+    }
+  ]
+}
