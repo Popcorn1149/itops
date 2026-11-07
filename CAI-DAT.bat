@@ -33,21 +33,21 @@ if errorlevel 1 (
   exit /b 1
 )
 echo.
-echo [4/5] Tai PostgreSQL di dong (~30 MB, kiem tra ma bam sha512) ...
-.venv\Scripts\python.exe tools\get_postgres.py
-if errorlevel 1 (
-  echo [LOI] Tai PostgreSQL that bai - kiem tra mang Internet roi chay lai.
-  pause
-  exit /b 1
-)
 cd ..
 echo.
-echo [5/5] Tao mat khau admin (.env.local) ...
+echo [4/5] Tao mat khau admin (.env.local) ...
 if exist ".env.local" (
   echo       Da co .env.local - giu nguyen mat khau cu.
 ) else (
   backend\.venv\Scripts\python.exe -c "import secrets;p=secrets.token_urlsafe(12);open('.env.local','w',newline='').write('ADMIN_USER=admin\nADMIN_PASSWORD='+p+'\n')"
   echo       xong.
+)
+echo.
+echo [5/5] Tai PostgreSQL di dong (~30 MB, kiem tra ma bam sha512) ...
+backend\.venv\Scripts\python.exe backend\tools\get_postgres.py
+if errorlevel 1 (
+  echo [CANH BAO] Chua tai duoc PostgreSQL - app se tu tai lai khi bam F5.
+  echo            Neu mang cong ty chan registry.npmjs.org: bao IT mo, hoac xem README-V2.md muc CSDL.
 )
 echo.
 echo ==============================================

@@ -357,3 +357,14 @@ def test_backup_contains_db_and_keys_and_restores(client, admin, clean, tmp_path
     for i in range(3):
         (tmp_path / "bk" / f"itops-backup-2000010{i}-000000.zip").write_bytes(b"x")
     assert admin_tools.prune_backups(str(tmp_path / "bk"), keep=2) == 2
+
+
+def test_cli_reset_password(client, admin):
+    from app import admin_tools
+    mkuser(client, admin, "quenmk")
+    out = admin_tools.reset_password("quenmk")
+    pw = out.split(": ", 1)[1].split("\n")[0]
+    assert login(client, "quenmk", pw="Matkhau@123").status_code == 401
+    assert login(client, "quenmk", pw=pw).status_code == 200
+    with pytest.raises(SystemExit, match="Tài khoản đang có"):
+        admin_tools.reset_password("khong-ton-tai")

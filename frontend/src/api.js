@@ -13,12 +13,18 @@ async function req(method, path, body, opts = {}) {
     if (Date.now() - pendingReason.at < 15000) headers["X-Audit-Reason"] = encodeURIComponent(pendingReason.text);
     pendingReason = null;
   }
-  const res = await fetch(`/api${path}`, {
-    method,
-    credentials: "same-origin",
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  let res;
+  try {
+    res = await fetch(`/api${path}`, {
+      method,
+      credentials: "same-origin",
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    // "Failed to fetch": server không chạy / đã dừng / lỗi khi khởi động
+    throw new Error("Không kết nối được máy chủ IT Ops. Kiểm tra app còn chạy không (VS Code → cửa sổ Terminal / Debug Console xem lỗi khởi động), rồi tải lại trang.");
+  }
   const text = await res.text();
   let data;
   try { data = text ? JSON.parse(text) : null; } catch { data = text; }

@@ -2,6 +2,7 @@
 
 Chạy trong thư mục backend, với cùng DATA_DIR như app:
     python -m app.admin_tools reset-2fa <username>      # admin duy nhất mất điện thoại
+    python -m app.admin_tools reset-password <username> # quên mật khẩu: in mật khẩu mới ngẫu nhiên, thu hồi mọi phiên
     python -m app.admin_tools revoke-sessions <username|--all>
     python -m app.admin_tools backup [thư_mục_đích]       # sao lưu CSDL + 2 khoá + archive ra file .zip
     python -m app.admin_tools restore <file.zip> [--wipe] # khôi phục (dừng app trước); --wipe = xoá sạch CSDL hiện tại
@@ -45,6 +46,22 @@ def reset_2fa(username: str) -> str:
         _audit(db, "reset_2fa", f"Đặt lại 2FA của {username} bằng dòng lệnh, thu hồi {n} phiên")
         db.commit()
     return f"Đã đặt lại 2FA của {username}. Lần đăng nhập tới sẽ được yêu cầu bật lại 2FA."
+
+
+def reset_password(username: str) -> str:
+    import secrets
+    from .security import hash_password, revoke_sessions
+    with SessionLocal() as db:
+        u = db.query(models.User).filter_by(username=username).first()
+        if not u:
+            names = ", ".join(x.username for x in db.query(models.User)) or "(chưa có tài khoản nào – chạy app một lần để tạo admin)"
+            raise SystemExit(f"Không có tài khoản '{username}'. Tài khoản đang có: {names}")
+        pw = secrets.token_urlsafe(12)
+        u.password_hash = hash_password(pw)
+        n = revoke_sessions(db, username, "cli")
+        _audit(db, "reset_password", f"Đặt lại mật khẩu {username} bằng dòng lệnh, thu hồi {n} phiên")
+        db.commit()
+    return f"Mật khẩu mới của {username}: {pw}\n(2FA giữ nguyên. Đổi mật khẩu sau khi đăng nhập.)"
 
 
 def revoke(username: str) -> str:
@@ -266,7 +283,9 @@ def main(argv: list[str]) -> int:
         return 0
     from .db import run_migrations
     run_migrations()             # đảm bảo CSDL đúng phiên bản trước khi thao tác
-    if cmd == "reset-2fa" and args:
+    if cmd == "reset-password" and args:
+        print(reset_password(args[0]))
+    elif cmd == "reset-2fa" and args:
         print(reset_2fa(args[0]))
     elif cmd == "revoke-sessions" and args:
         print(revoke(args[0]))

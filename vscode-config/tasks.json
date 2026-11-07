@@ -128,6 +128,22 @@
       "windows": { "command": ".\\.venv\\Scripts\\python.exe -m app.admin_tools import-sqlite \"${input:sqliteFile}\" --wipe" },
       "command": "./.venv/bin/python -m app.admin_tools import-sqlite \"${input:sqliteFile}\" --wipe",
       "problemMatcher": []
+    },
+    {
+      "label": "15. Quên mật khẩu admin – đặt lại (dữ liệu mẫu)",
+      "type": "shell",
+      "options": { "cwd": "${workspaceFolder}/backend", "env": { "DATA_DIR": "${workspaceFolder}/backend/data-v2-dev", "PG_LOCAL": "1", "PG_LOCAL_PORT": "5433", "PYTHONUTF8": "1" } },
+      "windows": { "command": ".\\.venv\\Scripts\\python.exe -m app.admin_tools reset-password admin" },
+      "command": "./.venv/bin/python -m app.admin_tools reset-password admin",
+      "problemMatcher": []
+    },
+    {
+      "label": "16. Quên mật khẩu admin – đặt lại (thiết bị thật)",
+      "type": "shell",
+      "options": { "cwd": "${workspaceFolder}/backend", "env": { "DATA_DIR": "${workspaceFolder}/backend/data-v2-local", "PG_LOCAL": "1", "PG_LOCAL_PORT": "5434", "PYTHONUTF8": "1" } },
+      "windows": { "command": ".\\.venv\\Scripts\\python.exe -m app.admin_tools reset-password admin" },
+      "command": "./.venv/bin/python -m app.admin_tools reset-password admin",
+      "problemMatcher": []
     }
   ],
   "inputs": [

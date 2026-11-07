@@ -39,3 +39,7 @@ Dừng bằng **Shift+F5** (PostgreSQL vẫn chạy nền cho lần sau; tắt h
 - Lỗi cổng 8100 đang bị dùng → sửa `"--port", "8100"` trong `.vscode/launch.json`.
 - Lỗi "Cổng 5433 đang có chương trình khác dùng" (máy đã cài PostgreSQL khác) → đổi `PG_LOCAL_PORT` trong `.vscode/launch.json` và `.vscode/tasks.json`.
 - Lỗi "Chưa có PostgreSQL di động" (máy không có Internet lúc cài) → khi có mạng chạy task **0. Tải PostgreSQL**.
+
+## Không đăng nhập được
+- **Không có mật khẩu / `.env.local` không có**: chạy lại `CAI-DAT.bat` (giữ nguyên mật khẩu nếu đã có). Nếu app **đã từng chạy** khi chưa có `.env.local`, tài khoản admin đã được tạo với mật khẩu ngẫu nhiên (in một lần ở Terminal dòng "ADMIN_PASSWORD chưa đặt…") → dùng task **15. Quên mật khẩu admin – đặt lại (dữ liệu mẫu)** (thiết bị thật: task **16**), mật khẩu mới in ra Terminal.
+- **"Không kết nối được máy chủ" / "Failed to fetch"**: app không chạy hoặc lỗi lúc khởi động. Xem cửa sổ **Terminal / Debug Console** trong VS Code – dòng lỗi cuối cùng (vd. "Chưa có PostgreSQL di động", "Cổng 5433 đang có chương trình khác dùng") cho biết cần làm gì. Tab trình duyệt cũ còn mở từ lần chạy trước cũng báo lỗi này → F5 lại app rồi tải lại trang.
