@@ -131,7 +131,13 @@ cd backend
 Đã có PostgreSQL dùng để test: đặt `TEST_DATABASE_URL=postgresql://user:pass@host:5432/postgres` (user có quyền CREATEDB) – mỗi lần chạy tạo một CSDL `itops_test_…` rồi xoá.
 
 ## Kết quả kiểm tra trước khi đóng gói (Linux, Python 3.13, PostgreSQL 17.11, Chrome)
-RESULTS_PLACEHOLDER
+- pytest trên PostgreSQL thật: **186 đạt**, 3 lỗi do môi trường thử không có lệnh `ping` (Windows có sẵn). Chế độ PostgreSQL tạm (giống task 5 trên Windows) đạt, không để lại tiến trình.
+- E2E giao diện cũ: **76/78** (2 bước cần `ping`). E2E bảo mật: **22/22** (2 lần). XSS: đạt.
+- App chạy với `PG_LOCAL=1` từ thư mục trống: tự tải PostgreSQL (khớp sha512) → initdb → migration 0001→0003 → dữ liệu mẫu 24 giờ (~3.500 log); simulator gửi syslog/trap thật được nhận và lưu.
+- Sao lưu → khôi phục `--wipe` (3.713 bản ghi) đạt; bản sao lưu hỏng không làm mất dữ liệu đang có.
+- Chuyển dữ liệu v1: mật khẩu thiết bị mã hoá kiểu v1 (Fernet) → chuyển → khởi động → mã hoá lại AES-256-GCM, giải mã đúng.
+- **Chưa chạy thử trên Windows thật** (môi trường đóng gói là Linux): bộ PostgreSQL bản Windows đã kiểm mã băm và giải nén được; khởi động trên Windows sẽ kiểm ở máy 2. Docker Compose chưa chạy thử.
+- Ruff / ESLint: không có lỗi mới (còn 5 / 2 cảnh báo có sẵn từ bản gốc).
 
 ## Sau khi `git clone`
 `backend/static` (giao diện đã build) không nằm trong Git → chạy task **2** rồi **3** (cần Node.js) để build. File zip đã có sẵn bản build.
