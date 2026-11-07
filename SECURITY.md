@@ -73,6 +73,14 @@ Tạo tài khoản chỉ đọc cho từng loại thiết bị:
 - Mỗi ngày audit + log + cảnh báo được xuất ra file nén có **chuỗi hash SHA-256** (`secmon.archive_day`) – sửa file cũ sẽ bị phát hiện khi kiểm chuỗi.
 - Giới hạn: người có quyền ghi trực tiếp file CSDL vẫn có thể xoá trigger. Chuỗi hash của archive là lớp phát hiện cho trường hợp đó; cần cất bản sao archive ở nơi khác (NAS chỉ đọc).
 
+## 5b. Nhận Syslog / SNMP Trap
+- Chỉ nhận từ **Nguồn được phép** (mặc định các dải IP nội bộ). Bộ lọc và giới hạn tốc độ dùng **IP thật gửi gói tin**;
+  với trap, varbind `agentAddress` (người gửi tự điền được) chỉ dùng để gắn vào tài sản, **không** dùng để cho qua
+  (`test_trap_acl_uses_real_sender_not_agent_address` – lỗ hổng tìm ra khi test bằng gói tin thật).
+- Trap v1/v2c sai community và trap v3 sai user / sai mật khẩu bị loại, không lưu. Mật khẩu SNMPv3 lưu mã hoá, giao diện chỉ hiện `••••••`.
+- Nên dùng **SNMPv3 authPriv** thay cho community `public` (bước P1 còn lại).
+- Kiểm tra đường nhận log: `python tools/mo_phong_thiet_bi.py --host <IP-IT-Ops>` (gửi gói tin thật, chạy được từ máy khác).
+
 ## 6. Sao lưu
 
 - Tự động mỗi ngày sau `BACKUP_HOUR` (mặc định 2 giờ sáng, giờ VN), giữ `BACKUP_KEEP` bản (mặc định 7) tại `BACKUP_DIR` (mặc định `data/backups`). Đặt `BACKUP_KEEP=0` để tắt.

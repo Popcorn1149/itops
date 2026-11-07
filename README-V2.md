@@ -9,7 +9,8 @@ Bản tách riêng khỏi bản đang chạy (`Documents\itops`) để làm cấ
 | 3–4 | Bảo mật P1 (backend) |
 | 5 | Giao diện bảo mật P1 + E2E |
 | 6 | Tài liệu: `SECURITY.md`, `DECISIONS/` |
-| 7 | Dữ liệu mẫu có log/cảnh báo như thật; sửa lỗi tách tên user trong log đăng nhập sai |
+| 7–8 | Dữ liệu mẫu có log/cảnh báo như thật; sửa lỗi tách tên user trong log đăng nhập sai |
+| 9 | Công cụ mô phỏng thiết bị (gói tin thật); vá lỗ hổng trap vượt bộ lọc IP qua agentAddress |
 
 Chi tiết cơ chế bảo mật: **`SECURITY.md`**. Lý do các quyết định: **`DECISIONS/`**.
 
@@ -72,6 +73,16 @@ Cấu hình **▶ Chạy IT Ops (dữ liệu mẫu)** giờ có sẵn log và c�
 | `DEMO_INCIDENT_EVERY` | `240,720` | Khoảng cách giữa 2 sự cố (giây). VD `60,120` để có sự cố mỗi 1–2 phút |
 
 Lịch sử chỉ tạo khi **dữ liệu mẫu còn trống** → đã chạy bản trước thì chạy task **6. Xoá dữ liệu chạy thử** rồi F5 (phải bật 2FA lại vì là dữ liệu mới).
+
+## Kiểm tra nhận Syslog / SNMP Trap bằng gói tin thật
+`backend/tools/mo_phong_thiet_bi.py` giả làm thiết bị, gửi **gói tin mạng thật** (khác log mẫu – log mẫu đưa thẳng vào app):
+syslog UDP (RFC 3164 + 5424), syslog TCP (xuống dòng + octet-counting), trap v2c, trap v3 authPriv, kèm log/trap phục hồi.
+- Ngay trên máy chạy v2 (cấu hình dữ liệu mẫu): task VS Code **10. Mô phỏng thiết bị…**
+- Từ **máy khác trong LAN** (giống thiết bị thật – cấu hình ▶ Thiết bị thật + `MO-TUONG-LUA.bat`):
+  `python tools/mo_phong_thiet_bi.py --host <IP-máy-chạy-v2>`
+- Trap v3: khai user ở **Cài đặt → Nhận Syslog/Trap** (SHA/AES, Engine ID `8000000001020304`) rồi thêm `--v3-user … --v3-auth … --v3-priv …`.
+- Kết quả đúng: **Log thiết bị** có log gắn vào pfSense-HQ, SW-TANG3, ESXi-02, NAS-HN, UPS-RACK, SW-CORE, AP-HN, ERP-APP; **Cảnh báo** mở rồi tự đóng sau ~3 giây (WAN, cổng switch, datastore, UPS); còn mở: RAID NAS-HN, dò mật khẩu pfSense, AP khởi động lại.
+- Không thấy log: xem **Log thiết bị → Nguồn lạ** (IP bị chặn hiện ở đó) và **Cài đặt → Nhận Syslog/Trap → Nguồn được phép**.
 
 ## Dùng lại dữ liệu thật của bản đang chạy (tuỳ chọn)
 Bản v2 **tự nâng cấp** CSDL bản cũ (đã thử: 3 site / 35 tài sản / 26 check / audit cũ còn nguyên; mật khẩu thiết bị và token Telegram được mã hoá lại và giải mã đúng).

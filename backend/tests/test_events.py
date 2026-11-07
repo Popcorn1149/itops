@@ -396,3 +396,25 @@ def test_allowlist_unit():
     events.set_allowed([])
     assert events.allowed("8.8.8.8"), "Danh sách rỗng = nhận tất cả"
     events.set_allowed(events.DEFAULT_ALLOWED)
+
+
+def test_trap_acl_uses_real_sender_not_agent_address(client, admin, clean, rx):
+    """Lỗ hổng tìm ra khi test bằng gói tin thật: trap ghi agentAddress = IP được phép nhưng GỬI TỪ IP bị chặn
+    trước đây vẫn lọt qua danh sách IP cho phép. Giờ phải lọc theo IP thật gửi gói."""
+    from app import events
+    cur = client.get("/api/settings/receivers", headers=admin).json()
+    try:
+        assert client.put("/api/settings/receivers", headers=admin, json={"communities": ["public"], "v3_users": [],
+                          "allowed_sources": ["10.0.0.0/8"]}).status_code == 200      # 127.0.0.1 (máy gửi thật) bị chặn
+        before = events.STATS["dropped_acl"]
+        trap(rx["trap"], "1.3.6.1.6.3.1.1.5.3", [("1.3.6.1.6.3.18.1.3.0", "10.1.0.21"), ("1.3.6.1.2.1.2.2.1.1", 7)])
+        time.sleep(1.5)
+        assert client.get("/api/events", headers=admin).json() == [], "trap giả agentAddress lọt qua bộ lọc IP"
+        assert events.STATS["dropped_acl"] == before + 1 and "127.0.0.1" in events.STATS["blocked"]
+    finally:
+        client.put("/api/settings/receivers", headers=admin, json={"communities": ["public"], "v3_users": [],
+                   "allowed_sources": cur["allowed_sources"]})
+    # IP thật được phép → trap vẫn gắn theo agentAddress như trước
+    trap(rx["trap"], "1.3.6.1.6.3.1.1.5.3", [("1.3.6.1.6.3.18.1.3.0", "10.1.0.21"), ("1.3.6.1.2.1.2.2.1.1", 7)])
+    evs = wait_events(client, admin, 1)
+    assert evs and evs[0]["source_ip"] == "10.1.0.21" and evs[0]["data"]["via"] == "127.0.0.1"

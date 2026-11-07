@@ -74,7 +74,9 @@ def allowed(ip: str) -> bool:
 def submit(ev: dict):
     """Gọi từ receiver (đang ở event loop). Không chặn: ngoài danh sách IP/quá tốc độ/hết chỗ thì bỏ và đếm."""
     STATS["received"] += 1
-    src = ev.get("source_ip", "")
+    # Lọc / giới hạn tốc độ theo IP THỰC SỰ gửi gói tin. Với trap, source_ip có thể lấy từ varbind agentAddress
+    # (người gửi tự điền được) → không dùng nó để quyết định cho qua; agentAddress chỉ dùng để gắn vào tài sản.
+    src = (ev.get("data") or {}).get("via") or ev.get("source_ip", "")
     srcs = STATS["sources"]   # chẩn đoán: nguồn nào đang gửi tới (kể cả bị chặn) – trả lời "log có tới IT Ops không"
     rec = srcs.get(src)
     if rec is None and len(srcs) < 500:

@@ -74,6 +74,14 @@
       "windows": { "command": ".\\.venv\\Scripts\\python.exe -m app.admin_tools reset-2fa admin" },
       "command": "./.venv/bin/python -m app.admin_tools reset-2fa admin",
       "problemMatcher": []
+    },
+    {
+      "label": "10. Mô phỏng thiết bị gửi Syslog/Trap thật (vào cấu hình dữ liệu mẫu)",
+      "type": "shell",
+      "options": { "cwd": "${workspaceFolder}/backend", "env": { "PYTHONUTF8": "1" } },
+      "windows": { "command": ".\\.venv\\Scripts\\python.exe tools\\mo_phong_thiet_bi.py --host 127.0.0.1 --syslog-port 6514 --trap-port 6162" },
+      "command": "./.venv/bin/python tools/mo_phong_thiet_bi.py --host 127.0.0.1 --syslog-port 6514 --trap-port 6162",
+      "problemMatcher": []
     }
   ]
 }
