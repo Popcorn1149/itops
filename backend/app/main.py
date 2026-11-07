@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect as sa_inspect, func
 from sqlalchemy.orm import Session
 
-from .db import Base, engine, get_db, SessionLocal, run_migrations
+from .db import engine, get_db, SessionLocal, run_migrations
 from . import models
 from .models import now
 from .security import (current_user, admin_user, verify_password, hash_password,
@@ -142,7 +142,7 @@ def _audit_safe(v):
 def audit(db: Session, user: str, action: str, entity: str, entity_id=None, detail: str = "", changes: dict | None = None):
     """Ghi nhật ký 5W1H: Ai (user) · Cái gì (action/entity/detail) · Khi nào (ts) · Ở đâu (ip, user_agent)
     · Như thế nào (changes: trước → sau, bí mật được che) · Tại sao (reason – header X-Audit-Reason)."""
-    ctx = REQ_CTX.get()
+    ctx = REQ_CTX.get() or {}
     db.add(models.AuditLog(user=user, action=action, entity=entity, entity_id=entity_id, detail=detail[:2000],
                            ip=ctx.get("ip", ""), user_agent=ctx.get("ua", ""), reason=ctx.get("reason", ""),
                            changes=_audit_safe(changes) if changes else None))

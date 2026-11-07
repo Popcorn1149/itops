@@ -70,7 +70,7 @@ SECRET_FIELDS = {"password", "community", "api_key", "token", "private_key", "bo
 MASK = "__SECRET__"
 
 # Bối cảnh request (cho audit 5W1H) – middleware đặt, audit() đọc
-REQ_CTX: contextvars.ContextVar[dict] = contextvars.ContextVar("itops_req", default={})
+REQ_CTX: contextvars.ContextVar[dict | None] = contextvars.ContextVar("itops_req", default=None)
 
 
 def now():
