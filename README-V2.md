@@ -65,7 +65,7 @@ Muốn thử nhanh bước 14: đặt `"SESSION_IDLE_MINUTES": "2"` trong `env` 
 ## Giao diện Sáng / Tối, ghim thanh bên
 - **Sáng / Tối / Theo hệ thống**: nút 3 biểu tượng ☀ ☾ 🖥 trên thanh trên (điện thoại: trong menu avatar; trang đăng nhập: góc phải). Mặc định *Theo hệ thống* – đổi theo Windows/macOS.
 - Chế độ tối: nền than chì, thẻ xám đậm viền mảnh, màu nhấn xanh dương, nhãn trạng thái chữ sáng trên nền màu trong suốt; biểu đồ, bản đồ, thanh cuộn đổi theo. Ảnh xuất từ bản đồ dùng nền của giao diện đang chọn.
-- **Ghim / bỏ ghim thanh bên**: nút cuối thanh bên (hoặc nút ▣ góc trái trên). Bỏ ghim → chỉ còn cột icon; **rê chuột vào** thì mở đè lên nội dung, không xô lệch trang.
+- **Ghim / bỏ ghim thanh bên**: nút ▣ góc trái trên thanh trên cùng. Bỏ ghim → chỉ còn cột icon; **rê chuột vào** thì mở đè lên nội dung, không xô lệch trang.
 - Cả hai lựa chọn được nhớ trên trình duyệt (mỗi máy / mỗi trình duyệt riêng).
 
 ## Dữ liệu mẫu có log "như thật"

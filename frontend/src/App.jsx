@@ -2,7 +2,6 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import {
   LayoutDashboard, Map, Globe2, Shield, Server, Monitor, Network, HardDrive, ShieldCheck, Activity, Bell,
   ScrollText, Settings, Search, PanelLeft, Clock, Boxes, LogOut, KeyRound, Menu, FileText, Gauge, Zap,
-  Pin, PinOff,
 } from "lucide-react";
 import { useUi, setPinned } from "./theme";
 import ThemeSwitch from "./components/ThemeSwitch";
@@ -255,10 +254,6 @@ export default function App() {
             </button>
           ))}
           <div className="side-foot">
-            <button className="side-pin hide-mobile" onClick={() => { setPinned(collapsed); setPeek(false); }}
-              title={collapsed ? "Ghim: thanh bên luôn mở" : "Bỏ ghim: chỉ còn icon, rê chuột để mở"}>
-              {collapsed ? <Pin size={15} /> : <PinOff size={15} />}<span>{collapsed ? "Ghim thanh bên" : "Bỏ ghim thanh bên"}</span>
-            </button>
             <ApiStatus />
             <div className="row faint"><span>Phiên bản {version}</span></div>
           </div>

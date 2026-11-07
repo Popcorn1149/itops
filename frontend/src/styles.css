@@ -423,17 +423,12 @@ pre.json { background: var(--code-bg); border: 1px solid var(--border); border-r
 .app { grid-template-columns: var(--side-w) 1fr; }
 .app.collapsed { grid-template-columns: var(--side-rail) 1fr; }
 .sidebar { transition: width .18s ease, box-shadow .18s ease; }
-.side-pin { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: none; color: var(--muted); padding: 7px 10px; border-radius: 8px; font-size: 12.5px; text-align: left; }
-.side-pin:hover { background: var(--subtle); color: var(--text); }
-.side-pin span { white-space: nowrap; }
 @media (min-width: 761px) {
   .app.collapsed .sidebar { position: relative; z-index: 20; width: var(--side-rail); overflow-x: hidden; }
   .app.collapsed .sidebar.peek { width: var(--side-w); box-shadow: 12px 0 32px rgba(0,0,0,.18); }
   .app.collapsed .sidebar.peek .nav-item span, .app.collapsed .sidebar.peek .nav-group,
   .app.collapsed .sidebar.peek .side-foot span, .app.collapsed .sidebar.peek .nav-item .count { display: inline; }
   .app.collapsed .sidebar.peek .nav-group { display: block; }
-  .collapsed .side-pin span { display: none; }
-  .collapsed .sidebar.peek .side-pin span { display: inline; }
   .nav-item span, .nav-group { white-space: nowrap; }
 }
 
