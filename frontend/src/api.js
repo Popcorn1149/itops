@@ -25,7 +25,10 @@ async function req(method, path, body, opts = {}) {
   const detail = data && data.detail;
   if (res.status === 401 && !path.startsWith("/auth/login")) {
     document.cookie = "itops_auth=; Max-Age=0; path=/; SameSite=Strict";   // phiên đã hết → bỏ cookie gợi ý
-    window.dispatchEvent(new CustomEvent("itops:logout", { detail: typeof detail === "string" ? detail : "" }));
+    const why = typeof detail === "string" ? detail : "";
+    // giữ lý do qua lần tải lại trang (sessionStorage chỉ sống trong tab này)
+    if (why) { try { sessionStorage.setItem("itops_logout_reason", why); } catch { /* bỏ qua */ } }
+    window.dispatchEvent(new CustomEvent("itops:logout", { detail: why }));
   }
   if (res.status === 403 && detail && detail.code === "2fa_required") {
     window.dispatchEvent(new Event("itops:need2fa"));

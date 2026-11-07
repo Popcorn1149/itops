@@ -11,6 +11,7 @@ Bản tách riêng khỏi bản đang chạy (`Documents\itops`) để làm cấ
 | 6 | Tài liệu: `SECURITY.md`, `DECISIONS/` |
 | 7–8 | Dữ liệu mẫu có log/cảnh báo như thật; sửa lỗi tách tên user trong log đăng nhập sai |
 | 9 | Công cụ mô phỏng thiết bị (gói tin thật); vá lỗ hổng trap vượt bộ lọc IP qua agentAddress |
+| 10 | Giao diện Sáng/Tối/Theo hệ thống, ghim/bỏ ghim thanh bên; giữ lý do đăng xuất qua lần tải lại |
 
 Chi tiết cơ chế bảo mật: **`SECURITY.md`**. Lý do các quyết định: **`DECISIONS/`**.
 
@@ -57,6 +58,12 @@ Chi tiết cơ chế bảo mật: **`SECURITY.md`**. Lý do các quyết định
 | 17 | Mất điện thoại: dừng app → task **9. Đặt lại 2FA của admin** → chạy lại | Admin đăng nhập lại phải bật 2FA mới |
 
 Muốn thử nhanh bước 14: đặt `"SESSION_IDLE_MINUTES": "2"` trong `env` của cấu hình chạy (`.vscode/launch.json`).
+
+## Giao diện Sáng / Tối, ghim thanh bên
+- **Sáng / Tối / Theo hệ thống**: nút 3 biểu tượng ☀ ☾ 🖥 trên thanh trên (điện thoại: trong menu avatar; trang đăng nhập: góc phải). Mặc định *Theo hệ thống* – đổi theo Windows/macOS.
+- Chế độ tối: nền than chì, thẻ xám đậm viền mảnh, màu nhấn xanh dương, nhãn trạng thái chữ sáng trên nền màu trong suốt; biểu đồ, bản đồ, thanh cuộn đổi theo. Ảnh xuất từ bản đồ dùng nền của giao diện đang chọn.
+- **Ghim / bỏ ghim thanh bên**: nút cuối thanh bên (hoặc nút ▣ góc trái trên). Bỏ ghim → chỉ còn cột icon; **rê chuột vào** thì mở đè lên nội dung, không xô lệch trang.
+- Cả hai lựa chọn được nhớ trên trình duyệt (mỗi máy / mỗi trình duyệt riêng).
 
 ## Dữ liệu mẫu có log "như thật"
 Cấu hình **▶ Chạy IT Ops (dữ liệu mẫu)** giờ có sẵn log và cảnh báo để test mà không cần thiết bị:

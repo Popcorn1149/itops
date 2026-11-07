@@ -1,6 +1,7 @@
 // Thành phần dùng chung cho giám sát CPU / RAM / Disk
 import React, { useEffect, useRef, useState } from "react";
 import * as echarts from "echarts";
+import { useUi, chartColors } from "../theme";
 import { useApi, UsageBar } from "../ui";
 
 export const RES_COLORS = { cpu: "#2563eb", mem: "#7c3aed", disk: "#0d9488" };
@@ -81,6 +82,7 @@ function currentLine(cur) {
 }
 
 export function ResourceChart({ checkId, thresholds = {}, height = 200, current }) {
+  const { theme } = useUi();
   const [hours, setHours] = useState(24);
   const [showSum, setShowSum] = useState(false);
   const { data } = useApi(checkId ? `/resources/history?check_id=${checkId}&hours=${hours}` : null, { deps: [hours] });
@@ -90,13 +92,14 @@ export function ResourceChart({ checkId, thresholds = {}, height = 200, current 
   useEffect(() => {
     if (!el.current || !pts.length) return;
     const c = echarts.init(el.current);
+    const T = chartColors();   // màu chữ / lưới / tooltip theo giao diện Sáng-Tối
     const t = { ...DEF, ...thresholds };
     c.setOption({
       grid: { left: 36, right: 12, top: 30, bottom: 24 },
-      tooltip: { trigger: "axis", valueFormatter: (v) => (v == null ? "—" : `${v}%`) },
-      legend: { top: 0, left: 0, itemWidth: 14, itemHeight: 3, textStyle: { fontSize: 11 } },
-      xAxis: { type: "time", min: Date.now() - hours * 3600e3, max: Date.now(), axisLabel: { fontSize: 10, hideOverlap: true } },
-      yAxis: { type: "value", min: 0, max: 100, interval: 25, axisLabel: { fontSize: 10, formatter: "{value}%" }, splitLine: { lineStyle: { color: "#f1efec" } } },
+      tooltip: { ...T.tooltip, trigger: "axis", valueFormatter: (v) => (v == null ? "—" : `${v}%`) },
+      legend: { top: 0, left: 0, itemWidth: 14, itemHeight: 3, textStyle: { color: T.text2, fontSize: 11 } },
+      xAxis: { type: "time", min: Date.now() - hours * 3600e3, max: Date.now(), axisLabel: { color: T.muted, fontSize: 10, hideOverlap: true } },
+      yAxis: { type: "value", min: 0, max: 100, interval: 25, axisLabel: { color: T.muted, fontSize: 10, formatter: "{value}%" }, splitLine: { lineStyle: { color: T.line } } },
       series: keys.map((k) => ({
         name: RES_NAMES[k], type: "line", showSymbol: pts.length < 40, symbolSize: 4, smooth: 0.2, connectNulls: true,
         lineStyle: { width: 1.8, color: RES_COLORS[k] }, itemStyle: { color: RES_COLORS[k] },
@@ -107,7 +110,7 @@ export function ResourceChart({ checkId, thresholds = {}, height = 200, current 
     });
     const ro = new ResizeObserver(() => c.resize()); ro.observe(el.current);
     return () => { ro.disconnect(); c.dispose(); };
-  }, [data]);
+  }, [data, theme]);
   if (!checkId) return null;
   return (
     <div>

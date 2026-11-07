@@ -100,7 +100,7 @@ function ReceiverSettings() {
         <h3 style={{ marginTop: 0 }}>Người dùng SNMPv3 (trap có xác thực/mã hoá)</h3>
         <p className="muted small" style={{ marginTop: 0 }}>Thiết bị gửi trap v3 cần Engine ID của thiết bị (lấy từ cấu hình thiết bị) trừ khi dùng INFORM.</p>
         {s.v3_users.map((u, i) => (
-          <div className="form-grid" key={i} style={{ borderTop: i ? "1px solid #f1efec" : 0, paddingTop: i ? 12 : 0, marginBottom: 12 }}>
+          <div className="form-grid" key={i} style={{ borderTop: i ? "1px solid var(--line)" : 0, paddingTop: i ? 12 : 0, marginBottom: 12 }}>
             <Field label="User"><Input value={u.username} onChange={(v) => setU(i, "username", v)} /></Field>
             <Field label="Engine ID của thiết bị (hex)"><Input value={u.engine_id} onChange={(v) => setU(i, "engine_id", v)} placeholder="80001f8880..." /></Field>
             <Field label="Auth"><div className="row"><Select value={u.auth_protocol || "SHA"} onChange={(v) => setU(i, "auth_protocol", v)} options={["SHA", "SHA256", "MD5"]} /><Secret value={u.auth_key} onChange={(v) => setU(i, "auth_key", v)} placeholder="auth password" /></div></Field>

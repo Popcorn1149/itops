@@ -172,7 +172,7 @@ export function AssetDrawer({ id, onClose }) {
       {a.alerts.length > 0 && <>
         <h4>Cảnh báo gần đây</h4>
         {a.alerts.map((al) => (
-          <div key={al.id} className="row small" style={{ padding: "6px 0", borderBottom: "1px solid #f1efec" }}>
+          <div key={al.id} className="row small" style={{ padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
             {al.status === "resolved" ? <span className="badge ok">Đã xử lý</span> : <SevBadge sev={al.severity} />}
             <span className="grow">{al.title}</span><span className="faint">{fmtTime(al.opened_at)}</span>
           </div>

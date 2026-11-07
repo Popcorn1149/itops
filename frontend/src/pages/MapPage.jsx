@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as echarts from "echarts";
+import { useUi, chartColors } from "../theme";
 import {
   RefreshCw, List, Orbit, GitBranch, Workflow, AlertTriangle, Maximize2, Minimize2, Download, ChevronsUpDown,
   ChevronsDownUp, Monitor, Container, Crosshair,
@@ -15,7 +16,7 @@ const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const STATUS_COLOR = { up: "#16a34a", ok: "#16a34a", warning: "#d97706", warn: "#d97706", down: "#dc2626", fail: "#dc2626", off: "#d6d3d1", unknown: "#a8a29e" };
 const SIZE = { internet: 26, site: 20, firewall: 17, host: 15, switch: 14, router: 14, server: 14, nas: 12, vm: 10, container: 8 };
 
-function toTree(n, opts, depth = 0, radial = false) {
+function toTree(n, opts, depth = 0, radial = false, T = chartColors()) {
   const color = STATUS_COLOR[n.status] || STATUS_COLOR.unknown;
   const meta = typeMeta(n.type);
   const isHub = n.type === "internet" || n.type === "site";
@@ -32,25 +33,26 @@ function toTree(n, opts, depth = 0, radial = false) {
     symbolSize: SIZE[n.type] || 11,
     symbol: n.type === "site" ? "roundRect" : n.type === "internet" ? "circle" : n.type === "firewall" ? "diamond" : "circle",
     itemStyle: {
-      color: isHub ? "#fff" : color,
-      borderColor: isHub ? (n.worst === "fail" ? "#dc2626" : n.worst === "warn" ? "#d97706" : "#ea7a0c") : n.critical === "High" ? "#1c1917" : "#fff",
+      color: isHub ? T.panel : color,
+      borderColor: isHub ? (n.worst === "fail" ? "#dc2626" : n.worst === "warn" ? "#d97706" : T.accent) : n.critical === "High" ? T.text : T.panel,
       borderWidth: isHub ? 3 : n.critical ? 2.5 : 1.5,
       shadowBlur: n.status === "down" ? 10 : 0, shadowColor: "#dc2626",
     },
     label: {
       formatter: (p) => `{n|${p.name}}${p.value ? `\n{s|${p.value}}` : ""}`,
       rich: {
-        n: { fontSize: isHub ? 13 : 11.5, fontWeight: isHub || n.type === "firewall" ? 700 : 500, color: n.status === "down" ? "#b91c1c" : "#1c1917" },
-        s: { fontSize: 10, color: "#78716c", lineHeight: 14 },
+        n: { fontSize: isHub ? 13 : 11.5, fontWeight: isHub || n.type === "firewall" ? 700 : 500, color: n.status === "down" ? T.failInk : T.text },
+        s: { fontSize: 10, color: T.muted, lineHeight: 14 },
       },
-      ...(radial && isHub ? { rotate: 0, position: "bottom", distance: 4, backgroundColor: "rgba(255,255,255,.92)", padding: [2, 6], borderRadius: 4 } : {}),
+      ...(radial && isHub ? { rotate: 0, position: "bottom", distance: 4, backgroundColor: T.dark ? "rgba(34,34,38,.92)" : "rgba(255,255,255,.92)", padding: [2, 6], borderRadius: 4 } : {}),
     },
     tooltipType: meta.label,
-    children: n.children.map((c) => toTree(c, opts, depth + 1, radial)),
+    children: n.children.map((c) => toTree(c, opts, depth + 1, radial, T)),
   };
 }
 
 function TreeChart({ tree, layout, opts, onPick, chartRef, mobile }) {
+  const { theme } = useUi();
   const el = useRef();
   useEffect(() => {
     const c = echarts.init(el.current, null, { renderer: "canvas" });
@@ -62,15 +64,16 @@ function TreeChart({ tree, layout, opts, onPick, chartRef, mobile }) {
   }, []);
   useEffect(() => {
     const radial = layout === "radial";
-    const data = toTree(tree, opts, 0, radial);
+    const T = chartColors();
+    const data = toTree(tree, opts, 0, radial, T);
     chartRef.current.setOption({
       tooltip: {
-        trigger: "item", confine: true,
+        ...T.tooltip, trigger: "item", confine: true,
         formatter: (p) => {
           const r = p.data.raw || {};
           return `<b>${esc(r.name)}</b><br/>${esc(p.data.tooltipType)}${r.model ? " · " + esc(r.model) : ""}${r.ip ? "<br/>" + esc(r.ip) : ""}` +
-            `<br/>Status: <b style="color:${STATUS_COLOR[r.status] || "#999"}">${esc(r.status)}</b>${r.critical ? `<br/>Trọng yếu: ${esc(r.critical)}` : ""}` +
-            (r.count > 1 ? `<br/><span style="color:#999">${r.count - 1} mục bên dưới</span>` : "");
+            `<br/>Status: <b style="color:${STATUS_COLOR[r.status] || T.muted}">${esc(r.status)}</b>${r.critical ? `<br/>Trọng yếu: ${esc(r.critical)}` : ""}` +
+            (r.count > 1 ? `<br/><span style="color:${T.muted}">${r.count - 1} mục bên dưới</span>` : "");
         },
       },
       series: [{
@@ -78,17 +81,18 @@ function TreeChart({ tree, layout, opts, onPick, chartRef, mobile }) {
         top: radial ? "6%" : "3%", bottom: radial ? "6%" : "3%", left: radial ? "6%" : mobile ? "20%" : "8%", right: radial ? "6%" : mobile ? "24%" : "16%",
         roam: true, scaleLimit: { min: 0.3, max: 4 }, initialTreeDepth: -1, expandAndCollapse: true,
         animationDuration: 400, animationDurationUpdate: 500,
-        lineStyle: { color: "#d6d3cd", width: 1.2, curveness: radial ? 0.5 : 0.5 },
+        lineStyle: { color: T.edge, width: 1.2, curveness: radial ? 0.5 : 0.5 },
         label: radial ? { position: "right", distance: 6 } : { position: "left", verticalAlign: "middle", align: "right", distance: 8 },
         leaves: { label: radial ? { position: "right" } : { position: "right", verticalAlign: "middle", align: "left" } },
         emphasis: { focus: "descendant" },
       }],
     }, true);
-  }, [tree, layout, opts, mobile]);
+  }, [tree, layout, opts, mobile, theme]);
   return <div ref={el} style={{ position: "absolute", inset: 0 }} />;
 }
 
 function FlowChart({ flow, onPick, chartRef }) {
+  const { theme } = useUi();
   const el = useRef();
   useEffect(() => {
     const c = echarts.init(el.current);
@@ -99,23 +103,24 @@ function FlowChart({ flow, onPick, chartRef }) {
     return () => { ro.disconnect(); c.dispose(); };
   }, []);
   useEffect(() => {
+    const T = chartColors();
     const nodes = flow.nodes.map((n) => {
       const color = STATUS_COLOR[n.status] || "#a8a29e";
       const crit = n.kind === "critical";
       return {
         id: n.id, name: n.name, asset_id: n.asset_id, category: crit ? 0 : 1,
         symbol: crit ? "roundRect" : "circle", symbolSize: crit ? [Math.max(70, n.name.length * 7.5), 26] : (SIZE[n.type] || 12) + 6,
-        itemStyle: crit ? { color: "#fff", borderColor: n.level === "High" ? "#dc2626" : n.level === "Medium" ? "#d97706" : "#a8a29e", borderWidth: 2 } : { color },
-        label: crit ? { show: true, position: "inside", color: "#1c1917", fontWeight: 600, fontSize: 11 } : { show: true, position: "right", fontSize: 11, color: "#57534e" },
+        itemStyle: crit ? { color: T.panel, borderColor: n.level === "High" ? "#dc2626" : n.level === "Medium" ? "#d97706" : "#a8a29e", borderWidth: 2 } : { color },
+        label: crit ? { show: true, position: "inside", color: T.text, fontWeight: 600, fontSize: 11 } : { show: true, position: "right", fontSize: 11, color: T.text2 },
         tip: crit ? `Hệ thống trọng yếu · ${esc(n.level)}<br/>${esc(n.layer)}` : esc(typeMeta(n.type).label),
       };
     });
     const edges = flow.edges.map((e) => ({
-      source: e.source, target: e.target, label: { show: true, formatter: e.label, fontSize: 9.5, color: "#a8a29e" },
-      lineStyle: { color: e.label === "phụ thuộc" ? "#ea7a0c" : "#d6d3cd", type: e.label === "phụ thuộc" ? "dashed" : "solid", width: 1.4, curveness: 0.1 },
+      source: e.source, target: e.target, label: { show: true, formatter: e.label, fontSize: 9.5, color: T.faint },
+      lineStyle: { color: e.label === "phụ thuộc" ? T.accent : T.edge, type: e.label === "phụ thuộc" ? "dashed" : "solid", width: 1.4, curveness: 0.1 },
     }));
     chartRef.current.setOption({
-      tooltip: { formatter: (p) => (p.dataType === "node" ? `<b>${esc(p.data.name)}</b><br/>${p.data.tip}` : esc(p.data.label?.formatter)) },
+      tooltip: { ...T.tooltip, formatter: (p) => (p.dataType === "node" ? `<b>${esc(p.data.name)}</b><br/>${p.data.tip}` : esc(p.data.label?.formatter)) },
       series: [{
         type: "graph", layout: "force", roam: true, zoom: 0.85, draggable: true, data: nodes, links: edges,
         categories: [{ name: "Hệ thống trọng yếu" }, { name: "Hạ tầng" }],
@@ -123,7 +128,7 @@ function FlowChart({ flow, onPick, chartRef }) {
         edgeSymbol: ["none", "arrow"], edgeSymbolSize: 7, emphasis: { focus: "adjacency" },
       }],
     }, true);
-  }, [flow]);
+  }, [flow, theme]);
   return <div ref={el} style={{ position: "absolute", inset: 0 }} />;
 }
 
@@ -157,7 +162,7 @@ export default function MapPage() {
   const reloadAll = () => { topo.reload(); dash.reload(); risks.reload(); toast("Đã làm mới bản đồ"); };
   const exportImg = () => {
     if (!chartRef.current) return;
-    const url = chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#fff" });
+    const url = chartRef.current.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: chartColors().panel });
     const a = document.createElement("a"); a.href = url; a.download = `ban-do-he-thong-${new Date().toISOString().slice(0, 10)}.png`; a.click();
   };
   const fit = () => chartRef.current?.dispatchAction({ type: "restore" });

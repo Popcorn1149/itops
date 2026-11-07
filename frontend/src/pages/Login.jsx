@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { api } from "../api";
 import { Field, Input, DEMO } from "../ui";
+import ThemeSwitch from "../components/ThemeSwitch";
 
 export default function Login({ onLogin, appName, notice }) {
   const [u, setU] = useState(DEMO ? "admin" : "");
@@ -30,6 +31,7 @@ export default function Login({ onLogin, appName, notice }) {
   const back = () => { setNeedOtp(false); setOtp(""); setErr(""); };
   return (
     <div className="login-wrap">
+      <div style={{ position: "fixed", top: 14, right: 14 }}><ThemeSwitch /></div>
       <form className="card login" onSubmit={submit}>
         <div className="brand"><div className="brand-logo">IT</div>{appName}</div>
         <h2>{needOtp ? "Xác thực 2 lớp" : "Đăng nhập"}</h2>

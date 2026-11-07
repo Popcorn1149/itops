@@ -1,8 +1,11 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
   LayoutDashboard, Map, Globe2, Shield, Server, Monitor, Network, HardDrive, ShieldCheck, Activity, Bell,
   ScrollText, Settings, Search, PanelLeft, Clock, Boxes, LogOut, KeyRound, Menu, FileText, Gauge, Zap,
+  Pin, PinOff,
 } from "lucide-react";
+import { useUi, setPinned } from "./theme";
+import ThemeSwitch from "./components/ThemeSwitch";
 import { api } from "./api";
 import { ForcedTwoFactor } from "./components/AccountSecurity";
 import { Dot, TypeIcon, useClickOutside, useApi, DEMO } from "./ui";
@@ -148,6 +151,7 @@ function UserMenu({ me, onLogout }) {
         <div className="search-results" style={{ right: 0, left: "auto", width: 220 }}>
           <div style={{ padding: "8px 10px" }}><b>{me.full_name || me.username}</b><div className="small muted">{me.username} · {me.role}</div></div>
           <div className="search-item" onClick={() => { setOpen(false); nav("settings", null, { tab: "account" }); }}><KeyRound size={15} />Mật khẩu · 2FA · Phiên</div>
+          <div style={{ padding: "6px 10px 8px", display: "flex", alignItems: "center", gap: 8 }}><span className="small muted grow">Giao diện</span><ThemeSwitch /></div>
           <div className="search-item" onClick={onLogout}><LogOut size={15} />Đăng xuất</div>
         </div>
       )}
@@ -159,14 +163,19 @@ export default function App() {
   const [route, setRoute] = useState(parseHash());
   const [me, setMe] = useState(null);
   const [checked, setChecked] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const { pinned, theme } = useUi();
+  const collapsed = !pinned;
+  const [peek, setPeek] = useState(false);          // bỏ ghim + rê chuột → mở tạm đè lên nội dung
+  const peekTimer = useRef();
+  const peekOn = () => { if (!collapsed) return; clearTimeout(peekTimer.current); peekTimer.current = setTimeout(() => setPeek(true), 120); };
+  const peekOff = () => { clearTimeout(peekTimer.current); peekTimer.current = setTimeout(() => setPeek(false), 200); };
   const [mobileNav, setMobileNav] = useState(false);
   const [assetId, setAssetId] = useState(null);
   const [checkEdit, setCheckEdit] = useState(null); // {id} | {new:true, preset}
   const [tick, setTick] = useState(0);
   const [appName, setAppName] = useState("IT Ops Workspace");
   const [version, setVersion] = useState("");
-  const [notice, setNotice] = useState("");   // lý do bị đăng xuất (hết phiên, không thao tác…)
+  const [notice, setNotice] = useState(() => { try { return sessionStorage.getItem("itops_logout_reason") || ""; } catch { return ""; } });   // lý do bị đăng xuất
 
   useEffect(() => {
     const h = () => { setRoute(parseHash()); setMobileNav(false); };
@@ -186,6 +195,7 @@ export default function App() {
   }, []);
   const logout = useCallback(async () => {
     try { await api.post("/auth/logout"); } catch { /* phiên đã hết hạn thì thôi */ }
+    try { sessionStorage.removeItem("itops_logout_reason"); } catch { /* bỏ qua */ }
     setNotice(""); setMe(null); go("dashboard");
   }, []);
 
@@ -195,7 +205,7 @@ export default function App() {
   }, []);
   const refresh = useCallback(() => setTick((t) => t + 1), []);
   const ctx = {
-    me, setMe, logout, route, nav, tick, refresh, isAdmin: me?.role === "admin",
+    me, setMe, logout, route, nav, tick, refresh, theme, isAdmin: me?.role === "admin",
     openAsset: (id) => setAssetId(id),
     openCheck: (id) => setCheckEdit({ id }),
     newCheck: (preset) => setCheckEdit({ isNew: true, preset }),
@@ -204,7 +214,7 @@ export default function App() {
   const alertsCount = useApi(me && !me.need_2fa_setup ? "/alerts?status=active&limit=500" : null, { interval: 30000, deps: [tick] });
 
   if (!checked) return null;
-  if (!me) return <Login appName={appName} notice={notice} onLogin={(u) => { setNotice(""); setMe(u); }} />;
+  if (!me) return <Login appName={appName} notice={notice} onLogin={(u) => { setNotice(""); try { sessionStorage.removeItem("itops_logout_reason"); } catch { /* bỏ qua */ } setMe(u); }} />;
   if (me.need_2fa_setup) return <ForcedTwoFactor me={me} onDone={(u) => setMe(u)} onLogout={logout} />;
 
   const curQ = new URLSearchParams(route.params).toString().replace(/%2C/g, ",");
@@ -216,7 +226,8 @@ export default function App() {
     <AppCtx.Provider value={ctx}>
       <div className={`app ${collapsed ? "collapsed" : ""} ${mobileNav ? "mobile-nav" : ""}`}>
         <header className="topbar">
-          <button className="icon-btn" onClick={() => (window.innerWidth < 760 ? setMobileNav(!mobileNav) : setCollapsed(!collapsed))}>
+          <button className="icon-btn" title={collapsed ? "Ghim thanh bên" : "Bỏ ghim thanh bên"}
+            onClick={() => (window.innerWidth < 760 ? setMobileNav(!mobileNav) : (setPinned(collapsed), setPeek(false)))}>
             {window.innerWidth < 760 ? <Menu size={17} /> : <PanelLeft size={17} />}
           </button>
           <div className="brand"><div className="brand-logo">IT</div><span>{appName}</span></div>
@@ -229,12 +240,13 @@ export default function App() {
           </nav>
           <div className="top-right">
             <ClockBox />
+            <div className="hide-mobile"><ThemeSwitch /></div>
             <GlobalSearch />
             <UserMenu me={me} onLogout={logout} />
           </div>
         </header>
         {mobileNav && <div className="nav-backdrop" onClick={() => setMobileNav(false)} />}
-        <aside className="sidebar">
+        <aside className={`sidebar ${collapsed && peek ? "peek" : ""}`} onMouseEnter={peekOn} onMouseLeave={peekOff}>
           {NAV.map((n, i) => n.group ? <div key={i} className="nav-group">{n.group}</div> : (
             <button key={i} className={`nav-item ${isActive(n) ? "active" : ""}`} title={n.label}
               onClick={() => (n.key === "assets" ? go(`assets${n.q ? "?" + n.q : ""}`) : nav(n.key))}>
@@ -243,6 +255,10 @@ export default function App() {
             </button>
           ))}
           <div className="side-foot">
+            <button className="side-pin hide-mobile" onClick={() => { setPinned(collapsed); setPeek(false); }}
+              title={collapsed ? "Ghim: thanh bên luôn mở" : "Bỏ ghim: chỉ còn icon, rê chuột để mở"}>
+              {collapsed ? <Pin size={15} /> : <PinOff size={15} />}<span>{collapsed ? "Ghim thanh bên" : "Bỏ ghim thanh bên"}</span>
+            </button>
             <ApiStatus />
             <div className="row faint"><span>Phiên bản {version}</span></div>
           </div>

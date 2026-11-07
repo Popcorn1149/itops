@@ -235,7 +235,7 @@ export function AutomationEditor({ edit, catalog, onClose, onSaved }) {
 
 function PreviewBox({ r, onClose }) {
   return (
-    <div className="card card-pad" style={{ marginTop: 14, background: "#fbfaf8" }}>
+    <div className="card card-pad" style={{ marginTop: 14, background: "var(--subtle)" }}>
       <div className="row" style={{ marginBottom: 6 }}><FlaskConical size={15} /><b>Kết quả chạy thử</b>
         <span className={`badge ${STATUS[r.status]?.[0] || ""}`}>{STATUS[r.status]?.[1] || r.status}</span>
         <span className="small muted">{r.summary}</span>

@@ -20,17 +20,19 @@ export const TYPES = {
   website: { label: "Website", icon: Globe, color: "#0d9488" },
   nas: { label: "NAS / Storage", icon: HardDrive, color: "#a16207" },
   ups: { label: "UPS", icon: BatteryCharging, color: "#65a30d" },
-  printer: { label: "Máy in", icon: Printer, color: "#57534e" },
-  camera: { label: "Camera", icon: Camera, color: "#57534e" },
-  device: { label: "Thiết bị khác", icon: Smartphone, color: "#78716c" },
+  printer: { label: "Máy in", icon: Printer, color: "var(--text-3)" },
+  camera: { label: "Camera", icon: Camera, color: "var(--text-3)" },
+  device: { label: "Thiết bị khác", icon: Smartphone, color: "var(--muted)" },
   cloud: { label: "Cloud", icon: Cloud, color: "#0ea5e9" },
-  other: { label: "Khác", icon: Cpu, color: "#78716c" },
+  other: { label: "Khác", icon: Cpu, color: "var(--muted)" },
 };
-export const typeMeta = (t) => TYPES[t] || { label: t, icon: CircleHelp, color: "#78716c" };
+export const typeMeta = (t) => TYPES[t] || { label: t, icon: CircleHelp, color: "var(--muted)" };
 export function TypeIcon({ type, size = 16, style }) {
   const M = typeMeta(type);
   const I = M.icon;
-  return <I size={size} color={M.color} style={{ flexShrink: 0, ...style }} />;
+  // màu dạng biến CSS (icon xám đổi theo Sáng/Tối) → dùng currentColor, vì thuộc tính SVG không đọc chắc chắn var()
+  const v = M.color.startsWith("var(");
+  return <I size={size} color={v ? "currentColor" : M.color} style={{ flexShrink: 0, ...(v ? { color: M.color } : {}), ...style }} />;
 }
 
 export const CHECK_TYPES = {
@@ -192,7 +194,7 @@ export function Empty({ icon: I = Inbox, title, children }) {
   return (
     <div className="empty">
       <I size={34} />
-      <div style={{ fontWeight: 600, color: "#44403c" }}>{title}</div>
+      <div style={{ fontWeight: 600, color: "var(--text-2)" }}>{title}</div>
       {children && <div style={{ marginTop: 6 }}>{children}</div>}
     </div>
   );

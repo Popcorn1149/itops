@@ -5,6 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23ea7a0c'/><text x='16' y='22' font-size='16' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='700'>IT</text></svg>" />
     <title>IT Ops Workspace</title>
+    <script>
+      // Áp giao diện Sáng/Tối trước khi vẽ trang (tránh chớp nền trắng). Logic đầy đủ ở src/theme.js
+      (function () {
+        try {
+          var p = localStorage.getItem("itops_theme") || "system";
+          var d = p === "dark" || (p === "system" && window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.dataset.theme = d ? "dark" : "light";
+          document.documentElement.style.colorScheme = d ? "dark" : "light";
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

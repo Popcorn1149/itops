@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as echarts from "echarts";
+import { useUi, chartColors } from "../theme";
 import { Radio, Search, Send, Plus, Pencil, Trash2, FlaskConical, ListFilter, HelpCircle, ShieldQuestion, Copy, Pause, Play, ChevronDown } from "lucide-react";
 import { api } from "../api";
 import { useApp } from "../App";
@@ -22,22 +23,24 @@ const shortTime = (iso) => {
 };
 
 function Histogram({ series, bucket }) {
+  const { theme } = useUi();
   const el = useRef();
   useEffect(() => {
     if (!el.current) return;
     const c = echarts.init(el.current);
+    const T = chartColors();   // màu chữ / lưới / tooltip theo giao diện Sáng-Tối
     c.setOption({
       grid: { left: 36, right: 10, top: 10, bottom: 22 },
-      tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
-      xAxis: { type: "time", axisLabel: { fontSize: 10 } },
-      yAxis: { type: "value", minInterval: 1, axisLabel: { fontSize: 10 }, splitLine: { lineStyle: { color: "#f1efec" } } },
+      tooltip: { ...T.tooltip, trigger: "axis", axisPointer: { type: "shadow" } },
+      xAxis: { type: "time", axisLabel: { color: T.muted, fontSize: 10 } },
+      yAxis: { type: "value", minInterval: 1, axisLabel: { color: T.muted, fontSize: 10 }, splitLine: { lineStyle: { color: T.line } } },
       series: [["error", "Lỗi trở lên", "#dc2626"], ["warning", "Cảnh báo", "#d97706"], ["info", "Thông tin", "#a8a29e"]].map(([k, n, col]) => ({
         name: n, type: "bar", stack: "s", barMaxWidth: 14, itemStyle: { color: col }, data: series.map((p) => [p.ts, p[k]]),
       })),
     });
     const ro = new ResizeObserver(() => c.resize()); ro.observe(el.current);
     return () => { ro.disconnect(); c.dispose(); };
-  }, [series, bucket]);
+  }, [series, bucket, theme]);
   if (!series.length) return <div className="muted small" style={{ padding: "18px 0" }}>Chưa nhận được log nào trong 24 giờ qua.</div>;
   return <div ref={el} style={{ height: 130 }} />;
 }
@@ -146,7 +149,7 @@ export function RuleForm({ rule, onClose, onSaved }) {
             <div className="small" style={{ marginTop: 4 }}>Đọc được: mức <b>{SEV[res.sample.parsed.severity]}</b> · app <b>{res.sample.parsed.app || "—"}</b> · host <b>{res.sample.parsed.host || "—"}</b></div>
           </div>}
           <div className="alert-box info">Với log 24h qua: <b>{res.history.matches}</b>/{res.history.scanned} dòng khớp{res.history.matches > 50 ? " – có thể quá rộng, dễ bị spam cảnh báo" : ""}.</div>
-          {res.history.examples.map((x) => <div key={x.id} className="small mono" style={{ padding: "4px 0", borderBottom: "1px solid #f1efec" }}>{shortTime(x.ts)} {x.source_ip} {x.message.slice(0, 160)}</div>)}
+          {res.history.examples.map((x) => <div key={x.id} className="small mono" style={{ padding: "4px 0", borderBottom: "1px solid var(--line)" }}>{shortTime(x.ts)} {x.source_ip} {x.message.slice(0, 160)}</div>)}
         </div>
       )}
     </Modal>

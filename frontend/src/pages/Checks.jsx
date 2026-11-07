@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as echarts from "echarts";
+import { useUi, chartColors } from "../theme";
 import { Plus, Play, Trash2, Search, FlaskConical, Power, Info } from "lucide-react";
 import { api, SECRET } from "../api";
 import { useApp } from "../App";
@@ -156,19 +157,21 @@ function upgradeResCfg(cfg, type) {
 
 const HCOL = { attention: "#ca8a04", trouble: "#ea580c", warning: "#ea580c", critical: "#dc2626" };
 function HistoryChart({ id }) {
+  const { theme } = useUi();
   const { data } = useApi(`/checks/${id}/history?hours=24`);
   const el = useRef();
   useEffect(() => {
     if (!data || !data.length || !el.current) return;
     const c = echarts.init(el.current);
+    const T = chartColors();   // màu chữ / lưới / tooltip theo giao diện Sáng-Tối
     const hasVal = data.some((r) => r.value != null && r.value !== r.latency) && !data.some((r) => r.metrics);   // có lịch sử tài nguyên riêng → bỏ đường "Giá trị"
     c.setOption({
       grid: { left: 40, right: hasVal ? 40 : 12, top: 24, bottom: 24 },
-      tooltip: { trigger: "axis" },
-      legend: { top: 0, right: 0, textStyle: { fontSize: 11 } },
-      xAxis: { type: "time", axisLabel: { fontSize: 10 } },
-      yAxis: [{ type: "value", name: "ms", nameTextStyle: { fontSize: 10 }, axisLabel: { fontSize: 10 }, splitLine: { lineStyle: { color: "#f1efec" } } },
-        ...(hasVal ? [{ type: "value", axisLabel: { fontSize: 10 }, splitLine: { show: false } }] : [])],
+      tooltip: { ...T.tooltip, trigger: "axis" },
+      legend: { top: 0, right: 0, textStyle: { color: T.text2, fontSize: 11 } },
+      xAxis: { type: "time", axisLabel: { color: T.muted, fontSize: 10 } },
+      yAxis: [{ type: "value", name: "ms", nameTextStyle: { color: T.muted, fontSize: 10 }, axisLabel: { color: T.muted, fontSize: 10 }, splitLine: { lineStyle: { color: T.line } } },
+        ...(hasVal ? [{ type: "value", axisLabel: { color: T.muted, fontSize: 10 }, splitLine: { show: false } }] : [])],
       visualMap: { show: false, seriesIndex: 0, dimension: 2, pieces: [{ value: 0, color: "#16a34a" }, { value: 1, color: "#ea580c" }, { value: 2, color: "#991b1b" }] },
       series: [
         { name: "Độ trễ", type: "line", showSymbol: false, data: data.map((r) => [r.ts, r.latency, r.down ? 2 : r.severity ? 1 : 0]), lineStyle: { width: 1.5 } },
@@ -177,7 +180,7 @@ function HistoryChart({ id }) {
     });
     const ro = new ResizeObserver(() => c.resize()); ro.observe(el.current);
     return () => { ro.disconnect(); c.dispose(); };
-  }, [data]);
+  }, [data, theme]);
   if (!data) return null;
   if (!data.length) return <div className="small muted">Chưa có dữ liệu lịch sử.</div>;
   const bad = data.filter((r) => r.down).length;
