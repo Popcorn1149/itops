@@ -62,7 +62,13 @@ def port() -> int:
     return int(os.environ.get("PG_LOCAL_PORT", "5433"))
 
 
+# Windows: chạy ẩn, không bật cửa sổ console (pg_ctl gọi cmd.exe để chạy postgres – thiếu cờ này sẽ hiện cửa sổ đen)
+NO_WINDOW = 0x08000000 if WIN else 0          # CREATE_NO_WINDOW
+
+
 def _run(args, **kw):
+    if WIN:
+        kw.setdefault("creationflags", NO_WINDOW)
     r = subprocess.run(args, capture_output=True, text=True, **kw)
     return r.returncode, (r.stdout or "") + (r.stderr or "")
 
@@ -126,8 +132,9 @@ def _start(pgdata: Path, log: Path, p: int):
     with open(out_file, "w", encoding="utf-8", errors="replace") as fo:
         kw["stdout"] = fo
         if WIN:
-            # tách khỏi tiến trình VS Code/debugger để Stop debug không "giết" PostgreSQL giữa chừng
-            base = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+            # tách khỏi tiến trình VS Code/debugger để Stop debug không "giết" PostgreSQL giữa chừng.
+            # KHÔNG dùng DETACHED_PROCESS: pg_ctl gọi cmd.exe → Windows mở cửa sổ console mới. CREATE_NO_WINDOW = console ẩn.
+            base = subprocess.CREATE_NEW_PROCESS_GROUP | NO_WINDOW
             try:
                 rc = subprocess.run(args, creationflags=base | 0x01000000, **kw).returncode   # CREATE_BREAKAWAY_FROM_JOB
             except OSError:
