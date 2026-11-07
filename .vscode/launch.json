@@ -51,6 +51,34 @@
       "serverReadyAction": { "pattern": "Uvicorn running on https?://\\S+:(\\d+)", "uriFormat": "http://127.0.0.1:%s", "action": "openExternally" }
     },
     {
+      "name": "▶ Chạy IT Ops (HTTPS, dữ liệu mẫu)",
+      // Cần chạy task "8. Tạo chứng chỉ HTTPS (tự ký)" một lần trước. Trình duyệt sẽ cảnh báo chứng chỉ tự ký → Advanced → Proceed.
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--host", "127.0.0.1", "--port", "8443",
+               "--ssl-certfile", "${workspaceFolder}/backend/data-v2-dev/tls/cert.pem",
+               "--ssl-keyfile", "${workspaceFolder}/backend/data-v2-dev/tls/key.pem"],
+      "cwd": "${workspaceFolder}/backend",
+      "envFile": "${workspaceFolder}/.env.local",
+      "python": "${workspaceFolder}/backend/.venv/Scripts/python.exe",
+      "env": {
+        "DATA_DIR": "${workspaceFolder}/backend/data-v2-dev",
+        "DEMO_DATA": "true",
+        "ADMIN_USER": "admin",
+        "APP_NAME": "IT Ops Workspace v2 (chạy thử)",
+        "SYSLOG_UDP_PORT": "6514",
+        "SYSLOG_TCP_PORT": "6514",
+        "TRAP_PORT": "6162",
+        "RECEIVER_BIND": "127.0.0.1",
+        "COOKIE_SECURE": "1",
+        "PYTHONUTF8": "1"
+      },
+      "justMyCode": true,
+      "console": "integratedTerminal",
+      "serverReadyAction": { "pattern": "Uvicorn running on (https?://\\S+)", "uriFormat": "%s", "action": "openExternally" }
+    },
+    {
       "name": "Giao diện (sửa UI, tự tải lại)",
       "type": "node-terminal",
       "request": "launch",

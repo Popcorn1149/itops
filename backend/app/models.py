@@ -17,6 +17,26 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(16), default="admin")  # admin | viewer
     last_login: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    # 2FA (TOTP). Bí mật lưu đã mã hoá (AES-256-GCM, tiền tố enc2:), không bao giờ trả ra API sau khi đã bật.
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    totp_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
+    totp_pending: Mapped[str | None] = mapped_column(Text, nullable=True)   # bí mật đang chờ xác nhận khi bật 2FA
+    totp_last_step: Mapped[int] = mapped_column(Integer, default=0, server_default="0")   # chống dùng lại mã OTP
+
+
+class LoginSession(Base):
+    """Phiên đăng nhập phía server: thu hồi được, hết hạn khi không thao tác (idle timeout)."""
+    __tablename__ = "login_sessions"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)          # jti trong JWT
+    username: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    last_seen: Mapped[datetime] = mapped_column(DateTime, default=now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    ip: Mapped[str] = mapped_column(String(64), default="")
+    user_agent: Mapped[str] = mapped_column(String(255), default="")
+    mfa: Mapped[bool] = mapped_column(Boolean, default=False)              # đã qua bước OTP
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    revoked_by: Mapped[str] = mapped_column(String(64), default="")
 
 
 class Site(Base):
@@ -158,6 +178,11 @@ class AuditLog(Base):
     entity: Mapped[str] = mapped_column(String(32), default="")
     entity_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     detail: Mapped[str] = mapped_column(Text, default="")
+    # 5W1H: Ở đâu (ip, user_agent) · Như thế nào (changes: trước/sau) · Tại sao (reason)
+    ip: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    user_agent: Mapped[str] = mapped_column(String(255), default="", server_default="")
+    changes: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    reason: Mapped[str] = mapped_column(Text, default="", server_default="")
 
 
 class Event(Base):

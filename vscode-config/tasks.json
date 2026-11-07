@@ -39,8 +39,8 @@
       "label": "5. Chạy kiểm thử (pytest)",
       "type": "shell",
       "options": { "cwd": "${workspaceFolder}/backend" },
-      "windows": { "command": ".\\.venv\\Scripts\\python.exe -m pip install pytest aiosmtpd; .\\.venv\\Scripts\\python.exe -m pytest tests -q -p no:cacheprovider --ignore=tests/test_real_agents.py" },
-      "command": "./.venv/bin/python -m pip install pytest aiosmtpd && ./.venv/bin/python -m pytest tests -q -p no:cacheprovider",
+      "windows": { "command": ".\\.venv\\Scripts\\python.exe -m pip install pytest aiosmtpd; .\\.venv\\Scripts\\python.exe -m pytest tests -q -p no:cacheprovider --ignore=tests/test_real_agents.py --ignore=tests/load_test.py" },
+      "command": "./.venv/bin/python -m pip install pytest aiosmtpd && ./.venv/bin/python -m pytest tests -q -p no:cacheprovider --ignore=tests/load_test.py",
       "problemMatcher": []
     },
     {
@@ -49,6 +49,30 @@
       "options": { "cwd": "${workspaceFolder}/backend" },
       "windows": { "command": "Remove-Item -Recurse -Force data-v2-dev -ErrorAction SilentlyContinue; Write-Host 'Da xoa data-v2-dev'" },
       "command": "rm -rf data-v2-dev && echo 'Da xoa data-v2-dev'",
+      "problemMatcher": []
+    },
+    {
+      "label": "7. Sao lưu dữ liệu (CSDL + khoá) – dữ liệu mẫu",
+      "type": "shell",
+      "options": { "cwd": "${workspaceFolder}/backend", "env": { "DATA_DIR": "${workspaceFolder}/backend/data-v2-dev", "PYTHONUTF8": "1" } },
+      "windows": { "command": ".\\.venv\\Scripts\\python.exe -m app.admin_tools backup" },
+      "command": "./.venv/bin/python -m app.admin_tools backup",
+      "problemMatcher": []
+    },
+    {
+      "label": "8. Tạo chứng chỉ HTTPS (tự ký) – dữ liệu mẫu",
+      "type": "shell",
+      "options": { "cwd": "${workspaceFolder}/backend", "env": { "DATA_DIR": "${workspaceFolder}/backend/data-v2-dev", "PYTHONUTF8": "1" } },
+      "windows": { "command": ".\\.venv\\Scripts\\python.exe -m app.admin_tools gen-cert localhost 127.0.0.1 $env:COMPUTERNAME" },
+      "command": "./.venv/bin/python -m app.admin_tools gen-cert localhost 127.0.0.1 $(hostname)",
+      "problemMatcher": []
+    },
+    {
+      "label": "9. Đặt lại 2FA của admin (mất điện thoại) – dữ liệu mẫu",
+      "type": "shell",
+      "options": { "cwd": "${workspaceFolder}/backend", "env": { "DATA_DIR": "${workspaceFolder}/backend/data-v2-dev", "PYTHONUTF8": "1" } },
+      "windows": { "command": ".\\.venv\\Scripts\\python.exe -m app.admin_tools reset-2fa admin" },
+      "command": "./.venv/bin/python -m app.admin_tools reset-2fa admin",
       "problemMatcher": []
     }
   ]

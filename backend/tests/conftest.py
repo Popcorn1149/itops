@@ -4,7 +4,9 @@ import tempfile
 
 # Phải đặt env trước khi import app (db.py đọc DATA_DIR khi import)
 _TMP = tempfile.mkdtemp(prefix="itops-qa-")
-os.environ.update({"DATA_DIR": _TMP, "DISABLE_SCHEDULER": "1", "ADMIN_USER": "admin", "ADMIN_PASSWORD": "Admin@12345", "LOG_LEVEL": "WARNING"})
+os.environ.update({"DATA_DIR": _TMP, "DISABLE_SCHEDULER": "1", "ADMIN_USER": "admin", "ADMIN_PASSWORD": "Admin@12345", "LOG_LEVEL": "WARNING",
+                   # test cũ chạy với admin chưa bật 2FA; test_security_p1.py tự bật lại để kiểm tra cổng bắt buộc 2FA
+                   "REQUIRE_2FA_ADMIN": "0"})
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest  # noqa: E402
@@ -39,11 +41,21 @@ def client():
         yield c
 
 
+@pytest.fixture(autouse=True)
+def _no_shared_cookies(client):
+    """Đăng nhập giờ đặt cookie phiên; TestClient dùng chung giữ cookie → xoá trước mỗi test để
+    request không kèm header Authorization thật sự là "chưa đăng nhập"."""
+    client.cookies.clear()
+    yield
+    client.cookies.clear()
+
+
 @pytest.fixture(scope="session")
 def admin(client):
     r = client.post("/api/auth/login", json={"username": "admin", "password": "Admin@12345"})
     assert r.status_code == 200, r.text
     h = {"Authorization": f"Bearer {r.json()['token']}"}
+    client.cookies.clear()
     # cảnh báo audit (UC-14) tắt mặc định trong test để không lẫn với cảnh báo đang kiểm; test_secmon tự bật lại
     assert client.put("/api/secmon", json={"audit_alert": {"enabled": False}}, headers=h).status_code == 200
     return h
@@ -53,6 +65,7 @@ def admin(client):
 def viewer(client, admin):
     client.post("/api/users", json={"username": "helpdesk", "password": "Viewer@123", "role": "viewer"}, headers=admin)
     r = client.post("/api/auth/login", json={"username": "helpdesk", "password": "Viewer@123"})
+    client.cookies.clear()
     return {"Authorization": f"Bearer {r.json()['token']}"}
 
 

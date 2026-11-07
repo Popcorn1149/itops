@@ -14,8 +14,9 @@ from sqlalchemy.orm import Session
 from .db import Base, engine, get_db, SessionLocal, run_migrations
 from . import models
 from .models import now
-from .security import (current_user, admin_user, create_token, verify_password, hash_password,
-                       seal_config, mask_config, MASK)
+from .security import (current_user, admin_user, verify_password, hash_password,
+                       seal_config, mask_config, MASK, SECRET_FIELDS, REQ_CTX, client_ip)
+from . import security as sec
 from . import scheduler
 from .scheduler import run_check
 from .collectors import COLLECTORS
@@ -38,6 +39,9 @@ def init_db():
         log.warning("Đã nâng cấp CSDL: %s → %s", m["from"] or "(trống)", m["to"])
     db = SessionLocal()
     try:
+        n = sec.reencrypt_all(db)
+        if n:
+            log.warning("Đã mã hoá lại %d cấu hình sang AES-256-GCM (khoá riêng .enc_key)", n)
         ev_mod.seed_rules(db)
         if not db.query(models.User).first():
             u = os.environ.get("ADMIN_USER", "admin")
@@ -82,6 +86,9 @@ async def lifespan(app: FastAPI):
         tasks.append(asyncio.create_task(auto_engine.loop()))      # tự động hoá chạy cùng bộ lập lịch
         tasks.append(asyncio.create_task(secmon.loop()))           # SLA, log source im lặng, archive + hash, cảnh báo audit
     tasks += [asyncio.create_task(ev_mod.consumer()), asyncio.create_task(ev_mod.housekeeping())]
+    if os.environ.get("DISABLE_SCHEDULER", "").lower() not in ("1", "true"):
+        from .admin_tools import backup_loop
+        tasks.append(asyncio.create_task(backup_loop()))            # sao lưu CSDL + khoá mỗi ngày
     ev_mod.set_allowed(_receiver_cfg()["allowed_sources"])
     if os.environ.get("DISABLE_RECEIVERS", "").lower() not in ("1", "true"):
         await receivers.start_all(_receiver_cfg())
@@ -96,7 +103,13 @@ app = FastAPI(title="IT Ops Workspace", version=VERSION, lifespan=lifespan, docs
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
-    resp = await call_next(request)
+    from urllib.parse import unquote
+    tok = REQ_CTX.set({"ip": client_ip(request), "ua": (request.headers.get("user-agent") or "")[:255],
+                       "reason": unquote(request.headers.get("X-Audit-Reason", ""))[:500]})
+    try:
+        resp = await call_next(request)
+    finally:
+        REQ_CTX.reset(tok)
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["X-Frame-Options"] = "DENY"
     resp.headers["Referrer-Policy"] = "same-origin"
@@ -111,12 +124,28 @@ def to_dict(obj) -> dict:
     for k, v in d.items():
         if isinstance(v, datetime):
             d[k] = v.isoformat() + "Z"
-    d.pop("password_hash", None)
+    for k in ("password_hash", "totp_secret", "totp_pending", "totp_last_step"):
+        d.pop(k, None)
     return d
 
 
-def audit(db: Session, user: str, action: str, entity: str, entity_id=None, detail: str = ""):
-    db.add(models.AuditLog(user=user, action=action, entity=entity, entity_id=entity_id, detail=detail[:2000]))
+def _audit_safe(v):
+    if isinstance(v, datetime):
+        return v.isoformat()
+    if isinstance(v, dict):
+        return {k: (MASK if k in SECRET_FIELDS and x else _audit_safe(x)) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_audit_safe(x) for x in v]
+    return v
+
+
+def audit(db: Session, user: str, action: str, entity: str, entity_id=None, detail: str = "", changes: dict | None = None):
+    """Ghi nhật ký 5W1H: Ai (user) · Cái gì (action/entity/detail) · Khi nào (ts) · Ở đâu (ip, user_agent)
+    · Như thế nào (changes: trước → sau, bí mật được che) · Tại sao (reason – header X-Audit-Reason)."""
+    ctx = REQ_CTX.get()
+    db.add(models.AuditLog(user=user, action=action, entity=entity, entity_id=entity_id, detail=detail[:2000],
+                           ip=ctx.get("ip", ""), user_agent=ctx.get("ua", ""), reason=ctx.get("reason", ""),
+                           changes=_audit_safe(changes) if changes else None))
     secmon.on_audit(db, user, action, entity, entity_id, detail)   # UC-14: thao tác nhạy cảm → cảnh báo người nhận riêng
 
 
@@ -175,52 +204,190 @@ def serialize(kind: str, obj) -> dict:
 
 
 # ---------------------------------------------------------------- auth
-_FAILED: dict[str, list[float]] = {}
+_FAILED: dict[str, list[float]] = {}        # khoá theo IP + tài khoản
+_FAILED_IP: dict[str, list[float]] = {}     # khoá theo IP (chặn dò nhiều tài khoản từ 1 máy)
 MAX_FAILS, LOCK_SECONDS = int(os.environ.get("LOGIN_MAX_FAILS", "5")), int(os.environ.get("LOGIN_LOCK_SECONDS", "300"))
+MAX_FAILS_IP = int(os.environ.get("LOGIN_MAX_FAILS_PER_IP", "20"))
+
+
+def _lock_msg(fails, limit, what):
+    return f"{what} sai quá {limit} lần. Thử lại sau {int((LOCK_SECONDS - (time.time() - fails[0])) // 60) + 1} phút."
+
+
+def _user_out(u: models.User) -> dict:
+    d = to_dict(u)
+    d["require_2fa"] = sec.REQUIRE_2FA_ADMIN and u.role == "admin"
+    d["need_2fa_setup"] = sec.need_2fa_setup(u)
+    return d
 
 
 @app.post("/api/auth/login")
 def login(request: Request, body: dict = Body(...), db: Session = Depends(get_db)):
     username = str(body.get("username", "")).strip()
-    key = f"{request.client.host if request.client else '-'}|{username.lower()}"
+    ip = client_ip(request)
+    key = f"{ip}|{username.lower()}"
     t = time.time()
     fails = [x for x in _FAILED.get(key, []) if t - x < LOCK_SECONDS]
+    ip_fails = [x for x in _FAILED_IP.get(ip, []) if t - x < LOCK_SECONDS]
     if len(fails) >= MAX_FAILS:
-        raise HTTPException(429, f"Sai mật khẩu quá {MAX_FAILS} lần. Thử lại sau {int((LOCK_SECONDS - (t - fails[0])) // 60) + 1} phút.")
+        raise HTTPException(429, _lock_msg(fails, MAX_FAILS, "Đăng nhập"))
+    if len(ip_fails) >= MAX_FAILS_IP:
+        raise HTTPException(429, _lock_msg(ip_fails, MAX_FAILS_IP, f"Máy {ip} đăng nhập"))
+
+    def fail(why: str, msg: str, extra: dict | None = None):
+        _FAILED[key] = fails + [t]
+        _FAILED_IP[ip] = ip_fails + [t]
+        audit(db, username or "?", "login_failed", "user", None, f"{why} từ {ip}")
+        db.commit()
+        raise HTTPException(401, {"msg": msg, **(extra or {})} if extra else msg)
+
     u = db.query(models.User).filter_by(username=username).first()
     if not u or not verify_password(str(body.get("password", "")), u.password_hash):
-        _FAILED[key] = fails + [t]
-        audit(db, username or "?", "login_failed", "user", None, f"Đăng nhập sai từ {key.split('|')[0]}")
-        db.commit()
-        raise HTTPException(401, "Sai tài khoản hoặc mật khẩu")
+        fail("Đăng nhập sai", "Sai tài khoản hoặc mật khẩu")
+    mfa = False
+    if u.totp_enabled:
+        otp = str(body.get("otp", "")).strip()
+        if not otp:   # mật khẩu đúng, chưa nhập mã → yêu cầu bước 2 (không tính là sai)
+            raise HTTPException(401, {"msg": "Nhập mã 6 số từ ứng dụng xác thực", "need_otp": True})
+        step = sec.totp_match(sec.decrypt(u.totp_secret or ""), otp, u.totp_last_step)
+        if step is None:
+            fail("Sai mã 2FA", "Mã xác thực không đúng hoặc đã dùng", {"need_otp": True})
+        u.totp_last_step, mfa = step, True
     _FAILED.pop(key, None)
     u.last_login = now()
-    audit(db, u.username, "login", "user", u.id)
+    token, sess = sec.create_session(db, u, request, mfa)
+    audit(db, u.username, "login", "user", u.id, "2FA" if mfa else "")
     db.commit()
-    return {"token": create_token(u), "user": to_dict(u)}
+    out = {"user": _user_out(u)}
+    if request.headers.get(sec.CSRF_HEADER) != "itops":
+        out["token"] = token          # chỉ cho script/API; giao diện web chỉ dùng cookie HttpOnly
+    resp = JSONResponse(out)
+    sec.set_session_cookie(resp, request, token)
+    return resp
+
+
+@app.post("/api/auth/logout")
+def logout(request: Request, user=Depends(current_user), db: Session = Depends(get_db)):
+    sess = request.state.session
+    sess.revoked_at, sess.revoked_by = now(), user.username
+    audit(db, user.username, "logout", "user", user.id)
+    db.commit()
+    resp = JSONResponse({"ok": True})
+    sec.clear_session_cookie(resp)
+    return resp
 
 
 @app.get("/api/auth/me")
-def me(user=Depends(current_user)):
-    return to_dict(user)
+def me(request: Request, user=Depends(current_user)):
+    d = _user_out(user)
+    s = request.state.session
+    d["session"] = {"id": s.id[:8], "mfa": s.mfa, "expires_at": s.expires_at.isoformat() + "Z", "idle_minutes": sec.IDLE_MINUTES}
+    return d
+
+
+@app.get("/api/auth/sessions")
+def list_sessions(request: Request, all: bool = False, user=Depends(current_user), db: Session = Depends(get_db)):
+    q = db.query(models.LoginSession).filter(models.LoginSession.revoked_at.is_(None), models.LoginSession.expires_at > now())
+    if not (all and user.role == "admin"):
+        q = q.filter_by(username=user.username)
+    cur = request.state.session.id
+    return [{"id": s.id, "username": s.username, "created_at": s.created_at.isoformat() + "Z", "last_seen": s.last_seen.isoformat() + "Z",
+             "ip": s.ip, "user_agent": s.user_agent, "mfa": s.mfa, "current": s.id == cur}
+            for s in q.order_by(models.LoginSession.last_seen.desc()).limit(200)]
+
+
+@app.delete("/api/auth/sessions/{sid}")
+def revoke_session(sid: str, request: Request, user=Depends(current_user), db: Session = Depends(get_db)):
+    s = db.get(models.LoginSession, sid)
+    if not s or (s.username != user.username and user.role != "admin"):
+        raise HTTPException(404, "Không tìm thấy phiên")
+    if s.revoked_at is None:
+        s.revoked_at, s.revoked_by = now(), user.username
+        audit(db, user.username, "revoke", "session", None, f"Thu hồi phiên của {s.username} ({s.ip})")
+        db.commit()
+    return {"ok": True, "current": s.id == request.state.session.id}
+
+
+@app.post("/api/auth/2fa/setup")
+def totp_setup(user=Depends(current_user), db: Session = Depends(get_db)):
+    """Bước 1: sinh bí mật mới (chưa có hiệu lực) → trả mã QR để quét bằng Google Authenticator / Microsoft Authenticator…"""
+    u = db.get(models.User, user.id)
+    if u.totp_enabled:
+        raise HTTPException(400, "2FA đã bật. Muốn đổi điện thoại: tắt rồi bật lại (hoặc nhờ admin đặt lại).")
+    secret = sec.new_totp_secret()
+    u.totp_pending = sec.encrypt(secret)
+    db.commit()
+    uri = sec.otpauth_uri(secret, u.username)
+    return {"secret": secret, "otpauth_uri": uri, "qr_svg": sec.qr_svg(uri)}
+
+
+@app.post("/api/auth/2fa/enable")
+def totp_enable(request: Request, body: dict = Body(...), user=Depends(current_user), db: Session = Depends(get_db)):
+    """Bước 2: nhập mã đang hiện trên điện thoại để xác nhận → 2FA có hiệu lực."""
+    u = db.get(models.User, user.id)
+    secret = sec.decrypt(u.totp_pending or "")
+    if not secret:
+        raise HTTPException(400, "Chưa tạo mã QR – bấm Bật 2FA lại")
+    step = sec.totp_match(secret, body.get("code", ""))
+    if step is None:
+        raise HTTPException(400, "Mã không đúng. Kiểm tra giờ trên điện thoại và nhập mã mới nhất.")
+    u.totp_secret, u.totp_pending, u.totp_enabled, u.totp_last_step = u.totp_pending, None, True, step
+    request.state.session.mfa = True
+    n = sec.revoke_sessions(db, u.username, "2fa-enabled", keep=request.state.session.id)
+    audit(db, u.username, "enable_2fa", "user", u.id, "Bật xác thực 2 lớp" + (f", thu hồi {n} phiên khác" if n else ""))
+    db.commit()
+    return _user_out(u)
+
+
+@app.post("/api/auth/2fa/disable")
+def totp_disable(body: dict = Body(...), user=Depends(current_user), db: Session = Depends(get_db)):
+    u = db.get(models.User, user.id)
+    if not u.totp_enabled:
+        return _user_out(u)
+    if sec.REQUIRE_2FA_ADMIN and u.role == "admin":
+        raise HTTPException(400, "Tài khoản admin bắt buộc dùng 2FA – không thể tắt. Đổi điện thoại: nhờ admin khác đặt lại 2FA.")
+    if not verify_password(str(body.get("password", "")), u.password_hash):
+        raise HTTPException(400, "Mật khẩu không đúng")
+    if sec.totp_match(sec.decrypt(u.totp_secret or ""), body.get("code", ""), u.totp_last_step) is None:
+        raise HTTPException(400, "Mã xác thực không đúng")
+    u.totp_enabled, u.totp_secret, u.totp_pending, u.totp_last_step = False, None, None, 0
+    audit(db, u.username, "disable_2fa", "user", u.id, "Tắt xác thực 2 lớp")
+    db.commit()
+    return _user_out(u)
+
+
+@app.post("/api/users/{uid}/reset-2fa")
+def reset_user_2fa(uid: int, user=Depends(admin_user), db: Session = Depends(get_db)):
+    """Admin đặt lại 2FA cho người khác (mất điện thoại). Người đó phải bật lại ở lần đăng nhập sau."""
+    u = db.get(models.User, uid)
+    if not u:
+        raise HTTPException(404, "Không tìm thấy người dùng")
+    if u.id == user.id:
+        raise HTTPException(400, "Không tự đặt lại 2FA của chính mình – nhờ admin khác, hoặc dùng lệnh admin_tools trên máy chủ")
+    u.totp_enabled, u.totp_secret, u.totp_pending, u.totp_last_step = False, None, None, 0
+    n = sec.revoke_sessions(db, u.username, user.username)
+    audit(db, user.username, "reset_2fa", "user", uid, f"Đặt lại 2FA của {u.username}, thu hồi {n} phiên")
+    db.commit()
+    return _user_out(u)
 
 
 @app.post("/api/auth/password")
-def change_password(body: dict = Body(...), user=Depends(current_user), db: Session = Depends(get_db)):
+def change_password(request: Request, body: dict = Body(...), user=Depends(current_user), db: Session = Depends(get_db)):
     u = db.get(models.User, user.id)
     if not verify_password(body.get("old_password", ""), u.password_hash):
         raise HTTPException(400, "Mật khẩu cũ không đúng")
     if len(body.get("new_password", "")) < 8:
         raise HTTPException(400, "Mật khẩu mới tối thiểu 8 ký tự")
     u.password_hash = hash_password(body["new_password"])
-    audit(db, u.username, "update", "user", u.id, "Đổi mật khẩu")
+    n = sec.revoke_sessions(db, u.username, u.username, keep=request.state.session.id)
+    audit(db, u.username, "update", "user", u.id, "Đổi mật khẩu" + (f", thu hồi {n} phiên khác" if n else ""))
     db.commit()
     return {"ok": True}
 
 
 @app.get("/api/users")
 def list_users(user=Depends(admin_user), db: Session = Depends(get_db)):
-    return [to_dict(u) for u in db.query(models.User).order_by(models.User.id)]
+    return [_user_out(u) for u in db.query(models.User).order_by(models.User.id)]
 
 
 @app.post("/api/users")
@@ -234,7 +401,7 @@ def create_user(body: dict = Body(...), user=Depends(admin_user), db: Session = 
     db.add(u)
     audit(db, user.username, "create", "user", None, f"{body['username']} role={u.role}")
     db.commit()
-    return to_dict(u)
+    return _user_out(u)
 
 
 @app.put("/api/users/{uid}")
@@ -244,20 +411,24 @@ def update_user(uid: int, body: dict = Body(...), user=Depends(admin_user), db: 
         raise HTTPException(404, "Không tìm thấy người dùng")
     if "full_name" in body:
         u.full_name = body["full_name"]
-    role_note = ""
+    role_note, revoke = "", False
     if body.get("role") in ("admin", "viewer"):
         if u.id == user.id and body["role"] != "admin":
             raise HTTPException(400, "Không tự hạ quyền chính mình")
         if u.role != body["role"]:
-            role_note = f" role={body['role']} (trước: {u.role})"
+            role_note, revoke = f" role={body['role']} (trước: {u.role})", True
         u.role = body["role"]
     if body.get("password"):
         if len(body["password"]) < 8:
             raise HTTPException(400, "Mật khẩu tối thiểu 8 ký tự")
         u.password_hash = hash_password(body["password"])
+        role_note, revoke = role_note + " (đặt lại mật khẩu)", True
+    if revoke and u.id != user.id:
+        n = sec.revoke_sessions(db, u.username, user.username)
+        role_note += f", thu hồi {n} phiên" if n else ""
     audit(db, user.username, "update", "user", uid, u.username + role_note)
     db.commit()
-    return to_dict(u)
+    return _user_out(u)
 
 
 @app.delete("/api/users/{uid}")
@@ -266,10 +437,18 @@ def delete_user(uid: int, user=Depends(admin_user), db: Session = Depends(get_db
         raise HTTPException(400, "Không thể xoá chính mình")
     u = db.get(models.User, uid)
     if u:
+        sec.revoke_sessions(db, u.username, user.username)
         db.delete(u)
         audit(db, user.username, "delete", "user", uid, u.username)
         db.commit()
     return {"ok": True}
+
+
+def _guard_ssh_command(ctype, cfg):
+    from .collectors.ssh import custom_command_allowed
+    if ctype == "ssh" and str((cfg or {}).get("command") or "").strip() and not custom_command_allowed():
+        raise HTTPException(400, "Lệnh SSH tuỳ chỉnh đang bị khoá (nguyên tắc: tài khoản thiết bị chỉ để đọc). "
+                                 "Bỏ trống ô lệnh để dùng bộ đo mặc định, hoặc bật ALLOW_SSH_COMMAND=1 nếu thật sự cần.")
 
 
 # ---------------------------------------------------------------- generic CRUD
@@ -465,6 +644,7 @@ def create(kind: str, background: BackgroundTasks, body: dict = Body(...), user=
     if kind == "checks":
         if body.get("type") not in COLLECTORS:
             raise HTTPException(400, "Loại check không hợp lệ")
+        _guard_ssh_command(body.get("type"), body.get("config"))
         body = {**body, "config": seal_config(body.get("config") or {})}
         if not body.get("site_id") and body.get("asset_id"):
             a = db.get(models.Asset, int(body["asset_id"]))
@@ -487,6 +667,7 @@ def update(kind: str, oid: int, background: BackgroundTasks, body: dict = Body(.
     if not obj:
         raise HTTPException(404)
     if kind == "checks" and "config" in body:
+        _guard_ssh_command(body.get("type", obj.type), body["config"])
         body = {**body, "config": seal_config(body["config"] or {}, obj.config or {})}
     if kind == "event-rules":
         _validate_rule(body)
@@ -499,8 +680,16 @@ def update(kind: str, oid: int, background: BackgroundTasks, body: dict = Body(.
             pa = db.get(models.Asset, p)
             p = pa.parent_id if pa else None
     changed = [f for f in EDITABLE[kind] if f in body and f != "config" and body[f] != getattr(obj, f)]
+    diff_fields = changed + (["config"] if "config" in body and body["config"] != getattr(obj, "config", None) else [])
+    before = {f: getattr(obj, f) for f in diff_fields}
     old_type = obj.type if kind == "checks" else None
     apply(obj, body, EDITABLE[kind])
+    after = {f: getattr(obj, f) for f in diff_fields}
+    if "config" in before:   # chỉ ghi các khoá cấu hình thực sự đổi
+        bc, ac = before["config"] or {}, after["config"] or {}
+        keys = sorted(k for k in set(bc) | set(ac) if bc.get(k) != ac.get(k))
+        before["config"], after["config"] = {k: bc.get(k) for k in keys}, {k: ac.get(k) for k in keys}
+    changes = {"before": before, "after": after} if diff_fields else None
     if kind == "checks" and old_type and obj.type != old_type:
         # Đổi loại check: giữ lịch sử kết quả, đóng cảnh báo của loại cũ, đặt lại status để đo lại từ đầu
         if obj.type not in COLLECTORS:
@@ -512,9 +701,9 @@ def update(kind: str, oid: int, background: BackgroundTasks, body: dict = Body(.
     if kind == "checks" and body.get("enabled") is False:
         _close_alerts(db, oid, "Check đã tắt")
     if kind in ("checks", "event-rules") and body.get("enabled") is False and "enabled" in changed:
-        audit(db, user.username, "disable", kind, oid, f"{LABEL[kind]} {obj.name}")
+        audit(db, user.username, "disable", kind, oid, f"{LABEL[kind]} {obj.name}", changes)
     else:
-        audit(db, user.username, "update", kind, oid, f"Sửa {LABEL[kind]} {obj.name}" + (f": {', '.join(changed)}" if changed else ""))
+        audit(db, user.username, "update", kind, oid, f"Sửa {LABEL[kind]} {obj.name}" + (f": {', '.join(changed)}" if changed else ""), changes)
     db.commit()
     ev_mod.invalidate_caches()
     if kind == "checks" and old_type and obj.type != old_type and obj.enabled:
@@ -556,6 +745,7 @@ async def test_check(body: dict = Body(...), user=Depends(admin_user), db: Sessi
     fn = COLLECTORS.get(body.get("type"))
     if not fn:
         raise HTTPException(400, "Loại check không hợp lệ")
+    _guard_ssh_command(body.get("type"), body.get("config"))
     cfg = dict(body.get("config") or {})
     if body.get("id"):
         old = db.get(models.Check, int(body["id"]))

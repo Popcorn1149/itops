@@ -104,6 +104,7 @@ def test_ssh_disk_threshold(sshd):
 
 
 def test_ssh_custom_command_exit_codes(sshd):
+    os.environ["ALLOW_SSH_COMMAND"] = "1"   # test này kiểm chính tính năng lệnh tuỳ chỉnh
     port, key = sshd
     base = {"port": port, "username": "root", "private_key": key}
     assert run("ssh", "127.0.0.1", {**base, "command": "echo 42"}).status == "ok"

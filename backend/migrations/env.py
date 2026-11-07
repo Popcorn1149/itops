@@ -26,7 +26,7 @@ def run_migrations_online() -> None:
     if conn is not None:
         _run(conn)
         return
-    with engine.connect() as connection:
+    with engine.begin() as connection:     # begin(): commit khi xong (connect() sẽ rollback khi đóng)
         _run(connection)
 
 

@@ -227,7 +227,15 @@ def parse_hyperv(text: str, warn_days: int = 7) -> tuple[list, dict, list]:
     return out, {"cores": h.get("cores"), "mem_gb": round((h.get("mem") or 0) / 1073741824)}, notes
 
 
+def custom_command_allowed() -> bool:
+    """Lệnh SSH tuỳ chỉnh chạy BẤT KỲ lệnh nào bằng tài khoản đã lưu → mặc định tắt. Bật: ALLOW_SSH_COMMAND=1."""
+    import os
+    return os.environ.get("ALLOW_SSH_COMMAND", "0").strip().lower() in ("1", "true", "yes", "on")
+
+
 async def ssh(target: str, cfg: dict) -> Result:
+    if str(cfg.get("command") or "").strip() and not custom_command_allowed():
+        return Result("fail", "Lệnh SSH tuỳ chỉnh đang bị khoá (ALLOW_SSH_COMMAND chưa bật) – bỏ trống ô lệnh để dùng bộ đo mặc định")
     kw = dict(host=target, port=int(cfg.get("port", 22)), username=cfg.get("username", "root"), known_hosts=None,
               connect_timeout=float(cfg.get("timeout", 10)))
     if cfg.get("private_key"):
