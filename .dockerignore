@@ -5,3 +5,5 @@ backend/static
 data
 **/__pycache__
 .env
+backend/tools/pgsql
+pgdata
