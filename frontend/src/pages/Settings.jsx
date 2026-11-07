@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Send, Save, Download, Upload, Trash2, Plus, KeyRound, Users, BellRing, Database, Radio, ShieldCheck } from "lucide-react";
-import { api, auth, SECRET } from "../api";
+import { api, SECRET } from "../api";
 import { useApp } from "../App";
 import { SecuritySettings, SourcesCard } from "../components/SecuritySettings";
+import { TwoFactorCard, SessionsCard } from "../components/AccountSecurity";
 import { useApi, PageHead, Tabs, Field, Input, Select, Toggle, useToast, Table, Modal, fmtTime, confirmDelete, askConfirm, DEMO } from "../ui";
 
 function Secret({ value, onChange, placeholder }) {
@@ -124,6 +125,10 @@ function UsersSettings() {
     catch (e) { toast(e.message, true); }
   };
   const remove = async (u) => { if (!(await confirmDelete(u.username))) return; try { await api.del(`/users/${u.id}`); reload(); } catch (e) { toast(e.message, true); } };
+  const reset2fa = async (u) => {
+    if (!(await askConfirm({ title: `Đặt lại 2FA của ${u.username}?`, message: "Dùng khi người này mất hoặc đổi điện thoại. Mọi phiên đăng nhập của họ bị thu hồi; lần đăng nhập tới họ phải bật lại 2FA.", okText: "Đặt lại", danger: true }))) return;
+    try { await api.post(`/users/${u.id}/reset-2fa`); toast(`Đã đặt lại 2FA của ${u.username}`); reload(); } catch (e) { toast(e.message, true); }
+  };
   return (
     <div className="card">
       <div className="toolbar"><b className="grow">Người dùng</b><button className="btn primary sm" onClick={() => setEdit({ role: "viewer" })}><Plus size={14} />Thêm</button></div>
@@ -131,8 +136,11 @@ function UsersSettings() {
         { key: "username", label: "Tài khoản", render: (u) => <b>{u.username}</b> },
         { key: "full_name", label: "Họ tên" },
         { key: "role", label: "Quyền", render: (u) => <span className={`badge ${u.role === "admin" ? "accent" : ""}`}>{u.role === "admin" ? "Quản trị" : "Chỉ xem"}</span> },
-        { key: "created_at", label: "Tạo lúc", render: (u) => <span className="small muted">{fmtTime(u.created_at)}</span> },
-        { key: "a", label: "", sortable: false, render: (u) => <div className="row"><button className="btn ghost sm" onClick={() => setEdit({ ...u, password: "" })}>Sửa</button>{u.id !== me.id && <button className="btn ghost sm danger" onClick={() => remove(u)}><Trash2 size={14} /></button>}</div> },
+        { key: "totp_enabled", label: "2FA", render: (u) => u.totp_enabled ? <span className="badge ok">Đã bật</span> : <span className={`badge ${u.require_2fa ? "warn" : ""}`}>{u.require_2fa ? "Chưa bật (bắt buộc)" : "Chưa bật"}</span> },
+        { key: "last_login", label: "Đăng nhập gần nhất", render: (u) => <span className="small muted">{u.last_login ? fmtTime(u.last_login) : "–"}</span> },
+        { key: "a", label: "", sortable: false, render: (u) => <div className="row"><button className="btn ghost sm" onClick={() => setEdit({ ...u, password: "" })}>Sửa</button>
+          {u.id !== me.id && u.totp_enabled && <button className="btn ghost sm" onClick={() => reset2fa(u)}>Đặt lại 2FA</button>}
+          {u.id !== me.id && <button className="btn ghost sm danger" onClick={() => remove(u)}><Trash2 size={14} /></button>}</div> },
       ]} />
       {edit && (
         <Modal title={edit.id ? `Sửa ${edit.username}` : "Thêm người dùng"} onClose={() => setEdit(null)} width={520}
@@ -150,11 +158,22 @@ function UsersSettings() {
 }
 
 function AccountSettings() {
+  const { me, setMe, isAdmin, logout } = useApp();
+  return (
+    <div className="stack" style={{ gap: 16 }}>
+      <PasswordCard />
+      <TwoFactorCard me={me} onChange={(u) => setMe({ ...me, ...u })} />
+      <SessionsCard isAdmin={isAdmin} onSelfRevoked={logout} />
+    </div>
+  );
+}
+
+function PasswordCard() {
   const toast = useToast();
   const [f, setF] = useState({ old_password: "", new_password: "", confirm: "" });
   const save = async () => {
     if (f.new_password !== f.confirm) return toast("Mật khẩu nhập lại không khớp", true);
-    try { await api.post("/auth/password", f); toast("Đã đổi mật khẩu"); setF({ old_password: "", new_password: "", confirm: "" }); }
+    try { await api.post("/auth/password", f); toast("Đã đổi mật khẩu – các phiên đăng nhập khác đã bị thu hồi"); setF({ old_password: "", new_password: "", confirm: "" }); }
     catch (e) { toast(e.message, true); }
   };
   return (
@@ -175,7 +194,7 @@ function DataSettings() {
   const { refresh } = useApp();
   const file = useRef();
   const exportData = async () => {
-    const res = await fetch("/api/export", { headers: { Authorization: `Bearer ${auth.token}` } });
+    const res = await fetch("/api/export", { credentials: "same-origin", headers: { "X-Requested-With": "itops" } });
     const blob = await res.blob();
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `itops-export-${new Date().toISOString().slice(0, 10)}.json`; a.click();
   };

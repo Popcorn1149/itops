@@ -157,13 +157,18 @@ def revoke_sessions(db: Session, username: str, by: str, keep: str | None = None
     return n
 
 
+HINT_COOKIE = "itops_auth"   # cookie "gợi ý" KHÔNG chứa bí mật (giá trị "1"), JS đọc được → biết có nên hỏi /auth/me
+
+
 def set_session_cookie(resp, request: Request, token: str):
     secure = _env_flag("COOKIE_SECURE", "0") or request.url.scheme == "https"
     resp.set_cookie(COOKIE_NAME, token, max_age=TOKEN_HOURS * 3600, httponly=True, samesite="strict", secure=secure, path="/")
+    resp.set_cookie(HINT_COOKIE, "1", max_age=TOKEN_HOURS * 3600, httponly=False, samesite="strict", secure=secure, path="/")
 
 
 def clear_session_cookie(resp):
     resp.delete_cookie(COOKIE_NAME, path="/")
+    resp.delete_cookie(HINT_COOKIE, path="/")
 
 
 def client_ip(request: Request) -> str:
@@ -193,6 +198,8 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> models.User
         raise HTTPException(401, "Phiên đăng nhập hết hạn") from None
     sess = db.get(models.LoginSession, str(payload.get("jti") or ""))
     t = now()
+    if sess and sess.revoked_by == "idle-timeout":
+        raise HTTPException(401, f"Phiên đã hết hạn do không thao tác quá {IDLE_MINUTES} phút")
     if not sess or sess.revoked_at is not None or sess.username != payload.get("sub") or sess.expires_at < t:
         raise HTTPException(401, "Phiên đăng nhập đã kết thúc – vui lòng đăng nhập lại")
     if IDLE_MINUTES > 0 and (t - sess.last_seen) > timedelta(minutes=IDLE_MINUTES):

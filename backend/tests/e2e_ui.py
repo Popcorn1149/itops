@@ -37,7 +37,8 @@ def start_server(demo=True):
     def _fp():
         x = _so.socket(); x.bind(("127.0.0.1", 0)); p_ = x.getsockname()[1]; x.close(); return p_
     globals()["RX_UDP"], globals()["RX_TRAP"] = _fp(), _fp()
-    env = {**os.environ, "SYSLOG_UDP_PORT": str(RX_UDP), "SYSLOG_TCP_PORT": str(RX_UDP), "TRAP_PORT": str(RX_TRAP), "DATA_DIR": d, "DEMO_DATA": "true" if demo else "false", "ADMIN_PASSWORD": "Admin@12345", "LOG_LEVEL": "WARNING"}
+    env = {**os.environ, "SYSLOG_UDP_PORT": str(RX_UDP), "SYSLOG_TCP_PORT": str(RX_UDP), "TRAP_PORT": str(RX_TRAP), "DATA_DIR": d, "DEMO_DATA": "true" if demo else "false", "ADMIN_PASSWORD": "Admin@12345", "LOG_LEVEL": "WARNING",
+           "REQUIRE_2FA_ADMIN": os.environ.get("E2E_REQUIRE_2FA", "0")}
     log = open(os.path.join(d, "server.log"), "w")
     p = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(PORT)], cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
     for _ in range(60):
@@ -62,7 +63,7 @@ def main():
     errors = []
     try:
         with sync_playwright() as pw:
-            b = pw.chromium.launch()
+            b = pw.chromium.launch(channel=os.environ.get("E2E_CHANNEL") or None)
             ctx = b.new_context(viewport={"width": 1440, "height": 950}, accept_downloads=True)
             page = ctx.new_page()
             page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
@@ -80,7 +81,9 @@ def main():
             page.wait_for_selector("h1:has-text('Bảng điều khiển')", timeout=5000)
             check("Đăng nhập thành công vào bảng điều khiển", True)
             errors.clear()  # 401 từ bước cố ý nhập sai mật khẩu là hợp lệ
-            token = page.evaluate("localStorage.getItem('itops_token')")
+            token = api("POST", "/api/auth/login", {"username": "admin", "password": "Admin@12345"})["token"]   # token cho gọi API trong test
+            check("Giao diện không lưu token trong localStorage", page.evaluate("Object.keys(localStorage).filter(k => /token/i.test(k)).length") == 0)
+            check("Cookie phiên là HttpOnly (JS không đọc được)", "itops_session" not in page.evaluate("document.cookie"))
 
             print("[2] Duyệt mọi trang")
             pages = {"dashboard": "Bảng điều khiển", "map": "Bản đồ hệ thống", "sites": "Sites", "assets": "Tất cả tài sản",
@@ -342,7 +345,8 @@ def main():
             print("[11] Đăng xuất")
             page.click(".avatar"); page.click("text=Đăng xuất")
             page.wait_for_selector("h2:has-text('Đăng nhập')")
-            check("Đăng xuất về màn hình đăng nhập", page.evaluate("localStorage.getItem('itops_token')") is None)
+            check("Đăng xuất: phiên bị vô hiệu ở server", page.context.request.get(BASE + "/api/auth/me").status == 401)
+            check("Đăng xuất: xoá cookie gợi ý", "itops_auth=1" not in page.evaluate("document.cookie"))
 
             print("[12] Giao diện điện thoại")
             mob = b.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=2, is_mobile=True).new_page()

@@ -3,7 +3,8 @@ import {
   LayoutDashboard, Map, Globe2, Shield, Server, Monitor, Network, HardDrive, ShieldCheck, Activity, Bell,
   ScrollText, Settings, Search, PanelLeft, Clock, Boxes, LogOut, KeyRound, Menu, FileText, Gauge, Zap,
 } from "lucide-react";
-import { api, auth } from "./api";
+import { api } from "./api";
+import { ForcedTwoFactor } from "./components/AccountSecurity";
 import { Dot, TypeIcon, useClickOutside, useApi, DEMO } from "./ui";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -146,7 +147,7 @@ function UserMenu({ me, onLogout }) {
       {open && (
         <div className="search-results" style={{ right: 0, left: "auto", width: 220 }}>
           <div style={{ padding: "8px 10px" }}><b>{me.full_name || me.username}</b><div className="small muted">{me.username} · {me.role}</div></div>
-          <div className="search-item" onClick={() => { setOpen(false); nav("settings", null, { tab: "account" }); }}><KeyRound size={15} />Đổi mật khẩu</div>
+          <div className="search-item" onClick={() => { setOpen(false); nav("settings", null, { tab: "account" }); }}><KeyRound size={15} />Mật khẩu · 2FA · Phiên</div>
           <div className="search-item" onClick={onLogout}><LogOut size={15} />Đăng xuất</div>
         </div>
       )}
@@ -165,19 +166,27 @@ export default function App() {
   const [tick, setTick] = useState(0);
   const [appName, setAppName] = useState("IT Ops Workspace");
   const [version, setVersion] = useState("");
+  const [notice, setNotice] = useState("");   // lý do bị đăng xuất (hết phiên, không thao tác…)
 
   useEffect(() => {
     const h = () => { setRoute(parseHash()); setMobileNav(false); };
     window.addEventListener("hashchange", h);
     _listeners.add(h);
-    const out = () => setMe(null);
+    const out = (e) => { if (e && e.detail) setNotice(e.detail); setMe(null); };   // e.detail: lý do (hết phiên, không thao tác…)
+    const need2fa = () => api.get("/auth/me").then(setMe).catch(() => {});
     window.addEventListener("itops:logout", out);
+    window.addEventListener("itops:need2fa", need2fa);
     fetch("/api/health").then((r) => r.json()).then((d) => { setAppName(d.app_name); setVersion(d.version); document.title = d.app_name; }).catch(() => {});
-    return () => { _listeners.delete(h); window.removeEventListener("hashchange", h); window.removeEventListener("itops:logout", out); };
+    return () => { _listeners.delete(h); window.removeEventListener("hashchange", h); window.removeEventListener("itops:logout", out); window.removeEventListener("itops:need2fa", need2fa); };
   }, []);
   useEffect(() => {
-    if (!auth.token) { setChecked(true); return; }
+    // phiên nằm trong cookie HttpOnly (JS không đọc được); cookie gợi ý itops_auth=1 cho biết có nên hỏi server
+    if (!/(^|;\s*)itops_auth=1/.test(document.cookie)) { setChecked(true); return; }
     api.get("/auth/me").then(setMe).catch(() => {}).finally(() => setChecked(true));
+  }, []);
+  const logout = useCallback(async () => {
+    try { await api.post("/auth/logout"); } catch { /* phiên đã hết hạn thì thôi */ }
+    setNotice(""); setMe(null); go("dashboard");
   }, []);
 
   const nav = useCallback((page, id, params) => {
@@ -186,16 +195,17 @@ export default function App() {
   }, []);
   const refresh = useCallback(() => setTick((t) => t + 1), []);
   const ctx = {
-    me, route, nav, tick, refresh, isAdmin: me?.role === "admin",
+    me, setMe, logout, route, nav, tick, refresh, isAdmin: me?.role === "admin",
     openAsset: (id) => setAssetId(id),
     openCheck: (id) => setCheckEdit({ id }),
     newCheck: (preset) => setCheckEdit({ isNew: true, preset }),
   };
 
-  const alertsCount = useApi(me ? "/alerts?status=active&limit=500" : null, { interval: 30000, deps: [tick] });
+  const alertsCount = useApi(me && !me.need_2fa_setup ? "/alerts?status=active&limit=500" : null, { interval: 30000, deps: [tick] });
 
   if (!checked) return null;
-  if (!me) return <Login appName={appName} onLogin={(u) => setMe(u)} />;
+  if (!me) return <Login appName={appName} notice={notice} onLogin={(u) => { setNotice(""); setMe(u); }} />;
+  if (me.need_2fa_setup) return <ForcedTwoFactor me={me} onDone={(u) => setMe(u)} onLogout={logout} />;
 
   const curQ = new URLSearchParams(route.params).toString().replace(/%2C/g, ",");
   const isActive = (n) => n.key === route.page && (n.key !== "assets" || (n.q ?? "") === curQ);
@@ -220,7 +230,7 @@ export default function App() {
           <div className="top-right">
             <ClockBox />
             <GlobalSearch />
-            <UserMenu me={me} onLogout={() => { auth.clear(); setMe(null); go("dashboard"); }} />
+            <UserMenu me={me} onLogout={logout} />
           </div>
         </header>
         {mobileNav && <div className="nav-backdrop" onClick={() => setMobileNav(false)} />}

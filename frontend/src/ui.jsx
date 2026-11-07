@@ -3,7 +3,7 @@ import {
   Shield, Server, Monitor, Router, Network, Wifi, HardDrive, BatteryCharging, Printer, Camera, Box, Globe, Cloud,
   Cpu, Container, CircleHelp, X, Inbox, ChevronUp, ChevronDown, Smartphone,
 } from "lucide-react";
-import { api } from "./api";
+import { api, setAuditReason } from "./api";
 
 export const DEMO = import.meta.env.VITE_DEMO === "1";
 
@@ -128,10 +128,10 @@ export function useApi(path, { interval = 0, deps = [] } = {}) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
-  const load = useCallback(async () => {
+  const load = useCallback(async (bg) => {
     if (!path) return;
     try {
-      const d = await api.get(path);
+      const d = await api.get(path, bg === true ? { background: true } : undefined);
       setData(d);
       setError(null);
     } catch (e) {
@@ -143,7 +143,7 @@ export function useApi(path, { interval = 0, deps = [] } = {}) {
   useEffect(() => {
     load();
     if (interval) {
-      const t = setInterval(load, interval);
+      const t = setInterval(() => load(true), interval);   // tự làm mới = request nền
       return () => clearInterval(t);
     }
   }, [load, interval, ...deps]);
@@ -394,9 +394,10 @@ export function confirmDelete(name) {
 export function ConfirmHost() {
   const [o, setO] = useState(null);
   const [txt, setTxt] = useState("");
-  useEffect(() => { _openConfirm = (x) => { setTxt(""); setO(x); }; return () => { _openConfirm = null; }; }, []);
+  const [why, setWhy] = useState("");
+  useEffect(() => { _openConfirm = (x) => { setTxt(""); setWhy(""); setO(x); }; return () => { _openConfirm = null; }; }, []);
   if (!o) return null;
-  const done = (v) => { o.resolve(v); setO(null); };
+  const done = (v) => { if (v && o.danger) setAuditReason(why); o.resolve(v); setO(null); };
   const blocked = o.requireText && txt !== o.requireText;
   return (
     <div className="overlay confirm-overlay" onMouseDown={(e) => e.target === e.currentTarget && done(false)}>
@@ -406,6 +407,8 @@ export function ConfirmHost() {
           {o.message && <div className="muted" style={{ lineHeight: 1.5 }}>{o.message}</div>}
           {o.requireText && <div style={{ marginTop: 12 }}><div className="small" style={{ marginBottom: 6 }}>Gõ <b>{o.requireText}</b> để xác nhận</div>
             <input className="input" autoFocus value={txt} onChange={(e) => setTxt(e.target.value)} /></div>}
+          {o.danger && <div style={{ marginTop: 12 }}><div className="small muted" style={{ marginBottom: 6 }}>Lý do (không bắt buộc, ghi vào nhật ký)</div>
+            <input className="input" placeholder="VD: thiết bị đã thanh lý, phiếu CR-12" value={why} onChange={(e) => setWhy(e.target.value)} maxLength={300} /></div>}
         </div>
         <div className="modal-foot">
           <button className="btn" onClick={() => done(false)}>Huỷ</button>

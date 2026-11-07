@@ -236,6 +236,9 @@ function handle(method, url, body) {
   }
   if (path === "/auth/me") return me();
   if (path === "/auth/password") return { ok: true };
+  if (path === "/auth/logout") return { ok: true };
+  if (path === "/auth/sessions") return [{ id: "demo", username: me().username, created_at: new Date(Date.now() - 3600e3).toISOString(), last_seen: new Date().toISOString(), ip: "10.0.20.15", user_agent: navigator.userAgent, mfa: false, current: true }];
+  if (path.startsWith("/auth/2fa/") || path.startsWith("/auth/sessions/")) throw err(400, "Bản demo không hỗ trợ 2FA / thu hồi phiên");
   if (path === "/dashboard") return dashboard();
   if (path === "/automation/catalog") return S.automation_catalog;
   if (path === "/automations" || path === "/automation/runs") return [];

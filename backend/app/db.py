@@ -93,9 +93,11 @@ def _legacy_to_baseline() -> list[str]:
 def run_migrations() -> dict:
     """Gọi khi app khởi động. CSDL trống → tạo theo migration; CSDL bản v1 → bù cho khớp 0001, stamp 0001;
     sau đó luôn `upgrade head`. Trả về thông tin để ghi log."""
+    import logging
     from alembic import command
     from alembic.runtime.migration import MigrationContext
     from sqlalchemy import inspect
+    logging.getLogger("alembic").setLevel(logging.WARNING)   # app tự ghi 1 dòng tóm tắt (main.init_db)
     info = {"legacy": False, "added": [], "from": None, "to": None}
     tables = set(inspect(engine).get_table_names())
     if tables and "alembic_version" not in tables:

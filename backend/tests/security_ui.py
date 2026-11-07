@@ -1,3 +1,4 @@
+import os
 """Kiểm tra bảo mật giao diện: XSS qua tên tài sản (VD hostname DHCP / tên VM do người khác đặt)."""
 import sys
 import time
@@ -20,7 +21,7 @@ def main():
         E.api("POST", "/api/checks", {"name": "K" + PAYLOAD, "type": "tcp", "target": "127.0.0.1", "asset_id": fw["id"], "config": {"port": 1, "alert_after": 1}}, tok)
         time.sleep(2)
         with sync_playwright() as pw:
-            b = pw.chromium.launch()
+            b = pw.chromium.launch(channel=os.environ.get("E2E_CHANNEL") or None)
             page = b.new_page(viewport={"width": 1440, "height": 950})
             E.login(page)
             for path in ["dashboard", "sites", "assets", "critical", "checks", "alerts"]:

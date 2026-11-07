@@ -77,7 +77,7 @@ const FIELDS = {
     T("hyperv", "Đọc máy ảo Hyper-V", "bool", { default: false, hint: "Liệt kê VM (status, vCPU, RAM, CPU %, snapshot, IP). Tài khoản SSH cần thuộc nhóm Hyper-V Administrators.", show: (c) => c.platform === "windows" }),
     T("win_events", "Đọc Windows Event (bảo mật)", "bool", { default: false, hint: "Đọc theo RecordId: xoá log (1102, 104), dịch vụ log dừng (1100), tạo tài khoản (4720), thêm vào admin group (4728/4732/4756). Tài khoản SSH cần quyền Administrator hoặc nhóm Event Log Readers.", show: (c) => c.platform === "windows" }),
     T("watch_services", "Service bắt buộc chạy", "text", { hint: "Tên service Windows, cách nhau dấu phẩy (VD: MSSQLSERVER, VeeamBackupSvc)", show: (c) => c.platform === "windows" }),
-    T("command", "Lệnh tuỳ chỉnh (nâng cao)", "textarea", { hint: "Bỏ trống để dùng bộ đo mặc định. Exit 0=OK, 1=cảnh báo, khác=lỗi.", show: (c) => c.platform === "linux" || !c.platform }),
+    T("command", "Lệnh tuỳ chỉnh (nâng cao)", "textarea", { hint: "Mặc định BỊ KHOÁ (tài khoản thiết bị chỉ để đọc) – bỏ trống để dùng bộ đo mặc định. Chỉ dùng được khi máy chủ bật ALLOW_SSH_COMMAND=1. Exit 0=OK, 1=cảnh báo, khác=lỗi.", show: (c) => c.platform === "linux" || !c.platform }),
     ...RES_FIELDS((c) => !c.command),
   ],
   esxi: [
