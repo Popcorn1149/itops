@@ -1,6 +1,6 @@
 """API: đăng nhập, phân quyền, CRUD, mã hoá bí mật, xuất/nhập, bản đồ, rủi ro."""
-import sqlite3
-import os
+
+from tests.pgtest import sql
 
 
 def mk(client, h, _kind, **body):
@@ -101,14 +101,13 @@ def test_secrets_encrypted_and_masked(client, admin, clean):
     assert c["config"]["password"] == "__SECRET__"
     for path in ["/api/checks", f"/api/checks/{c['id']}", "/api/export", "/api/dashboard"]:
         assert "SieuBiMat" not in client.get(path, headers=admin).text, path
-    db = sqlite3.connect(os.path.join(os.environ["DATA_DIR"], "itops.db"))
-    raw = db.execute("select config from checks where id=?", (c["id"],)).fetchone()[0]
+    raw = sql("select config::text from checks where id=%s", (c["id"],))[0][0]
     assert "SieuBiMat" not in raw and "enc2:" in raw and '"enc:' not in raw     # AES-256-GCM, không còn Fernet
     # sửa check gửi lại MASK → giữ mật khẩu cũ
     client.put(f"/api/checks/{c['id']}", json={"config": {"username": "ro2", "password": "__SECRET__"}}, headers=admin)
-    raw2 = db.execute("select config from checks where id=?", (c["id"],)).fetchone()[0]
+    raw2 = sql("select config::text from checks where id=%s", (c["id"],))[0][0]
     assert "enc2:" in raw2 and "ro2" in raw2
-    audit_rows = " ".join(str(r) for r in db.execute("select detail, changes from audit_logs where entity='checks'"))
+    audit_rows = " ".join(str(r) for r in sql("select detail, changes::text from audit_logs where entity='checks'"))
     assert "SieuBiMat" not in audit_rows and "enc2:" not in audit_rows and "ro2" in audit_rows   # trước/sau có, bí mật bị che
     from app.security import open_config
     import json

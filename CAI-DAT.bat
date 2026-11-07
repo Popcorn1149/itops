@@ -14,17 +14,17 @@ if errorlevel 1 (
 )
 python --version
 echo.
-echo [1/4] Chep cau hinh VS Code vao .vscode ...
+echo [1/5] Chep cau hinh VS Code vao .vscode ...
 if not exist ".vscode" mkdir ".vscode"
 copy /Y "vscode-config\*.json" ".vscode\" >nul
 echo       xong.
 echo.
-echo [2/4] Tao moi truong Python (backend\.venv) ...
+echo [2/5] Tao moi truong Python (backend\.venv) ...
 cd backend
 if not exist ".venv" python -m venv .venv
 echo       xong.
 echo.
-echo [3/4] Cai thu vien (1-3 phut) ...
+echo [3/5] Cai thu vien (1-3 phut) ...
 .venv\Scripts\python.exe -m pip install --upgrade pip -q
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 if errorlevel 1 (
@@ -32,9 +32,17 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
+echo.
+echo [4/5] Tai PostgreSQL di dong (~30 MB, kiem tra ma bam sha512) ...
+.venv\Scripts\python.exe tools\get_postgres.py
+if errorlevel 1 (
+  echo [LOI] Tai PostgreSQL that bai - kiem tra mang Internet roi chay lai.
+  pause
+  exit /b 1
+)
 cd ..
 echo.
-echo [4/4] Tao mat khau admin (.env.local) ...
+echo [5/5] Tao mat khau admin (.env.local) ...
 if exist ".env.local" (
   echo       Da co .env.local - giu nguyen mat khau cu.
 ) else (

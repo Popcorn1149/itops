@@ -69,9 +69,9 @@ Tạo tài khoản chỉ đọc cho từng loại thiết bị:
 | Như thế nào | `changes` = `{before, after}` – chỉ các trường thực sự đổi, bí mật bị che | |
 | Tại sao | `reason` | ô "Lý do" trong hộp xác nhận xoá, hoặc header `X-Audit-Reason` |
 
-- **Chỉ ghi thêm**: trigger SQLite chặn mọi `UPDATE` / `DELETE` trên `audit_logs`, kể cả khi lỗi code hay bị chèn SQL (`test_audit_append_only`). Ứng dụng không có API sửa/xoá audit.
+- **Chỉ ghi thêm**: trigger PostgreSQL (plpgsql) chặn mọi `UPDATE` / `DELETE` / `TRUNCATE` trên `audit_logs`, kể cả khi lỗi code hay bị chèn SQL – thử cả SQL thô lẫn ORM (`test_audit_append_only`). Ứng dụng không có API sửa/xoá audit.
 - Mỗi ngày audit + log + cảnh báo được xuất ra file nén có **chuỗi hash SHA-256** (`secmon.archive_day`) – sửa file cũ sẽ bị phát hiện khi kiểm chuỗi.
-- Giới hạn: người có quyền ghi trực tiếp file CSDL vẫn có thể xoá trigger. Chuỗi hash của archive là lớp phát hiện cho trường hợp đó; cần cất bản sao archive ở nơi khác (NAS chỉ đọc).
+- Giới hạn: người có quyền owner CSDL PostgreSQL vẫn có thể tắt trigger. Chuỗi hash của archive là lớp phát hiện cho trường hợp đó; cần cất bản sao archive ở nơi khác (NAS chỉ đọc).
 
 ## 5b. Nhận Syslog / SNMP Trap
 - Chỉ nhận từ **Nguồn được phép** (mặc định các dải IP nội bộ). Bộ lọc và giới hạn tốc độ dùng **IP thật gửi gói tin**;
@@ -85,8 +85,15 @@ Tạo tài khoản chỉ đọc cho từng loại thiết bị:
 
 - Tự động mỗi ngày sau `BACKUP_HOUR` (mặc định 2 giờ sáng, giờ VN), giữ `BACKUP_KEEP` bản (mặc định 7) tại `BACKUP_DIR` (mặc định `data/backups`). Đặt `BACKUP_KEEP=0` để tắt.
 - Thủ công: `python -m app.admin_tools backup [thư_mục]` (task VS Code số 7).
-- Nội dung: `itops.db` (sao chụp nhất quán khi app đang chạy) + `.secret_key` + `.enc_key` + `archive/` + hướng dẫn khôi phục (`test_backup_contains_db_and_keys_and_restores`).
+- Nội dung: toàn bộ bảng dạng JSONL (`db/*.jsonl`, đọc trong **một** transaction REPEATABLE READ → nhất quán khi app đang ghi) + `db/manifest.json` (revision schema, số bản ghi) + `.secret_key` + `.enc_key` + `archive/` + hướng dẫn khôi phục. Bí mật thiết bị trong bản sao lưu vẫn ở dạng mã hoá `enc2:`.
+- Khôi phục: dừng app → `python -m app.admin_tools restore <file.zip> --wipe` (task VS Code 13). Xoá + nạp nằm trong **cùng một transaction**: bản sao lưu hỏng thì báo lỗi, dữ liệu đang có còn nguyên; số bản ghi phải khớp manifest (`test_backup_contains_db_and_keys_and_restores`).
+- Không chép thư mục `pgdata` khi PostgreSQL đang chạy (bản chép có thể hỏng). Chạy thật bằng Docker có thể dùng thêm `pg_dump` của container `db`.
 - ⚠️ File sao lưu chứa **khoá giải mã** → cất ở nơi chỉ admin truy cập; nên đặt `BACKUP_DIR` sang NAS/ổ khác (cùng ổ với CSDL thì hỏng ổ là mất cả hai).
+
+## 6b. CSDL PostgreSQL
+- Demo (VS Code, `PG_LOCAL=1`): PostgreSQL chỉ nghe **127.0.0.1**, không mở socket khác, xác thực **scram-sha-256**, mật khẩu ngẫu nhiên 48 ký tự hex lưu ở `DATA_DIR/.pg_password` (quyền 600). Bộ binary tải về được **kiểm tra sha512** trước khi giải nén.
+- Chạy thật (Docker): cổng 5432 của container `db` chỉ mở cho `127.0.0.1` của máy chủ; mật khẩu đặt qua `POSTGRES_PASSWORD` trong `.env`.
+- `.pg_password` và `pgdata/` nằm trong `DATA_DIR` → cùng mức bảo vệ với `.enc_key`. Không gửi thư mục dữ liệu khi đóng gói/zip.
 
 ## 7. HTTPS
 
@@ -110,6 +117,7 @@ Không có tính năng gửi dữ liệu lên cloud. **Ngoại lệ**: nội dun
 | `COOKIE_SECURE` | `0` (tự bật khi HTTPS) | Ép cờ Secure cho cookie (khi chạy sau reverse proxy TLS) |
 | `SECRET_KEY` / `ENCRYPTION_KEY` | sinh tự động trong `data/` | Khoá ký / khoá mã hoá |
 | `BACKUP_DIR` / `BACKUP_KEEP` / `BACKUP_HOUR` | `data/backups` / `7` / `2` | Sao lưu tự động |
+| `DATABASE_URL` / `PG_LOCAL` / `PG_LOCAL_PORT` | – / – / `5433` | PostgreSQL thật, hoặc PostgreSQL kèm theo chỉ nghe 127.0.0.1 (mật khẩu ngẫu nhiên trong `data/.pg_password`) |
 
 ## 10. Chưa làm (đã biết, có chủ đích)
 
@@ -118,7 +126,6 @@ Không có tính năng gửi dữ liệu lên cloud. **Ngoại lệ**: nội dun
 | Phân quyền nhiều vai trò (operator / NOC) | P2 | Hiện chỉ có admin và viewer |
 | Che IP / hostname trong tin gửi Telegram / email / webhook | P2 | |
 | Bộ đếm khoá đăng nhập dùng chung khi chạy nhiều instance | P2 | Hiện trong RAM |
-| Trigger chỉ-ghi-thêm cho PostgreSQL | P3 | Hiện chỉ SQLite |
 | Kho mật khẩu hạ tầng | **Không làm** | Dùng Vaultwarden / KeePass đã được kiểm định – tự xây là mở thêm cửa giá trị nhất (xem `DECISIONS/0002`) |
 
 ## Báo lỗi bảo mật

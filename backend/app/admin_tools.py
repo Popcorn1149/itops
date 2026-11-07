@@ -4,6 +4,9 @@ Chạy trong thư mục backend, với cùng DATA_DIR như app:
     python -m app.admin_tools reset-2fa <username>      # admin duy nhất mất điện thoại
     python -m app.admin_tools revoke-sessions <username|--all>
     python -m app.admin_tools backup [thư_mục_đích]       # sao lưu CSDL + 2 khoá + archive ra file .zip
+    python -m app.admin_tools restore <file.zip> [--wipe] # khôi phục (dừng app trước); --wipe = xoá sạch CSDL hiện tại
+    python -m app.admin_tools import-sqlite <itops.db> [--keys-from THƯ_MỤC] [--wipe]
+                                                         # chuyển dữ liệu bản v1 / v2-SQLite sang PostgreSQL
     python -m app.admin_tools gen-cert [tên_máy_hoặc_IP ...]   # chứng chỉ HTTPS tự ký cho LAN
 Mọi thao tác đều ghi vào nhật ký (audit) với user "cli".
 """
@@ -11,14 +14,12 @@ import asyncio
 import ipaddress
 import logging
 import os
-import sqlite3
 import sys
-import tempfile
 import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .db import DATA_DIR, DATABASE_URL, SessionLocal
+from .db import DATA_DIR, SessionLocal, engine
 from . import models
 
 log = logging.getLogger("itops.admin")
@@ -63,51 +64,126 @@ def revoke(username: str) -> str:
 
 # ---------------------------------------------------------------- sao lưu
 def backup(dest_dir: str | None = None, reason: str = "thủ công") -> Path:
-    """Sao lưu nhất quán khi app đang chạy (sqlite backup API) + .secret_key + .enc_key + archive/.
+    """Sao lưu nhất quán khi app đang chạy (ảnh chụp REPEATABLE READ, xem dbdump.py) + .secret_key + .enc_key + archive/.
     CẢNH BÁO: file sao lưu chứa khoá giải mã mật khẩu thiết bị → cất ở nơi chỉ admin truy cập được."""
-    if not DATABASE_URL.startswith("sqlite"):
-        raise SystemExit("Sao lưu tích hợp chỉ hỗ trợ SQLite. Với PostgreSQL dùng pg_dump.")
+    from . import dbdump
     dest = Path(dest_dir or BACKUP_DIR)
     dest.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     out = dest / f"itops-backup-{stamp}.zip"
     data = Path(DATA_DIR)
-    with tempfile.TemporaryDirectory() as tmp:
-        snap = Path(tmp) / "itops.db"
-        src = sqlite3.connect(str(data / "itops.db"))
-        dst = sqlite3.connect(str(snap))
-        with dst:
-            src.backup(dst)
-        src.close()
-        dst.close()
-        with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
-            z.write(snap, "itops.db")
-            for f in (".secret_key", ".enc_key"):
-                if (data / f).exists():
-                    z.write(data / f, f)
-            arch = data / "archive"
-            if arch.is_dir():
-                for p in arch.rglob("*"):
-                    if p.is_file():
-                        z.write(p, str(p.relative_to(data)))
-            z.writestr("KHOI-PHUC.txt", RESTORE_NOTE)
+    tmp = out.with_suffix(".zip.part")
+    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
+        man = dbdump.dump_to_zip(engine, z)
+        for f in (".secret_key", ".enc_key"):
+            if (data / f).exists():
+                z.write(data / f, f)
+        arch = data / "archive"
+        if arch.is_dir():
+            for p in arch.rglob("*"):
+                if p.is_file():
+                    z.write(p, str(p.relative_to(data)))
+        z.writestr("KHOI-PHUC.txt", RESTORE_NOTE)
+    os.replace(tmp, out)            # chỉ xuất hiện file .zip khi đã ghi xong
     try:
         os.chmod(out, 0o600)
     except OSError:
         pass
     with SessionLocal() as db:
-        _audit(db, "backup", f"Sao lưu ({reason}) → {out}")
+        _audit(db, "backup", f"Sao lưu ({reason}) → {out} · {sum(man['tables'].values())} bản ghi · schema {man['revision']}")
         db.commit()
     return out
 
 
-RESTORE_NOTE = """Khôi phục IT Ops Workspace từ bản sao lưu
-1. Dừng app.
-2. Giải nén toàn bộ file này vào thư mục dữ liệu (DATA_DIR, ví dụ backend/data-v2-local), ghi đè itops.db,
-   .secret_key, .enc_key và thư mục archive/. Xoá itops.db-wal và itops.db-shm cũ nếu có.
+RESTORE_NOTE = """Khôi phục IT Ops Workspace v2 từ bản sao lưu
+1. Dừng app (PostgreSQL vẫn chạy).
+2. Trong thư mục backend, cùng DATA_DIR / PG_LOCAL hoặc DATABASE_URL như khi chạy app:
+       python -m app.admin_tools restore <file.zip> --wipe
+   (--wipe xoá sạch CSDL hiện tại trước khi nạp; bỏ --wipe nếu CSDL đích còn trống)
+   Lệnh tự chép .secret_key, .enc_key và archive/ về DATA_DIR (khoá cũ được giữ lại dạng .bak-<giờ>).
 3. Chạy lại app. App tự nâng cấp CSDL nếu bản sao lưu cũ hơn phiên bản hiện tại.
 Thiếu .enc_key → mật khẩu/community thiết bị đã lưu KHÔNG giải mã được (phải nhập lại).
 """
+
+
+def _upgrade(conn, rev: str):
+    from alembic import command
+    from .db import _alembic_config
+    command.upgrade(_alembic_config(conn), rev)
+
+
+def _install_keys(src_dir: Path | None, z: zipfile.ZipFile | None = None) -> list[str]:
+    """Chép .secret_key / .enc_key vào DATA_DIR; khoá đang có được giữ lại dạng .bak-<giờ>."""
+    data = Path(DATA_DIR)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    done = []
+    for f in (".secret_key", ".enc_key"):
+        blob = None
+        if z is not None and f in z.namelist():
+            blob = z.read(f)
+        elif src_dir is not None and (src_dir / f).exists():
+            blob = (src_dir / f).read_bytes()
+        if blob is None:
+            continue
+        dst = data / f
+        if dst.exists():
+            if dst.read_bytes() == blob:
+                continue
+            dst.rename(data / f"{f}.bak-{stamp}")
+        dst.write_bytes(blob)
+        try:
+            os.chmod(dst, 0o600)
+        except OSError:
+            pass
+        done.append(f)
+    return done
+
+
+def restore(zip_path: str, wipe: bool = False) -> str:
+    from . import dbdump
+    with zipfile.ZipFile(zip_path) as z:
+        try:
+            info = dbdump.restore_from_zip(engine, z, _upgrade, wipe_first=wipe)
+        except dbdump.DumpError as e:
+            raise SystemExit(f"Không khôi phục được: {e}") from None
+        keys = _install_keys(None, z)
+        data = Path(DATA_DIR)
+        for name in z.namelist():
+            if name.startswith("archive/") and not name.endswith("/"):
+                target = (data / name).resolve()
+                if data.resolve() not in target.parents:
+                    continue                         # chặn đường dẫn ../ trong file zip
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(z.read(name))
+    with SessionLocal() as db:
+        _audit(db, "restore", f"Khôi phục từ {Path(zip_path).name} (schema {info['revision']}, khoá: {', '.join(keys) or 'giữ nguyên'})")
+        db.commit()
+    return f"Đã khôi phục {sum(info['tables'].values())} bản ghi (schema {info['revision']} → mới nhất). Khoá: {', '.join(keys) or 'giữ nguyên'}."
+
+
+def import_sqlite(path: str, keys_from: str | None = None, wipe: bool = False) -> str:
+    from . import dbdump
+    p = Path(path)
+    if not p.is_file():
+        raise SystemExit(f"Không thấy file {p}")
+    try:
+        info = dbdump.import_sqlite(engine, str(p), _upgrade, wipe_first=wipe)
+    except dbdump.DumpError as e:
+        raise SystemExit(f"Không chuyển được: {e}") from None
+    keys = _install_keys(Path(keys_from) if keys_from else p.parent)
+    # Bí mật dạng Fernet cũ (enc:) được app mã hoá lại sang AES-256-GCM (enc2:) ở LẦN KHỞI ĐỘNG TỚI – lúc đó app
+    # mới nạp đúng khoá vừa chép (tiến trình này đã nạp khoá cũ khi import app.security).
+    with SessionLocal() as db:
+        _audit(db, "import", f"Chuyển dữ liệu SQLite {p.name} → PostgreSQL ({sum(info['tables'].values())} bản ghi)")
+        db.commit()
+    lines = [f"Đã chuyển {sum(info['tables'].values())} bản ghi từ {p.name}:"]
+    lines += [f"  {t:<20} {n}" for t, n in sorted(info["tables"].items()) if n]
+    if info["ignored_tables"]:
+        lines.append("Bảng không có trong bản v2 (bỏ qua): " + ", ".join(f"{t} ({n})" for t, n in info["ignored_tables"].items()))
+    lines.append(f"Khoá đã chép: {', '.join(keys) or 'không có (bí mật thiết bị cũ có thể không giải mã được)'}")
+    lines.append("Phiên đăng nhập cũ không chuyển – mọi người đăng nhập lại.")
+    lines.append("Chạy app: lần khởi động đầu tự mã hoá lại mật khẩu thiết bị kiểu cũ sang AES-256-GCM.")
+    return "\n".join(lines)
 
 
 def prune_backups(dest_dir: str | None = None, keep: int = BACKUP_KEEP) -> int:
@@ -171,12 +247,25 @@ def gen_cert(names: list[str]) -> tuple[Path, Path]:
 
 
 def main(argv: list[str]) -> int:
-    from .db import run_migrations
-    run_migrations()             # đảm bảo CSDL đúng phiên bản trước khi thao tác
     if not argv or argv[0] in ("-h", "--help"):
         print(__doc__)
         return 0
     cmd, args = argv[0], argv[1:]
+    flags = {a for a in args if a.startswith("--")}
+    pos = [a for a in args if not a.startswith("--")]
+    if cmd == "restore" and pos:
+        print(restore(pos[0], wipe="--wipe" in flags))
+        return 0
+    if cmd == "import-sqlite" and pos:
+        kf = None
+        if "--keys-from" in args:
+            i = args.index("--keys-from")
+            kf = args[i + 1] if i + 1 < len(args) else None
+            pos = [a for a in pos if a != kf]
+        print(import_sqlite(pos[0], kf, wipe="--wipe" in flags))
+        return 0
+    from .db import run_migrations
+    run_migrations()             # đảm bảo CSDL đúng phiên bản trước khi thao tác
     if cmd == "reset-2fa" and args:
         print(reset_2fa(args[0]))
     elif cmd == "revoke-sessions" and args:

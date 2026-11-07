@@ -9,6 +9,9 @@ os.environ.update({"DATA_DIR": _TMP, "DISABLE_SCHEDULER": "1", "ADMIN_USER": "ad
                    "REQUIRE_2FA_ADMIN": "0"})
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from tests import pgtest  # noqa: E402
+pgtest.setup()          # tạo CSDL PostgreSQL riêng cho lần chạy test này (xem tests/pgtest.py)
+
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -23,6 +26,10 @@ os.environ["TELEGRAM_API_BASE"] = f"http://127.0.0.1:{SIM_PORT}"
 from app.main import app  # noqa: E402
 from app import notify  # noqa: E402
 notify.TELEGRAM_API = os.environ["TELEGRAM_API_BASE"]
+
+
+def pytest_sessionfinish(session, exitstatus):
+    pgtest.teardown()
 
 
 @pytest.fixture(scope="session")

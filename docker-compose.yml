@@ -1,19 +1,54 @@
+# Chạy thật trên máy chủ Linux (Docker Engine – miễn phí, không cần Docker Desktop).
+#   1) cp .env.example .env   → đặt ADMIN_PASSWORD, POSTGRES_PASSWORD (chuỗi dài, ngẫu nhiên)
+#   2) docker compose up -d --build
+#   3) Web: http://<IP máy chủ>:8080   · Syslog 514 udp/tcp · SNMP Trap 162 udp
+#
+# itops dùng network_mode: host để thấy ĐÚNG IP nguồn của thiết bị gửi syslog/trap
+# (port mapping của Docker có thể đổi IP nguồn thành IP gateway → sai ACL, sai gán tài sản).
 services:
+  db:
+    image: postgres:17-alpine
+    container_name: itops-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: itops
+      POSTGRES_USER: itops
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Đặt POSTGRES_PASSWORD trong file .env}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C --auth-host=scram-sha-256"
+      TZ: UTC
+    # chỉ mở cho chính máy chủ (app chạy host network) – không lộ PostgreSQL ra LAN
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U itops -d itops"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
   itops:
     build: .
     image: itops-workspace:latest
     container_name: itops
     restart: unless-stopped
-    ports:
-      - "${PORT:-8080}:8000"
-      # Nhận log & trap từ thiết bị (đổi vế trái nếu cổng máy chủ đã bị chiếm)
-      - "${SYSLOG_PORT:-514}:514/udp"
-      - "${SYSLOG_PORT:-514}:514/tcp"
-      - "${TRAP_PORT_HOST:-162}:162/udp"
+    network_mode: host
+    depends_on:
+      db:
+        condition: service_healthy
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://itops:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_PORT:-5432}/itops
+      SYSLOG_UDP_PORT: ${SYSLOG_PORT:-514}
+      SYSLOG_TCP_PORT: ${SYSLOG_PORT:-514}
+      TRAP_PORT: ${TRAP_PORT_HOST:-162}
+      RECEIVER_BIND: 0.0.0.0
     volumes:
-      - ./data:/data
-    # cần cho lệnh ping (ICMP) bên trong container
+      - ./data:/data          # khoá .secret_key/.enc_key, archive, backups
+    # ping (ICMP) bên trong container
     cap_add:
       - NET_RAW
     logging:

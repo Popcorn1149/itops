@@ -138,6 +138,7 @@ class CheckResult(Base):
 
 class Alert(Base):
     __tablename__ = "alerts"
+    __table_args__ = (Index("ix_alerts_status_opened", "status", "opened_at"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     source: Mapped[str] = mapped_column(String(16), default="check")  # check | event
     event_rule_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -171,6 +172,7 @@ class Setting(Base):
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
+    __table_args__ = (Index("ix_audit_logs_ts", "ts"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=now)
     user: Mapped[str] = mapped_column(String(64), default="system")

@@ -1,5 +1,8 @@
 {
   // F5 = chạy cấu hình đang chọn ở thanh Run and Debug (Ctrl+Shift+D)
+  // CSDL: PostgreSQL kèm theo (PG_LOCAL=1) tự tải + tự chạy, chỉ nghe 127.0.0.1.
+  //   dữ liệu mẫu → backend/data-v2-dev/pgdata, cổng 5433 · thiết bị thật → backend/data-v2-local/pgdata, cổng 5434
+  //   Tắt app không tắt PostgreSQL; muốn tắt hẳn: task "11/12. PostgreSQL: dừng".
   "version": "0.2.0",
   "configurations": [
     {
@@ -13,6 +16,8 @@
       "python": "${workspaceFolder}/backend/.venv/Scripts/python.exe",
       "env": {
         "DATA_DIR": "${workspaceFolder}/backend/data-v2-dev",
+        "PG_LOCAL": "1",
+        "PG_LOCAL_PORT": "5433",
         "DEMO_DATA": "true",
         "ADMIN_USER": "admin",
         "APP_NAME": "IT Ops Workspace v2 (chạy thử)",
@@ -37,6 +42,8 @@
       "python": "${workspaceFolder}/backend/.venv/Scripts/python.exe",
       "env": {
         "DATA_DIR": "${workspaceFolder}/backend/data-v2-local",
+        "PG_LOCAL": "1",
+        "PG_LOCAL_PORT": "5434",
         "DEMO_DATA": "false",
         "ADMIN_USER": "admin",
         "APP_NAME": "IT Ops Workspace v2",
@@ -64,6 +71,8 @@
       "python": "${workspaceFolder}/backend/.venv/Scripts/python.exe",
       "env": {
         "DATA_DIR": "${workspaceFolder}/backend/data-v2-dev",
+        "PG_LOCAL": "1",
+        "PG_LOCAL_PORT": "5433",
         "DEMO_DATA": "true",
         "ADMIN_USER": "admin",
         "APP_NAME": "IT Ops Workspace v2 (chạy thử)",

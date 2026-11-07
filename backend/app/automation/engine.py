@@ -418,7 +418,10 @@ def uptime_between(db, check_ids: list[int], start_local: datetime, end_local: d
         o[0] += r.total; o[1] += r.down; o[2] += r.down_minutes
         rolled_days.add((r.check_id, r.day))
     CR = models.CheckResult
-    day_expr = func.strftime("%Y-%m-%d", func.datetime(CR.ts, f"{int(TZ.utcoffset(None).total_seconds() // 3600):+d} hours"))
+    # ngày theo giờ địa phương. Dùng literal (không bind param) để biểu thức trong SELECT và GROUP BY giống hệt nhau – PostgreSQL bắt buộc
+    from sqlalchemy import literal_column
+    off_min = int(TZ.utcoffset(None).total_seconds() // 60)
+    day_expr = func.to_char(CR.ts + literal_column(f"interval '{off_min} minutes'"), literal_column("'YYYY-MM-DD'"))
     q = db.query(CR.check_id, day_expr, func.count(), func.sum(_down_expr())).filter(
         CR.check_id.in_(check_ids), CR.ts >= to_utc_naive(start_local), CR.ts < to_utc_naive(end_local)).group_by(CR.check_id, day_expr)
     for cid, day, total, down in q:

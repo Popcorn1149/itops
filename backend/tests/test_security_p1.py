@@ -2,7 +2,6 @@
 audit 5W1H chỉ ghi thêm, tách khoá ký / khoá mã hoá (AES-256-GCM), khoá lệnh SSH tuỳ chỉnh."""
 import asyncio
 import os
-import sqlite3
 import time
 from datetime import timedelta
 
@@ -16,8 +15,7 @@ from app.db import SessionLocal
 WEB = {"X-Requested-With": "itops"}        # header giao diện web luôn gửi
 
 
-def db_path():
-    return os.path.join(os.environ["DATA_DIR"], "itops.db")
+from tests.pgtest import sql  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -162,7 +160,7 @@ def test_2fa_setup_enable_login_and_replay(client, admin):
     assert me["totp_enabled"] is True and "totp_secret" not in me and "totp_pending" not in me
     assert "totp_secret" not in client.get("/api/users", headers=admin).text
     # bí mật lưu đã mã hoá
-    raw = sqlite3.connect(db_path()).execute("select totp_secret from users where username='tf1'").fetchone()[0]
+    raw = sql("select totp_secret from users where username='tf1'")[0][0]
     assert raw.startswith("enc2:") and st["secret"] not in raw
     # đăng nhập: thiếu mã → yêu cầu mã (không tính là sai); sai mã → 401; đúng mã → vào được
     r = login(client, "tf1")
@@ -228,15 +226,23 @@ def test_audit_5w1h_fields(client, admin, clean):
 
 
 def test_audit_append_only(client, admin):
-    c = sqlite3.connect(db_path())
-    assert c.execute("select count(*) from audit_logs").fetchone()[0] > 0
-    for q in ("update audit_logs set detail='sua'", "delete from audit_logs"):
-        with pytest.raises(sqlite3.DatabaseError, match="chi duoc ghi them"):
-            c.execute(q)
-        c.rollback()        # trả khoá ghi ngay, không giữ transaction dở
-    trig = {r[0] for r in c.execute("select name from sqlite_master where type='trigger'")}
-    c.close()
-    assert {"audit_logs_no_update", "audit_logs_no_delete"} <= trig
+    import psycopg
+    n = sql("select count(*) from audit_logs")[0][0]
+    assert n > 0
+    for q in ("update audit_logs set detail='sua'", "delete from audit_logs", "truncate audit_logs"):
+        with pytest.raises(psycopg.errors.InsufficientPrivilege, match="chi duoc ghi them"):
+            sql(q)
+    assert sql("select count(*) from audit_logs")[0][0] >= n
+    trig = {r[0] for r in sql("select tgname from pg_trigger where tgrelid='audit_logs'::regclass and not tgisinternal")}
+    assert {"audit_logs_no_update_delete", "audit_logs_no_truncate"} <= trig
+    # ORM cũng bị chặn (vd. code lỗi gọi db.delete trên bản ghi audit)
+    from sqlalchemy.exc import DBAPIError
+    db = SessionLocal()
+    try:
+        with pytest.raises(DBAPIError, match="chi duoc ghi them"):
+            db.query(models.AuditLog).filter(models.AuditLog.id > 0).update({"detail": "x"})
+    finally:
+        db.rollback(); db.close()
 
 
 # ---------------------------------------------------------------- khoá
@@ -290,24 +296,64 @@ def test_ssh_custom_command_locked_by_default(client, admin, clean, monkeypatch)
 
 
 # ---------------------------------------------------------------- sao lưu
-def test_backup_contains_db_and_keys_and_restores(client, admin, clean, tmp_path):
+def test_backup_contains_db_and_keys_and_restores(client, admin, clean, tmp_path, monkeypatch):
+    import base64
+    import json
     import zipfile
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from sqlalchemy import text
+    from sqlalchemy.orm import sessionmaker
     from app import admin_tools
+    from tests.pgtest import scratch_db
     c = client.post("/api/checks", json={"name": "bk", "type": "tcp", "target": "127.0.0.1", "enabled": False,
                                          "config": {"port": 22, "password": "BiMatSaoLuu"}}, headers=admin).json()
     out = admin_tools.backup(str(tmp_path / "bk"), "test")
     z = zipfile.ZipFile(out)
-    assert {"itops.db", ".secret_key", ".enc_key", "KHOI-PHUC.txt"} <= set(z.namelist())
-    z.extractall(tmp_path / "restore")
-    # bản khôi phục: CSDL đọc được, bí mật giải mã được bằng .enc_key đi kèm
-    import base64
-    import json
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-    key = base64.urlsafe_b64decode((tmp_path / "restore" / ".enc_key").read_text().strip())
-    raw = sqlite3.connect(tmp_path / "restore" / "itops.db").execute("select config from checks where id=?", (c["id"],)).fetchone()[0]
-    blob = base64.urlsafe_b64decode(json.loads(raw)["password"][5:])
+    names = set(z.namelist())
+    assert {"db/manifest.json", "db/checks.jsonl", "db/audit_logs.jsonl", ".secret_key", ".enc_key", "KHOI-PHUC.txt"} <= names
+    man = json.loads(z.read("db/manifest.json"))
+    assert man["revision"] == "0003" and man["tables"]["checks"] >= 1 and man["tables"]["users"] >= 1
+    assert not list((tmp_path / "bk").glob("*.part")), "không để lại file dở"
+    # bí mật trong bản sao lưu vẫn ở dạng mã hoá, giải được bằng .enc_key đi kèm
+    rows = [json.loads(line) for line in z.read("db/checks.jsonl").splitlines()]
+    raw = next(r for r in rows if r["id"] == c["id"])["config"]["password"]
+    assert raw.startswith("enc2:") and "BiMatSaoLuu" not in z.read("db/checks.jsonl").decode()
+    key = base64.urlsafe_b64decode(z.read(".enc_key").decode().strip())
+    blob = base64.urlsafe_b64decode(raw[5:])
     assert AESGCM(key).decrypt(blob[:12], blob[12:], b"itops-v2").decode() == "BiMatSaoLuu"
     assert any(a["action"] == "backup" for a in client.get("/api/audit", headers=admin).json())
+    # khôi phục sang CSDL trống khác → đủ bản ghi, đúng kiểu, sequence nối tiếp, audit vẫn chỉ-ghi-thêm
+    with scratch_db() as eng:
+        keys_dir = tmp_path / "keys"
+        keys_dir.mkdir()
+        monkeypatch.setattr(admin_tools, "engine", eng)
+        monkeypatch.setattr(admin_tools, "SessionLocal", sessionmaker(bind=eng))
+        monkeypatch.setattr(admin_tools, "DATA_DIR", str(keys_dir))
+        msg = admin_tools.restore(str(out))
+        assert "Đã khôi phục" in msg
+        assert (keys_dir / ".enc_key").read_bytes() == z.read(".enc_key")
+        with eng.connect() as conn:
+            for t, n in man["tables"].items():
+                got = conn.execute(text(f'select count(*) from "{t}"')).scalar()
+                assert got == n + (1 if t == "audit_logs" else 0), t      # +1 = dòng audit "restore"
+            cfg = conn.execute(text("select config from checks where id=:i"), {"i": c["id"]}).scalar()
+            assert cfg["password"] == raw and cfg["port"] == 22                       # json → dict
+            assert conn.execute(text("select pg_typeof(config)::text from checks limit 1")).scalar() == "json"
+            assert conn.execute(text("select version_num from alembic_version")).scalar() == "0003"
+            nid = conn.execute(text("select nextval(pg_get_serial_sequence('checks','id'))")).scalar()
+            assert nid > max(r["id"] for r in rows), "sequence phải nối tiếp id lớn nhất đã nạp"
+        with pytest.raises(SystemExit, match="đang có dữ liệu"):
+            admin_tools.restore(str(out))                       # không ghi đè khi chưa --wipe
+        assert "Đã khôi phục" in admin_tools.restore(str(out), wipe=True)
+        # bản sao lưu hỏng + --wipe → báo lỗi, dữ liệu đang có KHÔNG bị xoá (wipe và nạp chung một transaction)
+        bad = tmp_path / "hong.zip"
+        with zipfile.ZipFile(bad, "w") as zb:
+            for n in z.namelist():
+                zb.writestr(n, z.read(n) if n != "db/checks.jsonl" else b"")
+        with pytest.raises(SystemExit, match="không khớp"):
+            admin_tools.restore(str(bad), wipe=True)
+        with eng.connect() as conn:
+            assert conn.execute(text("select count(*) from checks")).scalar() == man["tables"]["checks"]
     for i in range(3):
         (tmp_path / "bk" / f"itops-backup-2000010{i}-000000.zip").write_bytes(b"x")
     assert admin_tools.prune_backups(str(tmp_path / "bk"), keep=2) == 2

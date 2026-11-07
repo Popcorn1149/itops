@@ -12,6 +12,7 @@ Bản tách riêng khỏi bản đang chạy (`Documents\itops`) để làm cấ
 | 7–8 | Dữ liệu mẫu có log/cảnh báo như thật; sửa lỗi tách tên user trong log đăng nhập sai |
 | 9 | Công cụ mô phỏng thiết bị (gói tin thật); vá lỗ hổng trap vượt bộ lọc IP qua agentAddress |
 | 10 | Giao diện Sáng/Tối/Theo hệ thống, ghim/bỏ ghim thanh bên; giữ lý do đăng xuất qua lần tải lại |
+| 11 | **PostgreSQL** thay SQLite (tự chạy kèm khi demo), sao lưu/khôi phục mới, chuyển dữ liệu v1, ADR agent + chính sách event log |
 
 Chi tiết cơ chế bảo mật: **`SECURITY.md`**. Lý do các quyết định: **`DECISIONS/`**.
 
@@ -27,12 +28,13 @@ Chi tiết cơ chế bảo mật: **`SECURITY.md`**. Lý do các quyết định
 | Khoá | 1 khoá vừa ký phiên vừa mã hoá | **Tách 2 khoá**, mã hoá **AES-256-GCM** |
 | Audit | Ai / làm gì / khi nào | **5W1H** (thêm IP, trình duyệt, trước→sau, lý do), **không sửa/xoá được** |
 | Lệnh SSH tuỳ chỉnh | Chạy được lệnh bất kỳ | **Khoá mặc định** |
+| CSDL | SQLite (`itops.db`) | **PostgreSQL 17** – demo: tự tải + tự chạy kèm, chỉ nghe 127.0.0.1 (cổng 5433 / 5434) |
 | Nâng cấp CSDL | `auto_migrate` (chỉ thêm cột) | **Alembic** |
-| Sao lưu | Không có | **Tự động mỗi ngày** (CSDL + 2 khoá + archive) |
+| Sao lưu | Không có | **Tự động mỗi ngày** (CSDL + 2 khoá + archive), **khôi phục** bằng 1 lệnh |
 
 ## Chạy lần đầu (máy Windows)
 1. Cài **Python** và **VS Code** (khi cài Python tick "Add python.exe to PATH").
-2. Giải nén, bấm đúp **`CAI-DAT.bat`** → cuối cùng in ra tài khoản admin, **lưu lại**.
+2. Giải nén, bấm đúp **`CAI-DAT.bat`** (cần Internet: thư viện Python + PostgreSQL di động ~30 MB) → cuối cùng in ra tài khoản admin, **lưu lại**.
 3. VS Code → Ctrl+Shift+D → **▶ Chạy IT Ops (dữ liệu mẫu)** → F5 → `http://127.0.0.1:8100`.
 4. Chuẩn bị **Google Authenticator** hoặc **Microsoft Authenticator** trên điện thoại – lần đăng nhập đầu admin phải bật 2FA.
 
@@ -53,7 +55,8 @@ Chi tiết cơ chế bảo mật: **`SECURITY.md`**. Lý do các quyết định
 | 12 | Admin → Người dùng → **Đặt lại 2FA** của user ở bước 11 | User đó bị đăng xuất; đăng nhập lại không cần mã |
 | 13 | **Giám sát → Thêm check → SSH**, điền ô "Lệnh tuỳ chỉnh" → Lưu | Báo lỗi "đang bị khoá (… chỉ để đọc)" |
 | 14 | Để yên trình duyệt **> 30 phút**, rồi bấm sang trang khác | Về màn hình đăng nhập với thông báo "hết hạn do không thao tác" |
-| 15 | Task VS Code **7. Sao lưu dữ liệu** | File `.zip` trong `backend/data-v2-dev/backups`, có `itops.db`, `.secret_key`, `.enc_key` |
+| 15 | Task VS Code **7. Sao lưu dữ liệu** | File `.zip` trong `backend/data-v2-dev/backups`, có thư mục `db/` (mỗi bảng 1 file), `.secret_key`, `.enc_key` |
+| 15b | Sửa/xoá vài site → **Shift+F5** dừng app → task **13. Khôi phục…** → dán đường dẫn file `.zip` ở bước 15 → F5 | Dữ liệu quay về lúc sao lưu; Audit có dòng "restore" |
 | 16 | Task **8. Tạo chứng chỉ HTTPS** → cấu hình **▶ Chạy IT Ops (HTTPS)** → `https://127.0.0.1:8443` | Trình duyệt cảnh báo chứng chỉ tự ký (bình thường) → Advanced → Proceed → đăng nhập được |
 | 17 | Mất điện thoại: dừng app → task **9. Đặt lại 2FA của admin** → chạy lại | Admin đăng nhập lại phải bật 2FA mới |
 
@@ -91,14 +94,33 @@ syslog UDP (RFC 3164 + 5424), syslog TCP (xuống dòng + octet-counting), trap 
 - Kết quả đúng: **Log thiết bị** có log gắn vào pfSense-HQ, SW-TANG3, ESXi-02, NAS-HN, UPS-RACK, SW-CORE, AP-HN, ERP-APP; **Cảnh báo** mở rồi tự đóng sau ~3 giây (WAN, cổng switch, datastore, UPS); còn mở: RAID NAS-HN, dò mật khẩu pfSense, AP khởi động lại.
 - Không thấy log: xem **Log thiết bị → Nguồn lạ** (IP bị chặn hiện ở đó) và **Cài đặt → Nhận Syslog/Trap → Nguồn được phép**.
 
+## CSDL PostgreSQL (khi chạy bằng VS Code)
+- Không cần cài gì: lần đầu app tự tải PostgreSQL 17 "di động" vào `backend/tools/pgsql` (CAI-DAT.bat đã tải sẵn), tự tạo CSDL với **mật khẩu ngẫu nhiên** và tự khởi động.
+- Dữ liệu mẫu: `backend/data-v2-dev/pgdata`, cổng **5433** · Thiết bị thật: `backend/data-v2-local/pgdata`, cổng **5434**. Chỉ nghe `127.0.0.1`.
+- Tắt app (Shift+F5) **không** tắt PostgreSQL (lần F5 sau nhanh hơn). Tắt hẳn: task **11 / 12. PostgreSQL: dừng**. Task **6. Xoá dữ liệu chạy thử** tự dừng PostgreSQL trước khi xoá.
+- Muốn xem bảng bằng DBeaver/pgAdmin: `python -m app.pg_local url` (cùng `DATA_DIR`, `PG_LOCAL=1`) in ra chuỗi kết nối – có mật khẩu, đừng chia sẻ màn hình lúc đó.
+- Đã có PostgreSQL riêng: bỏ `PG_LOCAL`, đặt `DATABASE_URL=postgresql+psycopg://user:pass@host:5432/itops`.
+- Lỗi "Cổng 5433 đang có chương trình khác dùng": đổi `PG_LOCAL_PORT` trong `.vscode/launch.json` (và trong tasks.json).
+
 ## Dùng lại dữ liệu thật của bản đang chạy (tuỳ chọn)
-Bản v2 **tự nâng cấp** CSDL bản cũ (đã thử: 3 site / 35 tài sản / 26 check / audit cũ còn nguyên; mật khẩu thiết bị và token Telegram được mã hoá lại và giải mã đúng).
-1. **Dừng** bản đang chạy (để CSDL không đang ghi).
-2. Chép `itops.db` **và** `.secret_key` từ `itops\backend\data-local` sang `itops-v2\backend\data-v2-local` (thiếu `.secret_key` thì mật khẩu thiết bị cũ không giải mã được).
-3. Chạy v2 bằng cấu hình **▶ Thiết bị thật** → đăng nhập bằng mật khẩu admin **cũ** → bật 2FA.
-Nâng cấp là **một chiều**: CSDL đã mở bằng v2 không dùng lại cho bản cũ được – luôn làm trên **bản chép**.
+Bản v1 dùng SQLite → v2 **chuyển** sang PostgreSQL bằng lệnh có sẵn. File của v1 chỉ được **đọc**, không bị sửa.
+1. **Dừng** bản đang chạy (để CSDL không đang ghi), chép `itops.db`, `.secret_key` (và `.enc_key` nếu có) từ `itops\backend\data-local` sang một thư mục tạm.
+2. Ở v2: chạy **▶ Thiết bị thật** một lần cho PostgreSQL được tạo → Shift+F5.
+3. Task **14. Chuyển dữ liệu bản v1 (SQLite)…** → dán đường dẫn `itops.db` ở bước 1. Lệnh **xoá dữ liệu v2 đang có trong cấu hình thiết bị thật**, chép dữ liệu + khoá, in số bản ghi từng bảng.
+4. F5 **▶ Thiết bị thật** → lần khởi động này tự mã hoá lại mật khẩu thiết bị kiểu cũ sang AES-256-GCM → đăng nhập bằng mật khẩu admin **cũ** → bật 2FA.
+Thiếu `.secret_key` của v1 thì mật khẩu thiết bị cũ không giải mã được (phải nhập lại). Phiên đăng nhập cũ không chuyển.
+
+## Chạy thật trên máy chủ Linux (sau này)
+`docker-compose.yml` đã có sẵn 2 dịch vụ: `db` (image `postgres:17-alpine` chính thức) và `itops` (host network để thấy đúng IP thiết bị gửi log). Docker Engine trên Linux miễn phí, không cần Docker Desktop.
+`cp .env.example .env` → đặt `ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `DEMO_DATA=false` → `docker compose up -d --build`. Chuyển dữ liệu từ máy demo: sao lưu ở máy demo → chép `.zip` lên máy chủ → `docker compose exec itops python -m app.admin_tools restore /data/<file>.zip --wipe`.
+*(Phần Docker chưa chạy thử được trong môi trường đóng gói – sẽ kiểm khi dựng VM.)*
+
+## Agent cho máy trạm (bước tiếp theo)
+Thiết kế đã chốt ở **`DECISIONS/0004`**: agent Go, chỉ gửi lên + chỉ đọc (không nhận lệnh từ xa), Windows + Linux trước.
+Event log **chỉ lấy sự kiện cần xử lý** (đăng nhập sai, khoá tài khoản, thêm quyền admin, xoá nhật ký, tắt máy đột ngột, dịch vụ chết, mã độc, tắt Defender…), **bỏ đăng nhập/đăng xuất thường ngày** và đăng nhập của dịch vụ/tài khoản máy để quản trị viên không bị nhiễu.
 
 ## Chạy test
+Test tự dựng một PostgreSQL tạm (thư mục tạm, cổng ngẫu nhiên) rồi xoá – **không đụng** dữ liệu mẫu hay dữ liệu thật. Task VS Code **5** làm sẵn các bước dưới.
 ```
 cd backend
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
@@ -106,13 +128,10 @@ cd backend
 .venv\Scripts\python.exe -m playwright install chromium
 .venv\Scripts\python.exe tests\e2e_security.py
 ```
+Đã có PostgreSQL dùng để test: đặt `TEST_DATABASE_URL=postgresql://user:pass@host:5432/postgres` (user có quyền CREATEDB) – mỗi lần chạy tạo một CSDL `itops_test_…` rồi xoá.
 
-## Kết quả kiểm tra trước khi đóng gói (Linux, Python 3.13, Chrome)
-- pytest: **184 đạt**, 3 lỗi do môi trường thử không có lệnh `ping` (Windows có sẵn).
-- E2E giao diện cũ: **76/78** (2 bước cần `ping`). E2E bảo mật mới: **22/22**.
-- Cài sạch từ `requirements-dev.txt` trên môi trường mới: chạy được.
-- Nâng cấp CSDL thật từ code bản v1: đạt.
-- Ruff / ESLint: không có lỗi mới (còn 5 / 2 cảnh báo có sẵn từ bản gốc).
+## Kết quả kiểm tra trước khi đóng gói (Linux, Python 3.13, PostgreSQL 17.11, Chrome)
+RESULTS_PLACEHOLDER
 
 ## Sau khi `git clone`
 `backend/static` (giao diện đã build) không nằm trong Git → chạy task **2** rồi **3** (cần Node.js) để build. File zip đã có sẵn bản build.

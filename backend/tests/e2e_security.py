@@ -3,7 +3,6 @@ Chạy:  python tests/e2e_security.py        (cần đã build frontend vào bac
        E2E_CHANNEL=chrome python tests/e2e_security.py   (dùng Chrome cài sẵn thay cho Chromium của Playwright)
 Ảnh chụp lưu ở thư mục E2E_SHOTS (mặc định: thư mục tạm)."""
 import os
-import sqlite3
 import sys
 import tempfile
 import time
@@ -19,6 +18,9 @@ os.makedirs(SHOTS, exist_ok=True)
 
 
 def totp(secret, ahead=0):
+    # app.security nạp app.db (cần cấu hình CSDL) → trỏ vào CSDL của server E2E đang chạy
+    os.environ.setdefault("DATABASE_URL", E.E2E_DB_URL.replace("postgresql://", "postgresql+psycopg://"))
+    os.environ.pop("PG_LOCAL", None)
     from app.security import totp_now   # cùng thuật toán RFC 6238 với server
     return totp_now(secret, time.time() + ahead)
 
@@ -26,7 +28,6 @@ def totp(secret, ahead=0):
 def main():
     os.environ["E2E_REQUIRE_2FA"] = "1"
     proc, data_dir = E.start_server(demo=True)
-    db = os.path.join(data_dir, "itops.db")
     errors = []
     try:
         with sync_playwright() as pw:
@@ -116,10 +117,10 @@ def main():
             page.screenshot(path=os.path.join(SHOTS, "4-audit.png"))
 
             print("[5] Không thao tác quá lâu → tự đăng xuất, có thông báo")
-            c = sqlite3.connect(db)
-            old = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=2)).isoformat(sep=" ")
-            c.execute("update login_sessions set last_seen=? where revoked_at is null", (old,))
-            c.commit(); c.close()
+            import psycopg
+            old = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=2)
+            with psycopg.connect(E.db_url(data_dir), autocommit=True) as c:
+                c.execute("update login_sessions set last_seen=%s where revoked_at is null", (old,))
             page.goto(E.BASE + "/#/sites")
             page.reload()
             page.wait_for_selector("h2:has-text('Đăng nhập')", timeout=8000)

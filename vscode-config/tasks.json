@@ -3,13 +3,21 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "0. Tải PostgreSQL di động (lần đầu app cũng tự tải)",
+      "type": "shell",
+      "options": { "cwd": "${workspaceFolder}/backend", "env": { "PYTHONUTF8": "1" } },
+      "windows": { "command": ".\\.venv\\Scripts\\python.exe tools\\get_postgres.py" },
+      "command": "./.venv/bin/python tools/get_postgres.py",
+      "problemMatcher": []
+    },
+    {
       "label": "1. Cài đặt lần đầu (Python)",
       "type": "shell",
       "options": { "cwd": "${workspaceFolder}/backend" },
       "windows": {
-        "command": "if (!(Test-Path .venv)) { python -m venv .venv }; .\\.venv\\Scripts\\python.exe -m pip install --upgrade pip; .\\.venv\\Scripts\\python.exe -m pip install -r requirements.txt; Write-Host ''; Write-Host 'XONG - bam F5 de chay' -ForegroundColor Green"
+        "command": "if (!(Test-Path .venv)) { python -m venv .venv }; .\\.venv\\Scripts\\python.exe -m pip install --upgrade pip; .\\.venv\\Scripts\\python.exe -m pip install -r requirements.txt; .\\.venv\\Scripts\\python.exe tools\\get_postgres.py; Write-Host ''; Write-Host 'XONG - bam F5 de chay' -ForegroundColor Green"
       },
-      "command": "[ -d .venv ] || python3 -m venv .venv; ./.venv/bin/python -m pip install --upgrade pip && ./.venv/bin/python -m pip install -r requirements.txt && echo 'XONG - bam F5 de chay'",
+      "command": "[ -d .venv ] || python3 -m venv .venv; ./.venv/bin/python -m pip install --upgrade pip && ./.venv/bin/python -m pip install -r requirements.txt && ./.venv/bin/python tools/get_postgres.py && echo 'XONG - bam F5 de chay'",
       "problemMatcher": []
     },
     {
@@ -38,23 +46,25 @@
     {
       "label": "5. Chạy kiểm thử (pytest)",
       "type": "shell",
-      "options": { "cwd": "${workspaceFolder}/backend" },
-      "windows": { "command": ".\\.venv\\Scripts\\python.exe -m pip install pytest==9.2.0 aiosmtpd==1.4.6; .\\.venv\\Scripts\\python.exe -m pytest tests -q -p no:cacheprovider --ignore=tests/test_real_agents.py --ignore=tests/load_test.py" },
-      "command": "./.venv/bin/python -m pip install pytest==9.2.0 aiosmtpd==1.4.6 && ./.venv/bin/python -m pytest tests -q -p no:cacheprovider --ignore=tests/load_test.py",
+      // test tự dựng PostgreSQL tạm (thư mục tạm, cổng ngẫu nhiên) rồi xoá – không đụng dữ liệu đang chạy
+      "options": { "cwd": "${workspaceFolder}/backend", "env": { "PYTHONUTF8": "1" } },
+      "windows": { "command": ".\\.venv\\Scripts\\python.exe -m pip install -q -r requirements-dev.txt; .\\.venv\\Scripts\\python.exe -m pytest tests -q -p no:cacheprovider --ignore=tests/test_real_agents.py --ignore=tests/load_test.py" },
+      "command": "./.venv/bin/python -m pip install -q -r requirements-dev.txt && ./.venv/bin/python -m pytest tests -q -p no:cacheprovider --ignore=tests/load_test.py",
       "problemMatcher": []
     },
     {
       "label": "6. Xoá dữ liệu chạy thử (làm lại từ đầu)",
       "type": "shell",
-      "options": { "cwd": "${workspaceFolder}/backend" },
-      "windows": { "command": "Remove-Item -Recurse -Force data-v2-dev -ErrorAction SilentlyContinue; Write-Host 'Da xoa data-v2-dev'" },
-      "command": "rm -rf data-v2-dev && echo 'Da xoa data-v2-dev'",
+      // dừng PostgreSQL của dữ liệu mẫu trước, rồi mới xoá thư mục (Windows không cho xoá file đang mở)
+      "options": { "cwd": "${workspaceFolder}/backend", "env": { "DATA_DIR": "${workspaceFolder}/backend/data-v2-dev", "PG_LOCAL": "1", "PG_LOCAL_PORT": "5433", "PYTHONUTF8": "1" } },
+      "windows": { "command": ".\\.venv\\Scripts\\python.exe -m app.pg_local stop; Remove-Item -Recurse -Force data-v2-dev -ErrorAction SilentlyContinue; Write-Host 'Da xoa data-v2-dev'" },
+      "command": "./.venv/bin/python -m app.pg_local stop; rm -rf data-v2-dev && echo 'Da xoa data-v2-dev'",
       "problemMatcher": []
     },
     {
       "label": "7. Sao lưu dữ liệu (CSDL + khoá) – dữ liệu mẫu",
       "type": "shell",
-      "options": { "cwd": "${workspaceFolder}/backend", "env": { "DATA_DIR": "${workspaceFolder}/backend/data-v2-dev", "PYTHONUTF8": "1" } },
+      "options": { "cwd": "${workspaceFolder}/backend", "env": { "DATA_DIR": "${workspaceFolder}/backend/data-v2-dev", "PG_LOCAL": "1", "PG_LOCAL_PORT": "5433", "PYTHONUTF8": "1" } },
       "windows": { "command": ".\\.venv\\Scripts\\python.exe -m app.admin_tools backup" },
       "command": "./.venv/bin/python -m app.admin_tools backup",
       "problemMatcher": []
@@ -62,7 +72,7 @@
     {
       "label": "8. Tạo chứng chỉ HTTPS (tự ký) – dữ liệu mẫu",
       "type": "shell",
-      "options": { "cwd": "${workspaceFolder}/backend", "env": { "DATA_DIR": "${workspaceFolder}/backend/data-v2-dev", "PYTHONUTF8": "1" } },
+      "options": { "cwd": "${workspaceFolder}/backend", "env": { "DATA_DIR": "${workspaceFolder}/backend/data-v2-dev", "PG_LOCAL": "1", "PG_LOCAL_PORT": "5433", "PYTHONUTF8": "1" } },
       "windows": { "command": ".\\.venv\\Scripts\\python.exe -m app.admin_tools gen-cert localhost 127.0.0.1 $env:COMPUTERNAME" },
       "command": "./.venv/bin/python -m app.admin_tools gen-cert localhost 127.0.0.1 $(hostname)",
       "problemMatcher": []
@@ -70,7 +80,7 @@
     {
       "label": "9. Đặt lại 2FA của admin (mất điện thoại) – dữ liệu mẫu",
       "type": "shell",
-      "options": { "cwd": "${workspaceFolder}/backend", "env": { "DATA_DIR": "${workspaceFolder}/backend/data-v2-dev", "PYTHONUTF8": "1" } },
+      "options": { "cwd": "${workspaceFolder}/backend", "env": { "DATA_DIR": "${workspaceFolder}/backend/data-v2-dev", "PG_LOCAL": "1", "PG_LOCAL_PORT": "5433", "PYTHONUTF8": "1" } },
       "windows": { "command": ".\\.venv\\Scripts\\python.exe -m app.admin_tools reset-2fa admin" },
       "command": "./.venv/bin/python -m app.admin_tools reset-2fa admin",
       "problemMatcher": []
@@ -82,6 +92,46 @@
       "windows": { "command": ".\\.venv\\Scripts\\python.exe tools\\mo_phong_thiet_bi.py --host 127.0.0.1 --syslog-port 6514 --trap-port 6162" },
       "command": "./.venv/bin/python tools/mo_phong_thiet_bi.py --host 127.0.0.1 --syslog-port 6514 --trap-port 6162",
       "problemMatcher": []
+    },
+    {
+      "label": "11. PostgreSQL: dừng (dữ liệu mẫu)",
+      "type": "shell",
+      "options": { "cwd": "${workspaceFolder}/backend", "env": { "DATA_DIR": "${workspaceFolder}/backend/data-v2-dev", "PG_LOCAL": "1", "PG_LOCAL_PORT": "5433", "PYTHONUTF8": "1" } },
+      "windows": { "command": ".\\.venv\\Scripts\\python.exe -m app.pg_local stop" },
+      "command": "./.venv/bin/python -m app.pg_local stop",
+      "problemMatcher": []
+    },
+    {
+      "label": "12. PostgreSQL: dừng (thiết bị thật)",
+      "type": "shell",
+      "options": { "cwd": "${workspaceFolder}/backend", "env": { "DATA_DIR": "${workspaceFolder}/backend/data-v2-local", "PG_LOCAL": "1", "PG_LOCAL_PORT": "5434", "PYTHONUTF8": "1" } },
+      "windows": { "command": ".\\.venv\\Scripts\\python.exe -m app.pg_local stop" },
+      "command": "./.venv/bin/python -m app.pg_local stop",
+      "problemMatcher": []
+    },
+    {
+      "label": "13. Khôi phục từ bản sao lưu (dữ liệu mẫu) – XOÁ dữ liệu hiện tại",
+      // Dừng app trước (Shift+F5). File .zip nằm ở backend/data-v2-dev/backups
+      "type": "shell",
+      "options": { "cwd": "${workspaceFolder}/backend", "env": { "DATA_DIR": "${workspaceFolder}/backend/data-v2-dev", "PG_LOCAL": "1", "PG_LOCAL_PORT": "5433", "PYTHONUTF8": "1" } },
+      "windows": { "command": ".\\.venv\\Scripts\\python.exe -m app.admin_tools restore \"${input:backupZip}\" --wipe" },
+      "command": "./.venv/bin/python -m app.admin_tools restore \"${input:backupZip}\" --wipe",
+      "problemMatcher": []
+    },
+    {
+      "label": "14. Chuyển dữ liệu bản v1 (SQLite) → cấu hình thiết bị thật – XOÁ dữ liệu v2 hiện có",
+      // Dừng app trước. Chọn file itops.db của v1 (vd. C:\\...\\itops\\backend\\data-local\\itops.db).
+      // Khoá .secret_key/.enc_key lấy cùng thư mục với itops.db → mật khẩu thiết bị đã lưu vẫn dùng được.
+      // Bản v1 KHÔNG bị sửa (chỉ đọc).
+      "type": "shell",
+      "options": { "cwd": "${workspaceFolder}/backend", "env": { "DATA_DIR": "${workspaceFolder}/backend/data-v2-local", "PG_LOCAL": "1", "PG_LOCAL_PORT": "5434", "PYTHONUTF8": "1" } },
+      "windows": { "command": ".\\.venv\\Scripts\\python.exe -m app.admin_tools import-sqlite \"${input:sqliteFile}\" --wipe" },
+      "command": "./.venv/bin/python -m app.admin_tools import-sqlite \"${input:sqliteFile}\" --wipe",
+      "problemMatcher": []
     }
+  ],
+  "inputs": [
+    { "id": "backupZip", "type": "promptString", "description": "Đường dẫn file itops-backup-....zip" },
+    { "id": "sqliteFile", "type": "promptString", "description": "Đường dẫn file itops.db của bản v1 (chỉ đọc, không bị sửa)" }
   ]
 }

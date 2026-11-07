@@ -17,6 +17,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PORT = 8765
 BASE = f"http://127.0.0.1:{PORT}"
 RESULTS = []
+E2E_DB_URL = ""   # đặt bởi start_server
 
 
 def check(name, cond, detail=""):
@@ -31,24 +32,84 @@ def api(method, path, body=None, token=None):
         return json.loads(r.read() or b"null")
 
 
+class _Server:
+    """Tiến trình uvicorn + CSDL PostgreSQL riêng cho lần chạy E2E; terminate() dừng app rồi dọn CSDL."""
+
+    def __init__(self, proc, cleanup):
+        self.proc, self._cleanup = proc, cleanup
+
+    def __getattr__(self, k):
+        return getattr(self.proc, k)
+
+    def terminate(self):
+        self.proc.terminate()
+        try:
+            self.proc.wait(10)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+        self._cleanup()
+
+
+def _e2e_database(data_dir):
+    """Giống tests/pgtest.py: TEST_DATABASE_URL → tạo CSDL riêng rồi xoá; không có → PostgreSQL kèm theo (PG_LOCAL) trong data_dir."""
+    import secrets
+    import socket as _so
+    admin = os.environ.get("TEST_DATABASE_URL", "").strip().replace("postgresql+psycopg://", "postgresql://")
+    if admin:
+        import psycopg
+        name = f"itops_e2e_{secrets.token_hex(4)}"
+        with psycopg.connect(admin, autocommit=True) as c:
+            c.execute(f'CREATE DATABASE "{name}" ENCODING \'UTF8\' TEMPLATE template0')
+        url = admin.rsplit("/", 1)[0].replace("postgresql://", "postgresql+psycopg://") + "/" + name
+
+        def cleanup():
+            with psycopg.connect(admin, autocommit=True) as c:
+                c.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+        return {"DATABASE_URL": url}, cleanup
+    x = _so.socket(); x.bind(("127.0.0.1", 0)); port = x.getsockname()[1]; x.close()
+
+    def cleanup():
+        subprocess.run([sys.executable, "-m", "app.pg_local", "stop"], cwd=ROOT, env={**os.environ, "DATA_DIR": data_dir},
+                       capture_output=True)
+    return {"PG_LOCAL": "1", "PG_LOCAL_PORT": str(port)}, cleanup
+
+
+def db_url(data_dir):
+    """URL psycopg tới CSDL của server E2E đang chạy (dùng cho bước cần sửa dữ liệu trực tiếp)."""
+    return E2E_DB_URL
+
+
 def start_server(demo=True):
     d = tempfile.mkdtemp(prefix="itops-e2e-")
+    dbenv, cleanup = _e2e_database(d)
     import socket as _so
     def _fp():
         x = _so.socket(); x.bind(("127.0.0.1", 0)); p_ = x.getsockname()[1]; x.close(); return p_
     globals()["RX_UDP"], globals()["RX_TRAP"] = _fp(), _fp()
     env = {**os.environ, "SYSLOG_UDP_PORT": str(RX_UDP), "SYSLOG_TCP_PORT": str(RX_UDP), "TRAP_PORT": str(RX_TRAP), "DATA_DIR": d, "DEMO_DATA": "true" if demo else "false", "ADMIN_PASSWORD": "Admin@12345", "LOG_LEVEL": "WARNING",
            "REQUIRE_2FA_ADMIN": os.environ.get("E2E_REQUIRE_2FA", "0"),
-           "DEMO_LOGS": "0"}   # E2E cần dữ liệu cố định: tắt bộ phát log mẫu
+           "DEMO_LOGS": "0",   # E2E cần dữ liệu cố định: tắt bộ phát log mẫu
+           **dbenv}
+    if "DATABASE_URL" not in dbenv:
+        env.pop("DATABASE_URL", None)
     log = open(os.path.join(d, "server.log"), "w")
     p = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(PORT)], cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
-    for _ in range(60):
+    for _ in range(120):
         try:
             urllib.request.urlopen(BASE + "/api/health")
-            return p, d
+            if "DATABASE_URL" in dbenv:
+                url = dbenv["DATABASE_URL"]
+            else:
+                pw = open(os.path.join(d, ".pg_password"), encoding="utf-8").read().strip()
+                url = f"postgresql://itops:{pw}@127.0.0.1:{dbenv['PG_LOCAL_PORT']}/itops"
+            globals()["E2E_DB_URL"] = url.replace("postgresql+psycopg://", "postgresql://")
+            return _Server(p, cleanup), d
         except Exception:
+            if p.poll() is not None:
+                break
             time.sleep(0.25)
-    raise RuntimeError("server không lên")
+    cleanup()
+    raise RuntimeError("server không lên – xem " + os.path.join(d, "server.log"))
 
 
 def login(page, user="admin", pw="Admin@12345"):

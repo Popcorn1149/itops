@@ -32,9 +32,6 @@ VERSION = "1.0.0"
 
 def init_db():
     m = run_migrations()
-    if m["legacy"]:
-        log.warning("CSDL từ bản cũ (chưa có Alembic) → đã đưa về migration nền%s",
-                    f", bổ sung: {', '.join(m['added'])}" if m["added"] else "")
     if m["from"] != m["to"]:
         log.warning("Đã nâng cấp CSDL: %s → %s", m["from"] or "(trống)", m["to"])
     db = SessionLocal()

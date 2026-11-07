@@ -1,7 +1,7 @@
 # ADR 0001 – Dùng Alembic quản lý thay đổi CSDL
 
 - **Ngày:** 2026-11-08
-- **Trạng thái:** Đã áp dụng (bản v2)
+- **Trạng thái:** Đã áp dụng (bản v2). Phần SQLite (tự nâng cấp CSDL v1, chế độ batch) được thay bằng ADR 0003 – PostgreSQL.
 
 ## Bối cảnh
 Bản v1 tạo bảng bằng `create_all` và hàm `auto_migrate()` tự viết: chỉ **thêm cột**, không đổi kiểu, không đổi tên, không rollback, không có lịch sử phiên bản schema. Mỗi tính năng mới đụng tới schema đều có rủi ro mất dữ liệu khi nâng cấp.

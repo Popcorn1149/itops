@@ -341,31 +341,67 @@ def test_retention_and_max_rows(client, admin, clean, rx, monkeypatch):
     assert len(msgs) == 6 and all(m.startswith("moi") for m in msgs)
 
 
-def test_legacy_db_upgrades_via_alembic(tmp_path):
-    """CSDL tạo bởi phiên bản cũ (chưa có Alembic, bảng alerts thiếu cột mới) phải tự nâng cấp lên head, giữ dữ liệu."""
+def test_import_sqlite_v1_into_postgresql(tmp_path, monkeypatch):
+    """Dữ liệu bản v1 (SQLite, schema migration 0001, chưa có cột/bảng mới) chuyển sang PostgreSQL:
+    đúng kiểu (bool/JSON/datetime), khoá ngoại tự tham chiếu, cột mới lấy default, sequence nối tiếp, khoá được chép."""
     import sqlite3
-    from sqlalchemy import create_engine, inspect
+    from alembic import command
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.orm import sessionmaker
+    from app import admin_tools
     from app import db as dbm
-    path = tmp_path / "old.db"
+    from tests.pgtest import scratch_db
+    src_dir = tmp_path / "v1"
+    src_dir.mkdir()
+    path = src_dir / "itops.db"
+    eng = create_engine(f"sqlite:///{path}")
+    with eng.begin() as conn:
+        command.upgrade(dbm._alembic_config(conn), "0001")     # đúng schema bản v1
+        conn.execute(text("DROP TABLE alembic_version"))         # v1 không có Alembic
+    eng.dispose()
     c = sqlite3.connect(path)
-    c.execute("CREATE TABLE alerts (id INTEGER PRIMARY KEY, check_id INTEGER, asset_id INTEGER, site_id INTEGER, severity VARCHAR(16), title VARCHAR(255), message TEXT, status VARCHAR(16), acked_by VARCHAR(64), opened_at DATETIME, resolved_at DATETIME)")
-    c.execute("INSERT INTO alerts (title, severity, status, message, acked_by, opened_at) VALUES ('cu', 'critical', 'open', '', '', '2026-10-01')")
+
+    def ins(table, **vals):     # điền cột NOT NULL còn thiếu bằng giá trị rỗng theo kiểu – như dữ liệu v1 thật
+        for _, name, typ, notnull, _, pk in c.execute(f"PRAGMA table_info({table})"):
+            if notnull and not pk and name not in vals:
+                vals[name] = 0 if typ.upper() in ("INTEGER", "BOOLEAN", "FLOAT") else "{}" if typ.upper() == "JSON" else \
+                    "2026-01-01 00:00:00" if typ.upper() == "DATETIME" else ""
+        c.execute(f"INSERT INTO {table} ({', '.join(vals)}) VALUES ({', '.join('?' * len(vals))})", tuple(vals.values()))
+
+    ins("sites", id=1, name="HQ")
+    ins("assets", id=2, parent_id=5, name="vm01", site_id=1, backup=1, meta='{"k": 1}')     # con được chèn trước cha
+    ins("assets", id=5, name="esx01", site_id=1, backup=0)
+    ins("alerts", id=7, asset_id=2, site_id=1, severity="down", title="vm01 DOWN", status="open", count=3,
+        opened_at="2026-10-01 08:30:00.123456", suppressed=0, sla_breached=1)
+    ins("users", id=1, username="admin", password_hash="x", role="admin", full_name="Quản trị")
     c.commit()
     c.close()
-    eng = create_engine(f"sqlite:///{path}")
-    orig = dbm.engine
-    dbm.engine = eng
-    try:
-        info = dbm.run_migrations()
-        again = dbm.run_migrations()          # chạy lần 2 không làm gì thêm
-    finally:
-        dbm.engine = orig
-    assert info["legacy"] and "alerts.source" in info["added"] and "alerts.dedupe_key" in info["added"]
-    assert "users" in info["added"]           # bảng thiếu hẳn cũng được tạo
-    assert info["from"] == dbm.BASELINE_REV and info["to"] == again["to"] and not again["legacy"] and again["from"] == again["to"]
-    assert "alembic_version" in inspect(eng).get_table_names()
-    row = sqlite3.connect(path).execute("select title, source, count from alerts").fetchone()
-    assert row == ("cu", "check", 1)
+    (src_dir / ".enc_key").write_text("khoa-ma-hoa-v1")
+    (src_dir / ".secret_key").write_text("khoa-ky-v1")
+    with scratch_db() as pg:
+        keys_dir = tmp_path / "data"
+        keys_dir.mkdir()
+        (keys_dir / ".enc_key").write_text("khoa-dang-co")
+        monkeypatch.setattr(admin_tools, "engine", pg)
+        monkeypatch.setattr(admin_tools, "SessionLocal", sessionmaker(bind=pg))
+        monkeypatch.setattr(admin_tools, "DATA_DIR", str(keys_dir))
+        out = admin_tools.import_sqlite(str(path))
+        assert "Đã chuyển" in out and "alerts" in out
+        with pg.connect() as conn:
+            a = conn.execute(text("select title, sla_breached, suppressed, opened_at, count, last_seen from alerts where id=7")).one()
+            assert a.title == "vm01 DOWN" and a.sla_breached is True and a.suppressed is False and a.count == 3
+            assert a.opened_at.isoformat() == "2026-10-01T08:30:00.123456"
+            vm = conn.execute(text("select parent_id, backup, meta from assets where id=2")).one()
+            assert vm.parent_id == 5 and vm.backup is True and vm.meta == {"k": 1}
+            u = conn.execute(text("select full_name, totp_enabled, totp_last_step from users where username='admin'")).one()
+            assert u.full_name == "Quản trị" and u.totp_enabled is False and u.totp_last_step == 0   # cột mới (0002) lấy default
+            assert conn.execute(text("select nextval(pg_get_serial_sequence('assets','id'))")).scalar() > 5
+            assert conn.execute(text("select version_num from alembic_version")).scalar() == "0003"
+        assert (keys_dir / ".enc_key").read_text() == "khoa-ma-hoa-v1"
+        assert any(p.name.startswith(".enc_key.bak-") and p.read_text() == "khoa-dang-co" for p in keys_dir.iterdir())
+        import pytest
+        with pytest.raises(SystemExit, match="đang có dữ liệu"):
+            admin_tools.import_sqlite(str(path))
 
 
 def test_source_allowlist(client, admin, viewer, clean, rx):

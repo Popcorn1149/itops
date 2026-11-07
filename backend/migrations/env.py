@@ -1,4 +1,4 @@
-"""Alembic env – dùng chung engine/metadata của app (app.db) nên DATA_DIR / DATABASE_URL áp dụng giống hệt khi chạy app.
+"""Alembic env – dùng chung engine/metadata của app (app.db) nên DATA_DIR / DATABASE_URL / PG_LOCAL áp dụng giống hệt khi chạy app.
 
 Chạy tay (trong thư mục backend):
     alembic upgrade head                     # nâng cấp CSDL theo DATA_DIR hiện tại
@@ -16,7 +16,7 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     context.configure(url=str(engine.url), target_metadata=target_metadata, literal_binds=True,
-                      render_as_batch=True, dialect_opts={"paramstyle": "named"})
+                      dialect_opts={"paramstyle": "named"})
     with context.begin_transaction():
         context.run_migrations()
 
@@ -31,8 +31,8 @@ def run_migrations_online() -> None:
 
 
 def _run(connection) -> None:
-    # render_as_batch: SQLite không hỗ trợ ALTER đầy đủ → Alembic tự dựng lại bảng khi cần
-    context.configure(connection=connection, target_metadata=target_metadata, render_as_batch=True,
+    # PostgreSQL hỗ trợ ALTER đầy đủ → không cần render_as_batch (chỉ dành cho SQLite)
+    context.configure(connection=connection, target_metadata=target_metadata,
                       compare_type=True)
     with context.begin_transaction():
         context.run_migrations()
