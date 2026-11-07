@@ -12,7 +12,7 @@ Không cần Docker. Giao diện đã được build sẵn trong `backend/static
    (Nếu VS Code không tự mở: **File › Open Folder…** → chọn thư mục `itops-v2`.)
 2. VS Code hỏi cài extension Python thì chọn **Install**.
 3. Mở **Run and Debug** (Ctrl+Shift+D), chọn **▶ Chạy IT Ops (dữ liệu mẫu)** → bấm **F5**.
-4. Trình duyệt tự mở `http://127.0.0.1:8100`. Đăng nhập bằng tài khoản ghi trong file **`.env.local`** (CAI-DAT.bat in ra khi chạy xong).
+4. Trình duyệt tự mở `http://127.0.0.1:8100`. Đăng nhập bằng tài khoản ghi trong file **`.env.local`** (CAI-DAT.bat in ra khi chạy xong). Lần đầu admin phải **bật xác thực 2 lớp**: chuẩn bị Google Authenticator / Microsoft Authenticator trên điện thoại để quét mã QR.
 
 Dừng bằng **Shift+F5**.
 

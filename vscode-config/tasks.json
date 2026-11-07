@@ -39,8 +39,8 @@
       "label": "5. Chạy kiểm thử (pytest)",
       "type": "shell",
       "options": { "cwd": "${workspaceFolder}/backend" },
-      "windows": { "command": ".\\.venv\\Scripts\\python.exe -m pip install pytest aiosmtpd; .\\.venv\\Scripts\\python.exe -m pytest tests -q -p no:cacheprovider --ignore=tests/test_real_agents.py --ignore=tests/load_test.py" },
-      "command": "./.venv/bin/python -m pip install pytest aiosmtpd && ./.venv/bin/python -m pytest tests -q -p no:cacheprovider --ignore=tests/load_test.py",
+      "windows": { "command": ".\\.venv\\Scripts\\python.exe -m pip install pytest==9.2.0 aiosmtpd==1.4.6; .\\.venv\\Scripts\\python.exe -m pytest tests -q -p no:cacheprovider --ignore=tests/test_real_agents.py --ignore=tests/load_test.py" },
+      "command": "./.venv/bin/python -m pip install pytest==9.2.0 aiosmtpd==1.4.6 && ./.venv/bin/python -m pytest tests -q -p no:cacheprovider --ignore=tests/load_test.py",
       "problemMatcher": []
     },
     {

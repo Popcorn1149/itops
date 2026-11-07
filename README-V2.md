@@ -1,44 +1,83 @@
-# IT Ops Workspace – bản v2 (bản làm việc cho cấu trúc mới)
+# IT Ops Workspace – bản v2
 
-Bản này tách khỏi bản đang chạy ở `Documents\itops`. Nó được tạo ngày 07/11/2026 từ code mới nhất của bản đó, để làm cấu trúc mới (Git, tài liệu, Alembic, CI…) mà không ảnh hưởng tới tool đang dùng.
+Bản tách riêng khỏi bản đang chạy (`Documents\itops`) để làm cấu trúc mới. Tách từ code ngày 07/11/2026, quản lý bằng **Git** (`git log` để xem từng bước).
+
+| Commit | Nội dung |
+|---|---|
+| 1 | Bản nền: cổng 8100, dữ liệu riêng, mật khẩu admin trong `.env.local` |
+| 2 | Alembic – quản lý thay đổi CSDL, tự nâng cấp CSDL bản v1 |
+| 3–4 | Bảo mật P1 (backend) |
+| 5 | Giao diện bảo mật P1 + E2E |
+| 6 | Tài liệu: `SECURITY.md`, `DECISIONS/` |
+
+Chi tiết cơ chế bảo mật: **`SECURITY.md`**. Lý do các quyết định: **`DECISIONS/`**.
 
 ## Khác với bản đang chạy
-| Hạng mục | Bản đang chạy (`itops`) | Bản v2 (`itops-v2`) |
+| Hạng mục | Bản đang chạy (`itops`) | Bản v2 |
 |---|---|---|
-| Cổng web | 8000 | **8100** |
+| Cổng web | 8000 | **8100** (HTTPS: **8443**) |
 | Log/trap (dữ liệu mẫu) | 5514 / 5162 | **6514 / 6162**, chỉ nhận từ 127.0.0.1 |
-| Log/trap (thiết bị thật) | 514 / 162 | 514 / 162 (chỉ dùng khi máy này nhận log thật) |
-| Thư mục dữ liệu | `backend/data-dev`, `backend/data-local` | **`backend/data-v2-dev`, `backend/data-v2-local`** (bắt đầu trống, không chép DB thật) |
-| Mật khẩu admin | `admin12345` ghi trong `launch.json` | **Sinh ngẫu nhiên** vào `.env.local` khi chạy `CAI-DAT.bat`; `.env.local` không được commit |
-| PyYAML | Không khai báo (đi kèm uvicorn) | Khai báo `PyYAML==6.0.3` trong `requirements.txt` |
-| Rule Windows Firewall cho web | "ITOps Web" (8000) | "ITOps v2 Web" (8100) |
-| Bản build giao diện | 22 bản cũ trong `backend/static/assets` | Chỉ bản đang dùng (`index-BxGq9TUp.js`) |
+| Thư mục dữ liệu | `backend/data-dev`, `data-local` | **`backend/data-v2-dev`, `data-v2-local`** |
+| Mật khẩu admin ban đầu | `admin12345` ghi trong `launch.json` | Sinh ngẫu nhiên vào `.env.local` |
+| Đăng nhập | JWT trong localStorage, nhận cả `?token=` | **Cookie HttpOnly**, phiên phía server, tự đăng xuất sau 30 phút không thao tác |
+| 2FA | Không có | **Bắt buộc với admin** (TOTP) |
+| Khoá | 1 khoá vừa ký phiên vừa mã hoá | **Tách 2 khoá**, mã hoá **AES-256-GCM** |
+| Audit | Ai / làm gì / khi nào | **5W1H** (thêm IP, trình duyệt, trước→sau, lý do), **không sửa/xoá được** |
+| Lệnh SSH tuỳ chỉnh | Chạy được lệnh bất kỳ | **Khoá mặc định** |
+| Nâng cấp CSDL | `auto_migrate` (chỉ thêm cột) | **Alembic** |
+| Sao lưu | Không có | **Tự động mỗi ngày** (CSDL + 2 khoá + archive) |
 
-Code trong `backend/app` và `frontend/src` **giữ nguyên 100%** so với bản đang chạy.
+## Chạy lần đầu (máy Windows)
+1. Cài **Python** và **VS Code** (khi cài Python tick "Add python.exe to PATH").
+2. Giải nén, bấm đúp **`CAI-DAT.bat`** → cuối cùng in ra tài khoản admin, **lưu lại**.
+3. VS Code → Ctrl+Shift+D → **▶ Chạy IT Ops (dữ liệu mẫu)** → F5 → `http://127.0.0.1:8100`.
+4. Chuẩn bị **Google Authenticator** hoặc **Microsoft Authenticator** trên điện thoại – lần đăng nhập đầu admin phải bật 2FA.
 
-## Chạy trên máy khác
-1. Cài **Python** (cùng version với máy đang chạy là tốt nhất) và **VS Code**. Khi cài Python nhớ tick "Add python.exe to PATH".
-2. Giải nén, bấm đúp **`CAI-DAT.bat`**. Cuối cùng file sẽ in ra tài khoản admin; **lưu lại**.
-3. VS Code → Ctrl+Shift+D → **▶ Chạy IT Ops (dữ liệu mẫu)** → F5 → mở `http://127.0.0.1:8100`.
+## Hướng dẫn test nhanh (khoảng 15 phút)
+| # | Làm | Kết quả đúng |
+|---|---|---|
+| 1 | Đăng nhập admin bằng mật khẩu trong `.env.local` | Màn hình **"Bật xác thực 2 lớp"**, chưa vào được menu |
+| 2 | Bấm **Tạo mã QR** → quét bằng điện thoại → nhập mã 6 số | Vào thẳng Bảng điều khiển |
+| 3 | Thử nhập sai mã ở bước 2 | Báo "Mã không đúng" |
+| 4 | Avatar → **Đăng xuất** → đăng nhập lại | Sau mật khẩu có bước **"Xác thực 2 lớp"** |
+| 5 | Nhập lại đúng mã vừa dùng (trong cùng 30 giây) | Bị từ chối – mã chỉ dùng 1 lần; đợi mã mới |
+| 6 | F12 → Application → Local Storage / Cookies | Local Storage **trống**; cookie `itops_session` có dấu ✓ ở cột **HttpOnly** |
+| 7 | Avatar → **Mật khẩu · 2FA · Phiên** | Thấy 2FA "Đang bật", danh sách phiên có "Phiên này" |
+| 8 | Mở trình duyệt khác (hoặc ẩn danh) đăng nhập cùng tài khoản → quay lại trình duyệt 1 → **Thu hồi** phiên kia | Trình duyệt kia bị đăng xuất ở thao tác kế tiếp |
+| 9 | **Sites** → sửa tên một site → xoá một site, gõ lý do ở ô **"Lý do"** | – |
+| 10 | **Audit log** | Thấy IP, tên cũ → tên mới (gạch ngang → in đậm), dòng "Lý do: …" |
+| 11 | **Cài đặt → Người dùng** → thêm user *chỉ xem*, đăng nhập user đó | Không bị bắt bật 2FA; tự bật được ở "Tài khoản của tôi" |
+| 12 | Admin → Người dùng → **Đặt lại 2FA** của user ở bước 11 | User đó bị đăng xuất; đăng nhập lại không cần mã |
+| 13 | **Giám sát → Thêm check → SSH**, điền ô "Lệnh tuỳ chỉnh" → Lưu | Báo lỗi "đang bị khoá (… chỉ để đọc)" |
+| 14 | Để yên trình duyệt **> 30 phút**, rồi bấm sang trang khác | Về màn hình đăng nhập với thông báo "hết hạn do không thao tác" |
+| 15 | Task VS Code **7. Sao lưu dữ liệu** | File `.zip` trong `backend/data-v2-dev/backups`, có `itops.db`, `.secret_key`, `.enc_key` |
+| 16 | Task **8. Tạo chứng chỉ HTTPS** → cấu hình **▶ Chạy IT Ops (HTTPS)** → `https://127.0.0.1:8443` | Trình duyệt cảnh báo chứng chỉ tự ký (bình thường) → Advanced → Proceed → đăng nhập được |
+| 17 | Mất điện thoại: dừng app → task **9. Đặt lại 2FA của admin** → chạy lại | Admin đăng nhập lại phải bật 2FA mới |
 
-Muốn đặt lại mật khẩu ban đầu: dừng app, xoá `.env.local` và thư mục `backend/data-v2-dev`, rồi chạy lại `CAI-DAT.bat`.
+Muốn thử nhanh bước 14: đặt `"SESSION_IDLE_MINUTES": "2"` trong `env` của cấu hình chạy (`.vscode/launch.json`).
+
+## Dùng lại dữ liệu thật của bản đang chạy (tuỳ chọn)
+Bản v2 **tự nâng cấp** CSDL bản cũ (đã thử: 3 site / 35 tài sản / 26 check / audit cũ còn nguyên; mật khẩu thiết bị và token Telegram được mã hoá lại và giải mã đúng).
+1. **Dừng** bản đang chạy (để CSDL không đang ghi).
+2. Chép `itops.db` **và** `.secret_key` từ `itops\backend\data-local` sang `itops-v2\backend\data-v2-local` (thiếu `.secret_key` thì mật khẩu thiết bị cũ không giải mã được).
+3. Chạy v2 bằng cấu hình **▶ Thiết bị thật** → đăng nhập bằng mật khẩu admin **cũ** → bật 2FA.
+Nâng cấp là **một chiều**: CSDL đã mở bằng v2 không dùng lại cho bản cũ được – luôn làm trên **bản chép**.
 
 ## Chạy test
 ```
 cd backend
-.venv\Scripts\python.exe -m pip install pytest aiosmtpd
+.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 .venv\Scripts\python.exe -m pytest tests -q -p no:cacheprovider --ignore=tests/test_real_agents.py --ignore=tests/load_test.py
+.venv\Scripts\python.exe -m playwright install chromium
+.venv\Scripts\python.exe tests\e2e_security.py
 ```
-`load_test.py` là script đo tải (cần Playwright), không phải test của pytest, nên phải bỏ qua khi chạy pytest.
 
-## Đã kiểm tra trước khi đóng gói (trên Linux, Python 3.13)
-- Khởi động ở cổng 8100, `/api/health` báo bình thường; scheduler và receiver chạy.
-- Đăng nhập bằng `admin12345` bị từ chối (401); đăng nhập bằng mật khẩu trong `.env.local` thành công.
-- Dữ liệu mẫu: 3 site, 35 tài sản. Gửi syslog vào cổng 6514 → ghi nhận được sự kiện.
-- Giao diện tải đúng bản build `index-BxGq9TUp.js`.
-- pytest: 161 đạt, 3 lỗi do môi trường thử không có lệnh `ping` (trên Windows có sẵn).
+## Kết quả kiểm tra trước khi đóng gói (Linux, Python 3.13, Chrome)
+- pytest: **180 đạt**, 3 lỗi do môi trường thử không có lệnh `ping` (Windows có sẵn).
+- E2E giao diện cũ: **76/78** (2 bước cần `ping`). E2E bảo mật mới: **22/22**.
+- Cài sạch từ `requirements-dev.txt` trên môi trường mới: chạy được.
+- Nâng cấp CSDL thật từ code bản v1: đạt.
+- Ruff / ESLint: không có lỗi mới (còn 5 / 2 cảnh báo có sẵn từ bản gốc).
 
-## Chưa làm (bước tiếp theo theo đề xuất hoàn thiện codebase)
-- Khởi tạo Git và commit đầu tiên.
-- AGENTS.md, ARCHITECTURE.md, SECURITY.md, thư mục DECISIONS/.
-- Alembic, backup thư mục `data`, CI.
+## Sau khi `git clone`
+`backend/static` (giao diện đã build) không nằm trong Git → chạy task **2** rồi **3** (cần Node.js) để build. File zip đã có sẵn bản build.
