@@ -184,7 +184,7 @@ def incidents(rnd=random):
 HISTORY_PLAN = [
     (22.6, "wan_down", True), (19.3, "port_flap", True), (17.8, "ups_battery", True), (15.1, "brute_force", True),
     (13.4, "core_link_trap", True), (11.2, "datastore_apd", True), (9.7, "port_flap", True), (8.2, "ap_reboot", True),
-    (6.5, "arp_moved", True), (4.9, "wan_down", True), (3.1, "port_flap", False), (0.7, "brute_force", True),
+    (6.5, "arp_moved", True), (4.9, "wan_down", True), (3.1, "port_flap", False), (0.25, "brute_force", True),
 ]
 # sự cố riêng (không phục hồi) để luôn có cảnh báo đang mở đúng kiểu thực tế
 OPEN_ISSUES = [
@@ -238,6 +238,7 @@ def seed_history(hours: int = 24, per_hour: int = 160, seed: int = 20261108) -> 
     for i in range(0, len(evs), 500):
         events.process_batch(evs[i:i + 500])
     events.invalidate_caches()
+    _auto_resolve_history(now)
     with SessionLocal() as db:
         out = {"events": db.query(models.Event).count(),
                "alerts_open": db.query(models.Alert).filter(models.Alert.source == "event", models.Alert.status != "resolved").count(),
@@ -245,6 +246,19 @@ def seed_history(hours: int = 24, per_hour: int = 160, seed: int = 20261108) -> 
     log.warning("Dữ liệu mẫu: đã dựng %d giờ log (%d sự kiện, %d cảnh báo đang mở, %d đã tự đóng)",
                 hours, out["events"], out["alerts_open"], out["alerts_resolved"])
     return out
+
+
+def _auto_resolve_history(now):
+    """Rule có "tự đóng sau N phút không lặp lại": đóng đúng mốc last_seen + N trong quá khứ
+    (giống như app đã chạy suốt 24 giờ), thay vì để housekeeping đóng tất cả vào lúc khởi động."""
+    with SessionLocal() as db:
+        rules = {r.id: r for r in db.query(models.EventRule)}
+        for a in db.query(models.Alert).filter(models.Alert.source == "event", models.Alert.status != "resolved"):
+            r = rules.get(a.event_rule_id)
+            if r and r.auto_resolve_min and a.last_seen and a.last_seen + timedelta(minutes=r.auto_resolve_min) < now:
+                a.status, a.resolved_at = "resolved", a.last_seen + timedelta(minutes=r.auto_resolve_min)
+                a.message = f"{a.message} · tự đóng sau {r.auto_resolve_min} phút không lặp lại"[:2000]
+        db.commit()
 
 
 async def live_loop(min_gap: float = 8.0, max_gap: float = 25.0, incident_every=None):

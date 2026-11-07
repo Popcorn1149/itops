@@ -61,7 +61,8 @@ Muốn thử nhanh bước 14: đặt `"SESSION_IDLE_MINUTES": "2"` trong `env` 
 Cấu hình **▶ Chạy IT Ops (dữ liệu mẫu)** giờ có sẵn log và cảnh báo để test mà không cần thiết bị:
 - **24 giờ lịch sử** (~3.500 log của 20 thiết bị mẫu: pfSense, switch Cisco/Aruba/TP-Link, ESXi, Proxmox, Synology, UPS, AP, Linux, Windows, camera) – tạo **một lần** khi tạo dữ liệu mẫu.
 - **Sự cố đã qua và tự đóng**: WAN mất 4–5 phút, cổng switch down/up, ESXi mất datastore, UPS chạy pin, trap linkDown/linkUp.
-- **Sự cố còn mở cần xử lý**: RAID NAS-HN degraded, thêm user vào nhóm Administrators trên DC01, tạo tài khoản lạ trên FILE-SRV, dò mật khẩu webGUI pfSense từ IP ngoài, IP tĩnh của DC01 bị đổi MAC (UC-10 – dữ liệu mẫu đã bật sẵn rule này).
+- **Sự cố còn mở cần xử lý**: RAID NAS-HN degraded, thêm user vào nhóm Administrators trên DC01, tạo tài khoản lạ trên FILE-SRV, cổng switch down chưa lên lại, dò mật khẩu webGUI pfSense từ IP ngoài (đang diễn ra).
+- **Sự cố tự đóng theo rule** (không lặp lại sau 30–60 phút): dò mật khẩu cũ, IP tĩnh bị đổi MAC (UC-10 – dữ liệu mẫu đã bật sẵn rule này), AP khởi động lại.
 - **Log trực tiếp**: khi app chạy, cứ 8–25 giây có log mới; mỗi 4–12 phút phát sinh một sự cố rồi tự phục hồi sau vài phút.
 - Log mẫu đi qua **đúng đường xử lý của log thật** (phân tích syslog → rule → mở/đóng cảnh báo) nên test được cả rule, gom cảnh báo, SLA, bản tin sáng.
 
