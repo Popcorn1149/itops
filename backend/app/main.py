@@ -56,6 +56,9 @@ def init_db():
         if os.environ.get("DEMO_DATA", "false").lower() in ("1", "true", "yes") and not db.query(models.Site).first():
             from .seed import seed_demo
             seed_demo(db)
+            from . import demo_logs
+            if demo_logs.enabled():
+                demo_logs.seed_history()          # 24 giờ log/trap "như thật" cho dữ liệu mẫu
     finally:
         db.close()
 
@@ -89,6 +92,9 @@ async def lifespan(app: FastAPI):
     if os.environ.get("DISABLE_SCHEDULER", "").lower() not in ("1", "true"):
         from .admin_tools import backup_loop
         tasks.append(asyncio.create_task(backup_loop()))            # sao lưu CSDL + khoá mỗi ngày
+        from . import demo_logs
+        if demo_logs.enabled():
+            tasks.append(asyncio.create_task(demo_logs.live_loop()))   # dữ liệu mẫu: log trực tiếp + sự cố định kỳ
     ev_mod.set_allowed(_receiver_cfg()["allowed_sources"])
     if os.environ.get("DISABLE_RECEIVERS", "").lower() not in ("1", "true"):
         await receivers.start_all(_receiver_cfg())

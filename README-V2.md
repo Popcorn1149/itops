@@ -9,6 +9,7 @@ Bản tách riêng khỏi bản đang chạy (`Documents\itops`) để làm cấ
 | 3–4 | Bảo mật P1 (backend) |
 | 5 | Giao diện bảo mật P1 + E2E |
 | 6 | Tài liệu: `SECURITY.md`, `DECISIONS/` |
+| 7 | Dữ liệu mẫu có log/cảnh báo như thật; sửa lỗi tách tên user trong log đăng nhập sai |
 
 Chi tiết cơ chế bảo mật: **`SECURITY.md`**. Lý do các quyết định: **`DECISIONS/`**.
 
@@ -56,6 +57,21 @@ Chi tiết cơ chế bảo mật: **`SECURITY.md`**. Lý do các quyết định
 
 Muốn thử nhanh bước 14: đặt `"SESSION_IDLE_MINUTES": "2"` trong `env` của cấu hình chạy (`.vscode/launch.json`).
 
+## Dữ liệu mẫu có log "như thật"
+Cấu hình **▶ Chạy IT Ops (dữ liệu mẫu)** giờ có sẵn log và cảnh báo để test mà không cần thiết bị:
+- **24 giờ lịch sử** (~3.500 log của 20 thiết bị mẫu: pfSense, switch Cisco/Aruba/TP-Link, ESXi, Proxmox, Synology, UPS, AP, Linux, Windows, camera) – tạo **một lần** khi tạo dữ liệu mẫu.
+- **Sự cố đã qua và tự đóng**: WAN mất 4–5 phút, cổng switch down/up, ESXi mất datastore, UPS chạy pin, trap linkDown/linkUp.
+- **Sự cố còn mở cần xử lý**: RAID NAS-HN degraded, thêm user vào nhóm Administrators trên DC01, tạo tài khoản lạ trên FILE-SRV, dò mật khẩu webGUI pfSense từ IP ngoài, IP tĩnh của DC01 bị đổi MAC (UC-10 – dữ liệu mẫu đã bật sẵn rule này).
+- **Log trực tiếp**: khi app chạy, cứ 8–25 giây có log mới; mỗi 4–12 phút phát sinh một sự cố rồi tự phục hồi sau vài phút.
+- Log mẫu đi qua **đúng đường xử lý của log thật** (phân tích syslog → rule → mở/đóng cảnh báo) nên test được cả rule, gom cảnh báo, SLA, bản tin sáng.
+
+| Biến (trong `env` của `.vscode/launch.json`) | Mặc định | Ý nghĩa |
+|---|---|---|
+| `DEMO_LOGS` | `1` | `0` = tắt log mẫu (cả lịch sử và trực tiếp) |
+| `DEMO_INCIDENT_EVERY` | `240,720` | Khoảng cách giữa 2 sự cố (giây). VD `60,120` để có sự cố mỗi 1–2 phút |
+
+Lịch sử chỉ tạo khi **dữ liệu mẫu còn trống** → đã chạy bản trước thì chạy task **6. Xoá dữ liệu chạy thử** rồi F5 (phải bật 2FA lại vì là dữ liệu mới).
+
 ## Dùng lại dữ liệu thật của bản đang chạy (tuỳ chọn)
 Bản v2 **tự nâng cấp** CSDL bản cũ (đã thử: 3 site / 35 tài sản / 26 check / audit cũ còn nguyên; mật khẩu thiết bị và token Telegram được mã hoá lại và giải mã đúng).
 1. **Dừng** bản đang chạy (để CSDL không đang ghi).
@@ -73,7 +89,7 @@ cd backend
 ```
 
 ## Kết quả kiểm tra trước khi đóng gói (Linux, Python 3.13, Chrome)
-- pytest: **180 đạt**, 3 lỗi do môi trường thử không có lệnh `ping` (Windows có sẵn).
+- pytest: **184 đạt**, 3 lỗi do môi trường thử không có lệnh `ping` (Windows có sẵn).
 - E2E giao diện cũ: **76/78** (2 bước cần `ping`). E2E bảo mật mới: **22/22**.
 - Cài sạch từ `requirements-dev.txt` trên môi trường mới: chạy được.
 - Nâng cấp CSDL thật từ code bản v1: đạt.

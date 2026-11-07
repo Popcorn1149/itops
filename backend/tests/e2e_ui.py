@@ -38,7 +38,8 @@ def start_server(demo=True):
         x = _so.socket(); x.bind(("127.0.0.1", 0)); p_ = x.getsockname()[1]; x.close(); return p_
     globals()["RX_UDP"], globals()["RX_TRAP"] = _fp(), _fp()
     env = {**os.environ, "SYSLOG_UDP_PORT": str(RX_UDP), "SYSLOG_TCP_PORT": str(RX_UDP), "TRAP_PORT": str(RX_TRAP), "DATA_DIR": d, "DEMO_DATA": "true" if demo else "false", "ADMIN_PASSWORD": "Admin@12345", "LOG_LEVEL": "WARNING",
-           "REQUIRE_2FA_ADMIN": os.environ.get("E2E_REQUIRE_2FA", "0")}
+           "REQUIRE_2FA_ADMIN": os.environ.get("E2E_REQUIRE_2FA", "0"),
+           "DEMO_LOGS": "0"}   # E2E cần dữ liệu cố định: tắt bộ phát log mẫu
     log = open(os.path.join(d, "server.log"), "w")
     p = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(PORT)], cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
     for _ in range(60):

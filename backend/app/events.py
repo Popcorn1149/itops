@@ -5,7 +5,7 @@ import os
 import re
 import time
 from collections import defaultdict, deque
-from datetime import timedelta
+from datetime import timedelta, timezone
 
 from .db import SessionLocal
 from . import models
@@ -28,7 +28,9 @@ _rules_cache = {"t": 0, "rules": []}
 _window: dict[str, deque] = defaultdict(deque)
 _tried_users: dict[str, set] = defaultdict(set)
 IPV4 = re.compile(r"\b(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}\b")
-USER_RE = re.compile(r"(?:invalid user |user[ =:]+'?|for (?:invalid user )?|account[ =:]+'?|login[ =:]+'?)([\w.@\\-]{1,64})", re.I)
+# Tách user đã thử từ log đăng nhập sai: pfSense "for user 'x'", OpenSSH "for [invalid user] x", Synology "User [x]",
+# PAM "user=x" (bỏ qua "ruser="), Cisco "[user: x]"
+USER_RE = re.compile(r"(?:invalid user |(?<![a-z])user[ =:\[]+'?|for (?:invalid user |user '?)?|account[ =:]+'?|login[ =:]+'?)([\w.@\\-]{1,64})", re.I)
 
 
 def get_queue() -> asyncio.Queue:
@@ -258,7 +260,7 @@ def process_batch(batch: list[dict]) -> list[tuple]:
             if dropped:
                 STATS["dropped_rule"] += 1
                 continue
-            db.add(models.Event(kind=ev["kind"], source_ip=ev["source_ip"], asset_id=ev["asset_id"], site_id=ev["site_id"],
+            db.add(models.Event(ts=_when(ev), kind=ev["kind"], source_ip=ev["source_ip"], asset_id=ev["asset_id"], site_id=ev["site_id"],
                                 facility=ev.get("facility"), severity=ev["severity"], host=ev.get("host", "")[:128],
                                 app=ev.get("app", "")[:64], message=ev["message"][:8000], device_ts=ev.get("device_ts", "")[:40],
                                 data=ev.get("data") or {}, rule_id=matched_rule.id if matched_rule else None))
@@ -277,6 +279,16 @@ def process_batch(batch: list[dict]) -> list[tuple]:
     return notes
 
 
+def _when(ev):
+    """Mốc thời gian của sự kiện. Log thật luôn là "bây giờ"; chỉ bộ phát log mẫu (demo_logs) gắn sẵn _at để dựng lịch sử."""
+    return ev.get("_at") or now()
+
+
+def _epoch(ev) -> float:
+    at = ev.get("_at")
+    return at.replace(tzinfo=timezone.utc).timestamp() if at else time.time()
+
+
 def _who(db, ev):
     if ev["asset_id"]:
         a = db.get(models.Asset, ev["asset_id"])
@@ -288,13 +300,13 @@ def _who(db, ev):
 def _open_alert(db, r: CompiledRule, ev, key) -> list:
     subject = ev["asset_id"] or ev["source_ip"]
     dkey = f"rule:{r.id}:{subject}:{key}"
-    t = time.time()
+    t = _epoch(ev)
     if len(_tried_users) > 5000:
         _tried_users.clear()
     if r.group_by == "src_ip":   # ghi lại user đã thử ngay từ lần đầu (kể cả trước khi đủ threshold)
         tried = _tried_users[dkey]
         if len(tried) < 50:
-            tried.update(u for u in USER_RE.findall(ev["message"]) if u.lower() not in ("from", "port", "ssh2"))
+            tried.update(u for u in USER_RE.findall(ev["message"]) if u.lower() not in ("from", "port", "ssh2", "failed", "success"))
     if r.threshold > 1:
         w = _window[dkey]
         w.append(t)
@@ -311,12 +323,13 @@ def _open_alert(db, r: CompiledRule, ev, key) -> list:
             users = "\nUser đã thử: " + ", ".join(sorted(tried)[:20]) + (f" (+{len(tried) - 20})" if len(tried) > 20 else "")
     if existing:
         existing.count = (existing.count or 1) + 1
-        existing.last_seen = now()
+        existing.last_seen = _when(ev)
         existing.message = (ev["message"][:1500] + users)[:2000]
         return []
     title = f"{r.name}: {who}" + (f" ({key})" if key else "")
     na = models.Alert(source="event", event_rule_id=r.id, dedupe_key=dkey, asset_id=ev["asset_id"], site_id=ev["site_id"],
-                      severity=r.alert_severity, title=title[:255], message=(ev["message"][:1500] + users)[:2000], last_seen=now(), count=1)
+                      severity=r.alert_severity, title=title[:255], message=(ev["message"][:1500] + users)[:2000],
+                      opened_at=_when(ev), last_seen=_when(ev), count=1)
     db.add(na)
     db.flush()  # để log kế tiếp trong cùng lô thấy cảnh báo này (session autoflush=False)
     return [(title, f"Nguồn: {who} ({ev['source_ip']})\n{ev['message'][:500]}", r.alert_severity,
@@ -328,7 +341,7 @@ def _resolve(db, r: CompiledRule, ev, key) -> list:
     dkey = f"rule:{r.id}:{subject}:{key}"
     out = []
     for a in db.query(models.Alert).filter(models.Alert.dedupe_key == dkey, models.Alert.status != "resolved"):
-        a.status, a.resolved_at = "resolved", now()
+        a.status, a.resolved_at = "resolved", _when(ev)
         a.message = f"{a.message} · phục hồi: {ev['message'][:200]}"[:2000]
         out.append((f"{a.title} – đã phục hồi", ev["message"][:300], "resolved",
                     {"kind": "resolve", "alert_id": a.id, "asset_id": a.asset_id, "site_id": a.site_id}))
