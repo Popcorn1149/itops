@@ -161,6 +161,7 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .stack { display: grid; gap: 16px; }
 .toolbar { display: flex; gap: 10px; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.toolbar select.input { width: auto; max-width: 220px; }
 .input { border: 1px solid var(--border); border-radius: 9px; padding: 8px 11px; background: var(--input-bg); outline: none; width: 100%; }
 .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 textarea.input { min-height: 80px; resize: vertical; }

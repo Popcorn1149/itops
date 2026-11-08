@@ -138,8 +138,15 @@ def _r_wu(d, host):
             "Thử cài lại; lỗi lặp lại: chạy Windows Update Troubleshooter / kiểm tra dung lượng ổ C.")
 
 
+def _av_path(d, host):
+    p = _v(d, "Path")
+    for pre in ("containerfile:_", "file:_", "process:_", "regkey:_"):
+        p = p.replace(pre, "")
+    return (p.split(";")[0] + (f" (trên {host})" if p else "")) if p else host
+
+
 def _r1116(d, host):
-    return (_v(d, "Detection User") or "(không rõ)", _v(d, "Path") or host,
+    return (_v(d, "Detection User") or "(không rõ)", _av_path(d, host),
             f"Windows Defender PHÁT HIỆN mã độc \"{_v(d, 'Threat Name')}\" (mức {_v(d, 'Severity Name') or '?'}, "
             f"loại {_v(d, 'Category Name') or '?'})" + (f" – tiến trình {_v(d, 'Process Name')}" if _v(d, "Process Name") else "") + ".",
             "Xem sự kiện \"đã xử lý\" ngay sau đó. Chưa xử lý được hoặc lặp lại: ngắt mạng máy, quét toàn bộ, "
@@ -147,7 +154,7 @@ def _r1116(d, host):
 
 
 def _r1117(d, host):
-    return (_v(d, "Detection User") or "(không rõ)", _v(d, "Path") or host,
+    return (_v(d, "Detection User") or "(không rõ)", _av_path(d, host),
             f"Windows Defender đã xử lý \"{_v(d, 'Threat Name')}\": {_v(d, 'Action Name') or 'đã xử lý'}.",
             "Theo dõi xem có tái phát không; tái phát = nguồn lây vẫn còn (USB, email, phần mềm crack).")
 

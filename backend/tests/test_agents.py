@@ -258,3 +258,15 @@ def test_resend_dropped_but_log_renumbering_accepted(client, admin, agent):
     # log bị xoá → Windows đánh số lại từ nhỏ, nhưng thời điểm mới hơn → vẫn nhận
     later = ev(4740, {"TargetUserName": "u9"}, rec=3, ts=(t0 + timedelta(minutes=2)).isoformat())
     assert report(client, agent, events=[later]).json()["events_stored"] == 1
+
+
+def test_downloads_listed_with_hash_and_need_login(client, admin, tmp_path, monkeypatch):
+    (tmp_path / "itops-agent-windows-amd64.exe").write_bytes(b"MZ")
+    (tmp_path / "SHA256SUMS.txt").write_text("abc123  itops-agent-windows-amd64.exe\n")
+    (tmp_path / "VERSION").write_text("1.0.0")
+    monkeypatch.setattr(ag, "DIST_DIR", tmp_path)
+    d = client.get("/api/agent-downloads", headers=admin).json()
+    assert d["version"] == "1.0.0" and {"name": "itops-agent-windows-amd64.exe", "size": 2, "sha256": "abc123"} in d["files"]
+    assert client.get("/api/agent-downloads/itops-agent-windows-amd64.exe", headers=admin).content == b"MZ"
+    assert client.get("/api/agent-downloads/itops-agent-windows-amd64.exe").status_code == 401
+    assert client.get("/api/agent-downloads/..%2Fagent.json", headers=admin).status_code in (400, 404)

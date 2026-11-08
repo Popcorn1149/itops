@@ -57,6 +57,9 @@ def init_db():
             from . import demo_logs
             if demo_logs.enabled():
                 demo_logs.seed_history()          # 24 giờ log/trap "như thật" cho dữ liệu mẫu
+        from . import demo_agents
+        if demo_agents.enabled():
+            demo_agents.seed()                    # máy trạm mẫu (bỏ qua nếu đã có)
     finally:
         db.close()
 
@@ -94,6 +97,9 @@ async def lifespan(app: FastAPI):
         from . import demo_logs
         if demo_logs.enabled():
             tasks.append(asyncio.create_task(demo_logs.live_loop()))   # dữ liệu mẫu: log trực tiếp + sự cố định kỳ
+        from . import demo_agents
+        if demo_agents.enabled():
+            tasks.append(asyncio.create_task(demo_agents.live_loop()))  # máy trạm mẫu gửi hiệu năng mỗi phút
     ev_mod.set_allowed(_receiver_cfg()["allowed_sources"])
     if os.environ.get("DISABLE_RECEIVERS", "").lower() not in ("1", "true"):
         await receivers.start_all(_receiver_cfg())

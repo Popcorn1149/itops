@@ -37,17 +37,17 @@ try {
     $name = Split-Path $Source -Leaf
     $line = Get-Content $sums | Where-Object { $_ -match "\s\*?$([regex]::Escape($name))$" } | Select-Object -First 1
     $hash = (Get-FileHash $Source -Algorithm SHA256).Hash.ToLower()
-    if (-not $line -or -not $line.ToLower().StartsWith($hash)) { Log "SAI MÃ BĂM $name – dừng cài"; exit 1 }
+    if (-not $line -or -not $line.ToLower().StartsWith($hash)) { Log "SAI MÃ BĂM ${name} – dừng cài"; exit 1 }
   } else { Log "CẢNH BÁO: không có SHA256SUMS.txt cạnh file cài" }
 
   $tmp = Join-Path $env:WINDIR "Temp\itops-agent-setup.exe"
   Copy-Item $Source $tmp -Force
-  $args = @("install", "--server", $Server, "--token", $Token)
-  if ($CaPin) { $args += @("--ca-pin", $CaPin) }
-  if ($UpdatePubKey) { $args += @("--update-pubkey", $UpdatePubKey) }
-  if ($AllowHttp) { $args += "--allow-http" }
-  $out = & $tmp @args 2>&1
-  Log "cài $want: $out"
+  $agentArgs = @("install", "--server", $Server, "--token", $Token)
+  if ($CaPin) { $agentArgs += @("--ca-pin", $CaPin) }
+  if ($UpdatePubKey) { $agentArgs += @("--update-pubkey", $UpdatePubKey) }
+  if ($AllowHttp) { $agentArgs += "--allow-http" }
+  $out = & $tmp @agentArgs 2>&1
+  Log "cài ${want}: $out"
   Remove-Item $tmp -Force -ErrorAction SilentlyContinue
 } catch {
   Log "LỖI: $_"

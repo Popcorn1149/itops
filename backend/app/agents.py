@@ -935,3 +935,50 @@ def fleet_summary(user=Depends(current_user), db: Session = Depends(get_db)):
     full = sum(1 for a in agents if ((a.summary or {}).get("disk") or 0) >= pol["disk_warn"])
     return {"total": len(agents), "online": st["online"], "offline": st["offline"] + st["never"], "by_os": by_os,
             "defender_off": risky, "disk_full": full, "version": os.environ.get("ITOPS_AGENT_VERSION", "")}
+
+
+# ---- tải agent + lệnh cài (trang Máy trạm → Cài đặt agent)
+DIST_DIR = Path(__file__).resolve().parent.parent / "agent_dist"
+
+
+def _server_pin() -> str:
+    """SHA-256 khoá công khai chứng chỉ HTTPS của chính server (data/tls/cert.pem) – để điền sẵn --ca-pin."""
+    f = Path(DATA_DIR) / "tls" / "cert.pem"
+    if not f.exists():
+        return ""
+    try:
+        from cryptography import x509
+        from cryptography.hazmat.primitives import serialization
+        c = x509.load_pem_x509_certificate(f.read_bytes())
+        spki = c.public_key().public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+        return hashlib.sha256(spki).hexdigest()
+    except Exception:       # chứng chỉ hỏng → không gợi ý pin
+        return ""
+
+
+@router.get("/api/agent-downloads")
+def agent_downloads(user=Depends(current_user)):
+    files = []
+    sums = {}
+    sf = DIST_DIR / "SHA256SUMS.txt"
+    if sf.exists():
+        for line in sf.read_text(encoding="utf-8").splitlines():
+            parts = line.split()
+            if len(parts) == 2:
+                sums[parts[1].lstrip("*")] = parts[0]
+    if DIST_DIR.is_dir():
+        for f in sorted(DIST_DIR.iterdir()):
+            if f.is_file() and f.name != "VERSION":
+                files.append({"name": f.name, "size": f.stat().st_size, "sha256": sums.get(f.name, "")})
+    ver = (DIST_DIR / "VERSION").read_text().strip() if (DIST_DIR / "VERSION").exists() else ""
+    return {"version": ver, "files": files, "ca_pin": _server_pin()}
+
+
+@router.get("/api/agent-downloads/{name}")
+def agent_download_file(name: str, user=Depends(current_user)):
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", name):
+        raise HTTPException(400, "Tên file không hợp lệ")
+    f = DIST_DIR / name
+    if not f.is_file():
+        raise HTTPException(404, "Không có file")
+    return FileResponse(f, filename=name, media_type="application/octet-stream")

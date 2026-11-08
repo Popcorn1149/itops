@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
   LayoutDashboard, Map, Globe2, Shield, Server, Monitor, Network, HardDrive, ShieldCheck, Activity, Bell,
-  ScrollText, Settings, Search, PanelLeft, Clock, Boxes, LogOut, KeyRound, Menu, FileText, Gauge, Zap,
+  ScrollText, Settings, Search, PanelLeft, Laptop, Clock, Boxes, LogOut, KeyRound, Menu, FileText, Gauge, Zap,
 } from "lucide-react";
 import { useUi, setPinned } from "./theme";
 import ThemeSwitch from "./components/ThemeSwitch";
@@ -17,6 +17,7 @@ import Critical from "./pages/Critical";
 import Checks, { CheckForm } from "./pages/Checks";
 import Alerts from "./pages/Alerts";
 import Audit from "./pages/Audit";
+import Agents from "./pages/Agents";
 import SettingsPage from "./pages/Settings";
 import Logs from "./pages/Logs";
 import Resources from "./pages/Resources";
@@ -56,6 +57,7 @@ const NAV = [
   { key: "checks", label: "Giám sát", icon: Activity },
   { key: "resources", label: "Tài nguyên", icon: Gauge },
   { key: "automation", label: "Tự động hoá", icon: Zap },
+  { key: "agents", label: "Máy trạm", icon: Laptop },
   { key: "alerts", label: "Cảnh báo", icon: Bell, badge: true },
   { key: "logs", label: "Log thiết bị", icon: FileText },
   { key: "audit", label: "Audit log", icon: ScrollText },
@@ -218,7 +220,7 @@ export default function App() {
 
   const curQ = new URLSearchParams(route.params).toString().replace(/%2C/g, ",");
   const isActive = (n) => n.key === route.page && (n.key !== "assets" || (n.q ?? "") === curQ);
-  const Page = { dashboard: Dashboard, map: MapPage, sites: Sites, assets: Assets, critical: Critical, checks: Checks, resources: Resources, automation: Automation, alerts: Alerts, logs: Logs, audit: Audit, settings: SettingsPage }[route.page] || Dashboard;
+  const Page = { dashboard: Dashboard, map: MapPage, sites: Sites, assets: Assets, critical: Critical, checks: Checks, resources: Resources, automation: Automation, alerts: Alerts, agents: Agents, logs: Logs, audit: Audit, settings: SettingsPage }[route.page] || Dashboard;
   const openAlerts = alertsCount.data?.length || 0;
 
   return (

@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   Shield, Server, Monitor, Router, Network, Wifi, HardDrive, BatteryCharging, Printer, Camera, Box, Globe, Cloud,
-  Cpu, Container, CircleHelp, X, Inbox, ChevronUp, ChevronDown, Smartphone,
+  Cpu, Container, CircleHelp, X, Inbox, ChevronUp, ChevronDown, Smartphone, Laptop,
 } from "lucide-react";
 import { api, setAuditReason } from "./api";
 
@@ -15,6 +15,7 @@ export const TYPES = {
   host: { label: "Host vật lý", icon: Server, color: "#0f766e" },
   server: { label: "Máy chủ", icon: Server, color: "#0f766e" },
   vm: { label: "Máy ảo (VM)", icon: Monitor, color: "#4f46e5" },
+  workstation: { label: "Máy trạm", icon: Laptop, color: "#0369a1" },
   container: { label: "Container", icon: Container, color: "#0284c7" },
   service: { label: "Dịch vụ", icon: Box, color: "#9333ea" },
   website: { label: "Website", icon: Globe, color: "#0d9488" },

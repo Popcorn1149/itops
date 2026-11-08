@@ -79,7 +79,7 @@ def db_url(data_dir):
     return E2E_DB_URL
 
 
-def start_server(demo=True):
+def start_server(demo=True, extra_env=None):
     d = tempfile.mkdtemp(prefix="itops-e2e-")
     dbenv, cleanup = _e2e_database(d)
     import socket as _so
@@ -89,7 +89,8 @@ def start_server(demo=True):
     env = {**os.environ, "SYSLOG_UDP_PORT": str(RX_UDP), "SYSLOG_TCP_PORT": str(RX_UDP), "TRAP_PORT": str(RX_TRAP), "DATA_DIR": d, "DEMO_DATA": "true" if demo else "false", "ADMIN_PASSWORD": "Admin@12345", "LOG_LEVEL": "WARNING",
            "REQUIRE_2FA_ADMIN": os.environ.get("E2E_REQUIRE_2FA", "0"),
            "DEMO_LOGS": "0",   # E2E cần dữ liệu cố định: tắt bộ phát log mẫu
-           **dbenv}
+           "DEMO_AGENTS": "0",  # máy trạm mẫu kiểm riêng ở e2e_agents.py
+           **dbenv, **(extra_env or {})}
     if "DATABASE_URL" not in dbenv:
         env.pop("DATABASE_URL", None)
     log = open(os.path.join(d, "server.log"), "w")
