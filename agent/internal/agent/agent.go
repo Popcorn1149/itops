@@ -42,19 +42,25 @@ type Agent struct {
 	cli     *transport.Client
 	sp      *spool.Spool
 	st      State
+	dir     string
 	// Restart: được gọi sau khi đã thay file chạy bằng bản cập nhật (dịch vụ tự khởi động lại bản mới).
 	Restart func()
 }
 
-func statePath() string { return filepath.Join(config.Dir(), "state.json") }
+func (a *Agent) statePath() string { return filepath.Join(a.dir, "state.json") }
 
 func New(version string, cfg *config.File) (*Agent, error) {
-	sp, err := spool.Open(filepath.Join(config.Dir(), "spool"))
+	return NewWith(version, cfg, collect.New(), config.Dir())
+}
+
+// NewWith: bộ thu thập + thư mục dữ liệu tuỳ chọn (lệnh simulate chạy nhiều máy giả lập trong một tiến trình).
+func NewWith(version string, cfg *config.File, col collect.Collector, dir string) (*Agent, error) {
+	sp, err := spool.Open(filepath.Join(dir, "spool"))
 	if err != nil {
 		return nil, err
 	}
-	a := &Agent{Version: version, cfg: cfg, col: collect.New(), cli: transport.New(cfg, version), sp: sp}
-	if b, err := os.ReadFile(statePath()); err == nil {
+	a := &Agent{Version: version, cfg: cfg, col: col, cli: transport.New(cfg, version), sp: sp, dir: dir}
+	if b, err := os.ReadFile(a.statePath()); err == nil {
 		_ = json.Unmarshal(b, &a.st)
 	}
 	if a.st.Config.ReportSeconds == 0 {
@@ -65,9 +71,9 @@ func New(version string, cfg *config.File) (*Agent, error) {
 
 func (a *Agent) saveState() {
 	b, _ := json.Marshal(a.st)
-	tmp := statePath() + ".tmp"
+	tmp := a.statePath() + ".tmp"
 	if os.WriteFile(tmp, b, 0o600) == nil {
-		_ = os.Rename(tmp, statePath())
+		_ = os.Rename(tmp, a.statePath())
 	}
 }
 

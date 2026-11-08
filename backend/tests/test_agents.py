@@ -136,12 +136,13 @@ def test_events_filtered_translated_grouped(client, admin, agent):
     assert "PC-LA" in e["where"] and "10.10.9.99" in e["where"]
     assert "sai mật khẩu" in e["what"] and "Remote Desktop" in e["what"] and e["advice"]
     al = alerts(f"agent-ev:{aid}:win:4625:%")
-    assert len(al) == 1 and al[0][0].startswith("Nghi dò mật khẩu: PC-KT01") and al[0][1] == "trouble"
+    assert al == [("Nghi dò mật khẩu: PC-KT01 (từ 10.10.9.99)", "trouble", "open")]
 
 
 def test_event_alerts_admin_group_log_cleared_defender(client, admin, agent):
     aid = agent["agent_id"]
     report(client, agent, events=[
+        ev(4740, {"TargetUserName": "ketoan", "TargetDomainName": "PC-NV07", "SubjectUserName": "DC01$"}),
         ev(4732, {"TargetUserName": "Administrators", "MemberName": "CN=Tran Van B,OU=Users,DC=cty,DC=local",
                   "SubjectUserName": "it.admin", "SubjectDomainName": "CTY"}),
         ev(4732, {"TargetUserName": "Print Operators-x", "MemberName": "CN=C"}),
@@ -153,6 +154,7 @@ def test_event_alerts_admin_group_log_cleared_defender(client, admin, agent):
     rows = {e["title"]: e for e in client.get(f"/api/agent-events?agent_id={aid}", headers=admin).json()}
     assert rows["Thêm vào nhóm QUẢN TRỊ"]["severity"] == "critical" and "Tran Van B" in rows["Thêm vào nhóm QUẢN TRỊ"]["what"]
     assert rows["Thêm thành viên vào nhóm"]["severity"] == "attention"
+    assert rows["Tài khoản bị khoá"]["who"] == "ketoan" and rows["Tài khoản bị khoá"]["where"] == "PC-NV07"   # máy gây khoá
     assert "Hệ thống file bị hỏng" in rows
     titles = {t: s for t, s, _ in alerts(f"agent-ev:{aid}:%")}
     assert titles.get("Thêm tài khoản vào nhóm quản trị: PC-KT01 (CTY\\it.admin)") == "critical"

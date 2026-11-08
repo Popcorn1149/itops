@@ -95,8 +95,11 @@ var realFS = map[string]bool{"ext2": true, "ext3": true, "ext4": true, "xfs": tr
 
 func (l *linux) Metrics() protocol.Metrics {
 	m := protocol.Metrics{Disks: []protocol.Disk{}}
-	if f := strings.Fields(strings.SplitN(readFile("/proc/stat"), "\n", 2)[0]); len(f) > 4 && f[0] == "cpu" {
-		var total, idle uint64
+	sample := func() (idle, total uint64, ok bool) {
+		f := strings.Fields(strings.SplitN(readFile("/proc/stat"), "\n", 2)[0])
+		if len(f) <= 4 || f[0] != "cpu" {
+			return 0, 0, false
+		}
 		for i, x := range f[1:] {
 			v, _ := strconv.ParseUint(x, 10, 64)
 			total += v
@@ -104,12 +107,16 @@ func (l *linux) Metrics() protocol.Metrics {
 				idle += v
 			}
 		}
-		if l.prevTotal > 0 && total > l.prevTotal {
-			m.CPU = f64(round1(100 * (1 - float64(idle-l.prevIdle)/float64(total-l.prevTotal))))
-		} else {
-			time.Sleep(500 * time.Millisecond) // lần đầu: lấy mẫu thứ hai để có số liệu ngay
+		return idle, total, true
+	}
+	if idle, total, ok := sample(); ok {
+		if l.prevTotal == 0 { // lần đầu: thêm một mẫu sau 0,5 giây (chỉ một lần)
 			l.prevIdle, l.prevTotal = idle, total
-			return l.Metrics()
+			time.Sleep(500 * time.Millisecond)
+			idle, total, _ = sample()
+		}
+		if total > l.prevTotal {
+			m.CPU = f64(round1(100 * (1 - float64(idle-l.prevIdle)/float64(total-l.prevTotal))))
 		}
 		l.prevIdle, l.prevTotal = idle, total
 	}

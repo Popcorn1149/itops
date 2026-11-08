@@ -66,7 +66,8 @@ def _r4625(d, host):
 
 
 def _r4740(d, host):
-    return (_acct(d) or "(không rõ)", _v(d, "CallerComputerName", "TargetDomainName") or "không rõ máy",
+    # 4740: TargetDomainName chứa TÊN MÁY gây khoá (không phải domain) → không ghép vào tên tài khoản
+    return (_v(d, "TargetUserName") or "(không rõ)", _v(d, "CallerComputerName", "TargetDomainName") or "không rõ máy",
             f"Tài khoản bị KHOÁ do nhập sai mật khẩu quá số lần cho phép (ghi nhận tại {host}).",
             "Gọi xác nhận với người dùng. Nếu đúng là họ: mở khoá (AD Users & Computers → Account → Unlock) và kiểm tra "
             "máy nguồn có ứng dụng/ổ mạng/điện thoại còn lưu mật khẩu cũ. Không phải họ: đổi mật khẩu, kiểm tra máy nguồn.")

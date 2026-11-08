@@ -153,18 +153,22 @@ func ft(lo, hi uint32) uint64 { return uint64(hi)<<32 | uint64(lo) }
 
 func (w *win) Metrics() protocol.Metrics {
 	m := protocol.Metrics{Disks: []protocol.Disk{}}
-	var idle, kern, user windows.Filetime
-	if r, _, _ := pGetSystemTimes.Call(uintptr(unsafe.Pointer(&idle)), uintptr(unsafe.Pointer(&kern)), uintptr(unsafe.Pointer(&user))); r != 0 {
-		i := ft(idle.LowDateTime, idle.HighDateTime)
-		total := ft(kern.LowDateTime, kern.HighDateTime) + ft(user.LowDateTime, user.HighDateTime) // kernel đã gồm idle
-		if w.prevTotal > 0 && total > w.prevTotal {
-			m.CPU = f64(round1(100 * (1 - float64(i-w.prevIdle)/float64(total-w.prevTotal))))
-			w.prevIdle, w.prevTotal = i, total
-		} else {
+	sample := func() (uint64, uint64, bool) {
+		var idle, kern, user windows.Filetime
+		r, _, _ := pGetSystemTimes.Call(uintptr(unsafe.Pointer(&idle)), uintptr(unsafe.Pointer(&kern)), uintptr(unsafe.Pointer(&user)))
+		// thời gian kernel đã gồm thời gian rỗi
+		return ft(idle.LowDateTime, idle.HighDateTime), ft(kern.LowDateTime, kern.HighDateTime) + ft(user.LowDateTime, user.HighDateTime), r != 0
+	}
+	if i, total, ok := sample(); ok {
+		if w.prevTotal == 0 { // lần đầu: lấy thêm một mẫu sau 0,5 giây để có số liệu ngay (chỉ một lần, không lặp)
 			w.prevIdle, w.prevTotal = i, total
 			time.Sleep(500 * time.Millisecond)
-			return w.Metrics()
+			i, total, _ = sample()
 		}
+		if total > w.prevTotal {
+			m.CPU = f64(round1(100 * (1 - float64(i-w.prevIdle)/float64(total-w.prevTotal))))
+		}
+		w.prevIdle, w.prevTotal = i, total
 	}
 	if ms, ok := memStatus(); ok && ms.TotalPhys > 0 {
 		m.Mem = f64(round1(100 * (1 - float64(ms.AvailPhys)/float64(ms.TotalPhys))))

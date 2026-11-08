@@ -144,9 +144,19 @@
       "windows": { "command": ".\\.venv\\Scripts\\python.exe -m app.admin_tools reset-password admin" },
       "command": "./.venv/bin/python -m app.admin_tools reset-password admin",
       "problemMatcher": []
+    },
+    {
+      "label": "17. Giả lập agent: 3 máy Windows + 2 máy macOS (dữ liệu mẫu, cổng 8100)",
+      // Cần app đang chạy (F5). Tạo token ở Máy trạm → Cài đặt agent (số lượt ≥ 5) rồi dán vào ô hỏi. Ctrl+C để dừng.
+      "type": "shell",
+      "options": { "cwd": "${workspaceFolder}/backend/agent_dist" },
+      "windows": { "command": ".\\itops-agent-windows-amd64.exe simulate --server http://127.0.0.1:8100 --allow-http --windows 3 --macos 2 --token ${input:agentToken}" },
+      "command": "./itops-agent-linux-amd64 simulate --server http://127.0.0.1:8100 --allow-http --windows 3 --macos 2 --token ${input:agentToken}",
+      "problemMatcher": []
     }
   ],
   "inputs": [
+    { "id": "agentToken", "type": "promptString", "description": "Token đăng ký agent (itk_...) – tạo ở Máy trạm → Cài đặt agent" },
     { "id": "backupZip", "type": "promptString", "description": "Đường dẫn file itops-backup-....zip" },
     { "id": "sqliteFile", "type": "promptString", "description": "Đường dẫn file itops.db của bản v1 (chỉ đọc, không bị sửa)" }
   ]

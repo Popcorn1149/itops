@@ -24,7 +24,12 @@ type File struct {
 	UpdatePubKey string `json:"update_pubkey,omitempty"`
 	// Token đăng ký – chỉ dùng một lần, xoá khỏi file ngay khi đăng ký xong.
 	EnrollToken string `json:"enroll_token,omitempty"`
+
+	path string // khác rỗng: lưu vào đây thay vì Path() (máy giả lập)
 }
+
+// WithPath: cấu hình lưu ở thư mục riêng (mỗi máy giả lập một thư mục).
+func (f *File) WithPath(dir string) *File { f.path = filepath.Join(dir, "agent.json"); return f }
 
 // Dir: thư mục dữ liệu của agent theo hệ điều hành (ghi đè bằng ITOPS_AGENT_DIR khi test).
 func Dir() string {
@@ -49,18 +54,25 @@ func Load() (*File, error) {
 }
 
 func (f *File) Save() error {
-	if err := os.MkdirAll(Dir(), 0o700); err != nil {
+	p := Path()
+	if f.path != "" {
+		p = f.path
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		return err
 	}
 	b, _ := json.MarshalIndent(f, "", "  ")
-	tmp := Path() + ".tmp"
+	tmp := p + ".tmp"
 	if err := os.WriteFile(tmp, b, 0o600); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, Path()); err != nil {
+	if err := os.Rename(tmp, p); err != nil {
 		return err
 	}
-	return protect(Path())
+	if f.path != "" {
+		return nil
+	}
+	return protect(p)
 }
 
 func (f *File) Validate() error {

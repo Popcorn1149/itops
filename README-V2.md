@@ -119,6 +119,8 @@ Thiếu `.secret_key` của v1 thì mật khẩu thiết bị cũ không giải 
 ## Agent máy trạm
 Trang **Máy trạm** (menu Vận hành). Với dữ liệu mẫu có sẵn 12 máy mẫu (Windows, Linux, macOS) kèm sự cố "như thật": dò mật khẩu RDP vào DC, khoá tài khoản, thêm người vào nhóm Administrators, mã độc bị Defender chặn, Defender bị tắt, ổ gần đầy, tắt máy đột ngột, dịch vụ backup chết, lỗi ổ đĩa. Tắt máy mẫu: `DEMO_AGENTS=0`.
 
+**Giả lập thêm máy Windows + macOS** (không cần quyền admin, không cài gì): Máy trạm → Cài đặt agent → **Tạo token** (tối đa ≥ 5 máy) → chạy task VS Code **17** và dán token. Sau ~10 giây có thêm SIM-SRV01, SIM-WIN02, SIM-WIN03, SIM-MAC01, SIM-MAC02 với dò mật khẩu, khoá tài khoản, thêm admin, mã độc, Defender tắt, ổ đầy, dò SSH vào Mac… Dữ liệu đi qua đúng code của agent thật (đọc XML Event Log, đọc log macOS, hàng đợi, gửi lên). Ctrl+C để dừng.
+
 Thử agent THẬT trên chính máy demo (Windows):
 1. Máy trạm → **Cài đặt agent** → **Tạo token** → chép lệnh "Windows".
 2. Tải `itops-agent-windows-amd64.exe` ở cùng trang. Mở PowerShell **Run as administrator** trong thư mục tải về, dán lệnh (có `--allow-http` vì bản demo chạy http://).

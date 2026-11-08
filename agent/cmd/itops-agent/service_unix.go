@@ -13,7 +13,7 @@ import (
 
 func isService() bool { return false } // systemd / launchd chạy "itops-agent run" như tiến trình thường
 
-func runService() {}
+func runService() bool { return false }
 
 func requireAdmin() error {
 	if os.Geteuid() != 0 {

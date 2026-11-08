@@ -9,9 +9,47 @@ The agent runs on each workstation or server. It **only reads** machine informat
 | Events | Event Log (wevtapi), only Event IDs in the policy | journald (sshd, sudo, useradd/usermod, kernel, systemd) | unified log (sshd, sudo) |
 | Security | Defender, BitLocker, firewall, latest patch | firewall (ufw/firewalld), pending reboot | FileVault, firewall, Gatekeeper, SIP |
 | Services / software | SCM / Uninstall registry (machine + each user) | systemctl / dpkg, rpm, snap | launchctl / system_profiler |
-| Test status | **compiled, not yet run on a real Windows machine** | **run for real** against an HTTPS server | **compiled, not yet run** |
+| Test status | Run on **Wine** (see below); event log + Defender not yet tested on real Windows | **run for real** against an HTTPS server | Command parsers tested on real-format macOS output; not yet run on a Mac |
 
 **What it does NOT do:** run remote commands, install or remove software, read user files, take screenshots, log keystrokes, or collect normal logon/logoff events.
+
+## Try it without installing: `simulate`
+Simulates several Windows/macOS machines sending data to the server. No admin rights needed, nothing gets installed.
+
+The raw data is built in exactly the format each OS produces:
+- Windows Event Log XML;
+- macOS output from `launchctl`, `system_profiler`, `top`, `vm_stat` and `log show`.
+
+That data then goes through **the same parsing functions and the same send path** as the real agent: registration, on-disk queue, HTTPS/`ca_pin`.
+```
+itops-agent-windows-amd64.exe simulate --server http://127.0.0.1:8100 --allow-http --token itk_xxx --windows 3 --macos 2
+```
+The token needs at least 5 uses. Machine names: SIM-SRV01, SIM-WIN02, SIM-WIN03, SIM-MAC01…
+
+Built-in scenarios:
+- RDP password guessing against SIM-SRV01, followed by an account lockout;
+- someone added to Administrators;
+- a dead backup service;
+- malware on SIM-WIN03;
+- Defender switched off on SIM-WIN02;
+- data drive D: almost full;
+- SSH password guessing and wrong sudo passwords on the Macs.
+
+Stop with Ctrl+C. Run it again and the same machines are reused, no duplicates.
+
+VS Code: task **17**.
+
+### Already verified on Wine (Windows 10 emulation on Linux, running the actual `itops-agent-windows-amd64.exe`)
+- `install`: copies into Program Files, registers, creates the `ITOpsAgent` service and **runs as a service**. `net stop`/`net start` and `uninstall --purge` work.
+- Reinstalling with a **wrong token** on a working machine keeps the old configuration, and the machine keeps running.
+- Reads Windows version, CPU, RAM, drives, logged-in user, the 17 services, and software from the registry (64-bit, 32-bit, per user; Windows updates and hidden components filtered out).
+- **Self-update** while running as a service: 1.0.0 → 1.0.1. The service manager restarts the new version, and the server sees 1.0.1.
+- Bugs found and fixed on Wine:
+  - service creation failed on systems without delayed start;
+  - the agent didn't recognise it was running as a service;
+  - a wrong token wiped the key of a working machine;
+  - CPU sampling could loop forever.
+- **Not tested on Wine:** the Event Log (Wine doesn't implement `EvtQuery`) and Defender/BitLocker (Wine has no PowerShell). These two parts get their first real run on a real Windows machine.
 
 ## Install
 

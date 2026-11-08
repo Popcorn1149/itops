@@ -336,7 +336,10 @@ def _event_alert(db, a: models.Agent, c: dict, d: dict, e: models.AgentEvent) ->
             q.popleft()
         if len(q) < th:
             return []
-    title = f"{al['name']}: {a.hostname}" + (f" ({e.who})" if e.who and e.who not in ("Hệ thống", "(không rõ)") else "")
+    if th > 1:   # cảnh báo theo ngưỡng (dò mật khẩu): nêu NGUỒN đang thử, không phải tài khoản của lần cuối
+        title = f"{al['name']}: {a.hostname}" + (f" (từ {by})" if by and by != "?" else "")
+    else:
+        title = f"{al['name']}: {a.hostname}" + (f" ({e.who})" if e.who and e.who not in ("Hệ thống", "(không rõ)") else "")
     msg = f"{e.what}\nAi: {e.who} · Từ đâu: {e.where}\nNên làm: {e.advice}"
     if th > 1:
         msg = f"{len(_ev_window[dkey])} lần trong {win} phút. " + msg

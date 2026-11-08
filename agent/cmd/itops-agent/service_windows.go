@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
@@ -64,10 +65,13 @@ func (handler) Execute(_ []string, req <-chan svc.ChangeRequest, s chan<- svc.St
 	}
 }
 
-func runService() {
+// runService: false = không phải do SCM khởi động (chạy tay "run --service") → chạy như tiến trình thường.
+func runService() bool {
 	if err := svc.Run(serviceName, handler{}); err != nil {
 		logx.Errorf("dịch vụ: %v", err)
+		return false
 	}
+	return true
 }
 
 func requireAdmin() error {
@@ -138,27 +142,45 @@ func stopService() error {
 	return nil
 }
 
+// Chỉ đổi đúng phần cần đổi bằng API gốc: không đọc–ghi lại toàn bộ cấu hình (mgr.UpdateConfig) vì
+// một số bản Windows rút gọn / Wine không hỗ trợ đọc cấu hình mở rộng → ghi đè cấu hình rỗng.
+func setBinPath(h windows.Handle, cmd string) error {
+	p, _ := windows.UTF16PtrFromString(cmd)
+	n := uint32(windows.SERVICE_NO_CHANGE)
+	return windows.ChangeServiceConfig(h, n, n, n, p, nil, nil, nil, nil, nil, nil)
+}
+
+func setExtras(h windows.Handle) {
+	d, _ := windows.UTF16PtrFromString("Gửi thông tin máy (hiệu năng, dịch vụ, phần mềm, Defender, sự kiện quan trọng) lên " +
+		"IT Ops Workspace. Chỉ đọc, không nhận lệnh từ xa.")
+	desc := windows.SERVICE_DESCRIPTION{Description: d}
+	_ = windows.ChangeServiceConfig2(h, windows.SERVICE_CONFIG_DESCRIPTION, (*byte)(unsafe.Pointer(&desc)))
+	delayed := windows.SERVICE_DELAYED_AUTO_START_INFO{IsDelayedAutoStartUp: 1} // khởi động sau các dịch vụ hệ thống
+	_ = windows.ChangeServiceConfig2(h, windows.SERVICE_CONFIG_DELAYED_AUTO_START_INFO, (*byte)(unsafe.Pointer(&delayed)))
+}
+
 func installService(exe string) error {
 	m, err := mgr.Connect()
 	if err != nil {
 		return err
 	}
 	defer m.Disconnect()
+	cmd := fmt.Sprintf(`"%s" run --service`, exe)
 	s, err := m.OpenService(serviceName)
-	if err == nil { // đã có (cài lại / nâng cấp): cập nhật đường dẫn rồi chạy
-		c, _ := s.Config()
-		c.BinaryPathName = fmt.Sprintf(`"%s" run`, exe)
-		_ = s.UpdateConfig(c)
+	if err == nil { // đã có (cài lại / nâng cấp)
+		if err := setBinPath(s.Handle, cmd); err != nil {
+			s.Close()
+			return fmt.Errorf("cập nhật đường dẫn dịch vụ: %w", err)
+		}
 	} else {
-		s, err = m.CreateService(serviceName, exe, mgr.Config{DisplayName: "IT Ops Agent", StartType: mgr.StartAutomatic,
-			DelayedAutoStart: true, Description: "Gửi thông tin máy (hiệu năng, dịch vụ, phần mềm, Defender, sự kiện quan trọng) " +
-				"lên IT Ops Workspace. Chỉ đọc, không nhận lệnh từ xa."}, "run")
+		s, err = m.CreateService(serviceName, exe, mgr.Config{DisplayName: "IT Ops Agent", StartType: mgr.StartAutomatic}, "run", "--service")
 		if err != nil {
 			return err
 		}
 	}
 	defer s.Close()
-	// dừng bất thường / sau khi tự cập nhật → SCM chạy lại sau 30 giây
+	setExtras(s.Handle)
+	// dừng bất thường / sau khi tự cập nhật → SCM chạy lại
 	_ = s.SetRecoveryActions([]mgr.RecoveryAction{{Type: mgr.ServiceRestart, Delay: 30 * time.Second},
 		{Type: mgr.ServiceRestart, Delay: 60 * time.Second}, {Type: mgr.ServiceRestart, Delay: 5 * time.Minute}}, 86400)
 	_ = s.SetRecoveryActionsOnNonCrashFailures(true)

@@ -54,6 +54,20 @@ def main():
                     break
             E.check("agent Linux thật đăng ký + gửi số liệu", real and real["status"] == "online" and real.get("cpu") is not None, str(real)[:200])
             E.check("agent thật: token đã bị xoá khỏi agent.json", "enroll_token" not in open(os.path.join(adir, "agent.json")).read())
+            # ---- giả lập Windows + macOS bằng chính file agent (đi qua đọc XML Event Log / log macOS của agent)
+            st = api("/agent-tokens", tok, {"name": "E2E giả lập", "days": 1, "max_uses": 5})["token"]
+            sim_proc = subprocess.Popen([AGENT, "simulate", "--server", E.BASE, "--allow-http", "--token", st, "--windows", "3", "--macos", "2",
+                                         "--dir", tempfile.mkdtemp(prefix="sim-e2e-")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            sims = []
+            for _ in range(60):
+                time.sleep(0.5)
+                sims = [a for a in api("/agents", tok) if a["hostname"].startswith("SIM-") and a.get("cpu") is not None]
+                if len(sims) == 5 and any(e["hostname"] == "SIM-WIN03" and e["title"] == "Phát hiện mã độc" for e in api("/agent-events?hours=2", tok)):
+                    break
+            sim_proc.terminate()
+            E.check("giả lập: 3 Windows + 2 macOS gửi số liệu", len(sims) == 5 and {a["os_family"] for a in sims} == {"windows", "darwin"}, str([a["hostname"] for a in sims]))
+            evs = [e["title"] for e in api("/agent-events?hours=2", tok) if e["hostname"].startswith("SIM-")]
+            E.check("giả lập: sự kiện Windows (XML) + macOS (log) được dịch", "Phát hiện mã độc" in evs and "Đăng nhập thất bại" in evs, str(evs)[:200])
         else:
             E.check("có file agent Linux để test", False, AGENT)
 
@@ -67,8 +81,8 @@ def main():
             page.wait_for_selector("text=Danh sách máy")
             page.wait_for_selector("text=PC-KD03")
             rows = page.locator(".tbl tbody tr").count()
-            E.check("danh sách có 12 máy mẫu (+ agent thật)", rows >= 12, f"{rows} dòng")
-            E.check("thẻ thống kê: Defender tắt = 1", page.locator(".stat:has-text('Defender tắt') .stat-value").inner_text().strip() == "1")
+            E.check("danh sách có 12 máy mẫu (+ agent thật + 5 giả lập)", rows >= 18, f"{rows} dòng")
+            E.check("thẻ thống kê: Defender tắt = 2 (PC-LA + SIM-WIN02)", page.locator(".stat:has-text('Defender tắt') .stat-value").inner_text().strip() == "2")
             E.check("PC-LA hiện 'Defender TẮT'", page.locator("tr:has-text('PC-LA') >> text=Defender TẮT").count() == 1)
             E.check("SRV-FILE01 hiện phần mềm diệt virus khác", page.locator("tr:has-text('SRV-FILE01') >> text=Kaspersky").count() == 1)
             page.screenshot(path=f"{SHOTS}/1-danh-sach.png")

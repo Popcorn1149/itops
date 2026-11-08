@@ -48,6 +48,10 @@ Kiểm tra:
   itops-agent collect                   in thông tin thu được (không gửi) – để kiểm tra trên máy
   itops-agent pin --server URL          in ca_pin của chứng chỉ server (dùng khi server dùng chứng chỉ tự ký)
   itops-agent version
+
+Chạy thử (không cần quyền admin, không cài gì):
+  itops-agent simulate --server URL --token itk_xxx [--windows 3] [--macos 2] [--allow-http]
+      giả lập nhiều máy Windows/macOS gửi dữ liệu thật lên server (Ctrl+C để dừng)
 `, Version)
 }
 
@@ -64,9 +68,11 @@ func main() {
 	var err error
 	switch cmd {
 	case "run":
-		if isService() {
-			runService()
-			return
+		// dịch vụ Windows được tạo với "run --service": gọi thẳng SCM, không dựa vào việc tự đoán
+		if (len(args) > 0 && args[0] == "--service") || isService() {
+			if runService() {
+				return
+			}
 		}
 		err = runForeground()
 	case "install":
@@ -79,6 +85,8 @@ func main() {
 		err = collectOnce()
 	case "pin":
 		err = pin(args)
+	case "simulate":
+		err = simulate(args)
 	case "version", "--version", "-v":
 		fmt.Println(Version)
 	default:
@@ -149,13 +157,27 @@ func install(args []string) error {
 	if cfg.UID == "" {
 		cfg.UID = config.NewUID()
 	}
-	if *token != "" {
-		cfg.EnrollToken, cfg.AgentID, cfg.Key = *token, 0, ""
-	}
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
-	if cfg.AgentID == 0 && cfg.EnrollToken == "" {
+	logx.Setup(config.Dir(), true)
+	switch {
+	case *token != "" && cfg.AgentID != 0:
+		// máy ĐÃ đăng ký, chạy lại với token mới (vd. GPO đổi token): thử đăng ký lại TRƯỚC, chỉ lưu khi server nhận.
+		// Token sai / hết hạn → giữ nguyên khoá cũ, máy vẫn chạy bình thường.
+		trial := *cfg
+		trial.EnrollToken, trial.AgentID, trial.Key = *token, 0, ""
+		a, err := agent.New(Version, &trial)
+		if err != nil {
+			return err
+		}
+		if err := a.Enroll(); err != nil {
+			return fmt.Errorf("đăng ký lại không được (%v) – GIỮ NGUYÊN cấu hình cũ, agent vẫn chạy như trước", errText(err))
+		}
+		cfg = &trial
+	case *token != "":
+		cfg.EnrollToken = *token
+	case cfg.AgentID == 0 && cfg.EnrollToken == "":
 		return errors.New("thiếu --token")
 	}
 	exe, err := installBinary()
@@ -165,8 +187,7 @@ func install(args []string) error {
 	if err := cfg.Save(); err != nil {
 		return err
 	}
-	logx.Setup(config.Dir(), true)
-	if cfg.AgentID == 0 { // đăng ký ngay để admin thấy lỗi (token sai, sai địa chỉ...) thay vì dịch vụ âm thầm thử lại
+	if cfg.AgentID == 0 { // máy mới: đăng ký ngay để admin thấy lỗi (token sai, sai địa chỉ...) thay vì dịch vụ âm thầm thử lại
 		a, err := agent.New(Version, cfg)
 		if err != nil {
 			return err
@@ -174,7 +195,9 @@ func install(args []string) error {
 		if err := a.Enroll(); err != nil {
 			var rej *transport.ErrRejected
 			if errors.As(err, &rej) {
-				return fmt.Errorf("server từ chối đăng ký: %s", rej.Body)
+				cfg.EnrollToken = "" // không để token sai trong cấu hình (dịch vụ sẽ chết lặp lại)
+				_ = cfg.Save()
+				return fmt.Errorf("server từ chối đăng ký: %s", errText(err))
 			}
 			fmt.Fprintf(os.Stderr, "CẢNH BÁO: chưa kết nối được server (%v) – dịch vụ sẽ tự thử lại.\n", err)
 		}
@@ -265,5 +288,83 @@ func pin(args []string) error {
 	c := conn.ConnectionState().PeerCertificates[0]
 	fmt.Printf("Chứng chỉ: %s (hết hạn %s)\nca_pin:    %s\n\nĐỐI CHIẾU chuỗi này với lệnh in trên chính server trước khi dùng.\n",
 		c.Subject.CommonName, c.NotAfter.Format("2006-01-02"), transport.SPKIPin(c))
+	return nil
+}
+
+func errText(err error) string {
+	var rej *transport.ErrRejected
+	if errors.As(err, &rej) {
+		return rej.Body
+	}
+	return err.Error()
+}
+
+// simulate: chạy N máy GIẢ LẬP trong một tiến trình, mỗi máy đi qua đúng đường của agent thật
+// (đăng ký, hàng đợi trên đĩa, gửi HTTPS/ca_pin, đọc XML Event Log / log macOS). Không cần quyền admin, không cài dịch vụ.
+func simulate(args []string) error {
+	fs := flag.NewFlagSet("simulate", flag.ExitOnError)
+	server := fs.String("server", "", "địa chỉ server")
+	token := fs.String("token", "", "token đăng ký (số lượt ≥ số máy giả lập)")
+	pinV := fs.String("ca-pin", "", "ca_pin (server HTTPS chứng chỉ tự ký)")
+	allowHTTP := fs.Bool("allow-http", false, "cho phép http:// (demo)")
+	nWin := fs.Int("windows", 3, "số máy Windows giả lập")
+	nMac := fs.Int("macos", 2, "số máy macOS giả lập")
+	dir := fs.String("dir", filepath.Join(os.TempDir(), "itops-agent-simulate"), "thư mục trạng thái (giữ lại để chạy lại không tạo máy trùng)")
+	_ = fs.Parse(args)
+	if *server == "" {
+		return errors.New("thiếu --server")
+	}
+	logx.Setup(*dir, true)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	type m struct {
+		os string
+		i  int
+	}
+	var list []m
+	for i := 1; i <= *nWin; i++ {
+		list = append(list, m{"windows", i})
+	}
+	for i := 1; i <= *nMac; i++ {
+		list = append(list, m{"darwin", i})
+	}
+	errs := make(chan error, len(list))
+	for _, x := range list {
+		sim := collect.NewSim(x.os, x.i)
+		d := filepath.Join(*dir, sim.Host)
+		cfg := (&config.File{}).WithPath(d)
+		if b, err := os.ReadFile(filepath.Join(d, "agent.json")); err == nil {
+			_ = json.Unmarshal(b, cfg)
+		}
+		cfg.ServerURL, cfg.AllowHTTP = strings.TrimRight(*server, "/"), *allowHTTP
+		if *pinV != "" {
+			cfg.CAPin = *pinV
+		}
+		if cfg.UID == "" {
+			cfg.UID = "sim-" + strings.ToLower(sim.Host) + "-" + config.NewUID()[:8]
+		}
+		if cfg.AgentID == 0 {
+			if *token == "" {
+				return errors.New("thiếu --token (lần đầu chạy giả lập)")
+			}
+			cfg.EnrollToken = *token
+		}
+		if err := cfg.Validate(); err != nil {
+			return err
+		}
+		a, err := agent.NewWith(Version, cfg, sim, d)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("  %-11s %-8s %s\n", sim.Host, map[string]string{"windows": "Windows", "darwin": "macOS"}[x.os], sim.IP)
+		go func() { errs <- a.Run(ctx) }()
+	}
+	fmt.Printf("Đang giả lập %d máy → %s (Ctrl+C để dừng). Log: %s\n", len(list), *server, filepath.Join(*dir, "agent.log"))
+	for range list {
+		if err := <-errs; err != nil {
+			stop()
+			return err
+		}
+	}
 	return nil
 }

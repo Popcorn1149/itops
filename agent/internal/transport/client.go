@@ -109,7 +109,7 @@ func (c *Client) do(method, path string, body []byte, gz bool, out any) (int, er
 	case resp.StatusCode == 429 || resp.StatusCode >= 500:
 		return resp.StatusCode, fmt.Errorf("server bận/lỗi %d", resp.StatusCode)
 	case resp.StatusCode >= 400:
-		return resp.StatusCode, &ErrRejected{resp.StatusCode, string(data[:min(len(data), 300)])}
+		return resp.StatusCode, &ErrRejected{resp.StatusCode, strings.ToValidUTF8(string(data[:min(len(data), 300)]), "")}
 	}
 	if out != nil {
 		if b, ok := out.(*[]byte); ok {

@@ -401,6 +401,8 @@ function NewToken({ onClose, onDone, dl }) {
           <CopyBox label="Windows qua GPO (Startup Script, chạy mỗi lần bật máy, đã cài thì bỏ qua)" text={`install-windows.ps1 -Server ${server} -Token ${tok}${pin ? ` -CaPin ${pin}` : ""}${http ? " -AllowHttp" : ""} -Source \\\\FILESERVER\\itops$\\itops-agent-windows-amd64.exe`} />
           <CopyBox label="Linux (root)" text={`sudo ./install-linux.sh ${server} ${tok}${pin ? ` ${pin}` : ""}`} />
           <CopyBox label="macOS (sudo)" text={`sudo ./install-macos.sh ${server} ${tok}${pin ? ` ${pin}` : ""}`} />
+          <CopyBox label="Chạy thử: GIẢ LẬP 3 máy Windows + 2 máy macOS gửi dữ liệu lên (không cần quyền admin, không cài gì – Ctrl+C để dừng). Token cần ≥ 5 lượt."
+            text={`.\\itops-agent-windows-amd64.exe simulate --server ${server} --token ${tok} --windows 3 --macos 2${pin ? ` --ca-pin ${pin}` : ""}${http ? " --allow-http" : ""}`} />
         </>
       )}
     </Modal>
