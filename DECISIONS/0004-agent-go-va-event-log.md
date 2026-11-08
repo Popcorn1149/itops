@@ -1,7 +1,7 @@
 # ADR 0004 – Agent cho máy Windows / Linux / macOS và chính sách thu event log
 
 - **Ngày:** 2026-11-08
-- **Trạng thái:** Đã thống nhất, **chưa triển khai** (bước sau PostgreSQL). Windows + Linux trước, macOS ở giai đoạn 2.
+- **Trạng thái:** Đã triển khai (2026-11-08): server `app/agents.py` + `app/agent_catalog.py`, agent `agent/`, trang Máy trạm. Agent Linux đã chạy thật; Windows/macOS đã build nhưng chưa chạy trên máy thật.
 
 ## Bối cảnh
 50–200 máy. Cần: event log quan trọng, trạng thái Windows Defender, hiệu năng (CPU/RAM/ổ đĩa), dịch vụ đang chạy, phần mềm đã cài. Linux/macOS tương tự. Chưa có chứng chỉ code signing, chưa có tài khoản Apple Developer. Công ty có GPO; chưa rõ có AD CS.
@@ -10,7 +10,8 @@
 1. **Agent viết bằng Go** (một file chạy, không cần cài runtime); server giữ **Python + FastAPI**.
 2. **Chỉ đẩy lên (push-only), chỉ đọc:** agent tự gửi dữ liệu theo lịch qua HTTPS tới `/api/agent/v1`; **server không có kênh ra lệnh cho máy trạm** (không chạy lệnh từ xa, không cài phần mềm, không bắt gói tin). Bản thiết kế "sensor-agent" tham khảo trên mạng (capture/tshark/commands) **không dùng**: bắt gói tin cần Npcap (bản miễn phí giới hạn 5 máy, không cài im lặng được) và kênh lệnh từ xa biến agent thành công cụ điều khiển 200 máy nếu server bị chiếm.
 3. **Đăng ký bằng token một lần** → mỗi máy có khoá riêng, thu hồi được từng máy. Có AD CS thì dùng thêm chứng chỉ máy (mTLS) qua GPO; **không có AD CS vẫn chạy được** (token + HTTPS với chứng chỉ tự ký được ghim trong cấu hình agent).
-4. **Chưa có code signing:** triển khai qua GPO / script nội bộ, công bố mã băm SHA-256 của từng bản; SmartScreen/Defender có thể cảnh báo lần đầu. macOS chưa có Apple Developer → giai đoạn 2, cài thủ công (Gatekeeper sẽ chặn bản chưa ký).
+4. **Tự cập nhật (giai đoạn 2, đã làm):** bản tin ký Ed25519 bằng khoá giữ NGOÀI server, khoá công khai nằm trong `agent.json` lúc cài → server bị chiếm cũng không đẩy được file giả; chỉ nâng phiên bản.
+5. **Chưa có code signing:** triển khai qua GPO / script nội bộ, công bố mã băm SHA-256 của từng bản; SmartScreen/Defender có thể cảnh báo lần đầu. macOS chưa có Apple Developer → giai đoạn 2, cài thủ công (Gatekeeper sẽ chặn bản chưa ký).
 
 ## Chính sách event log: chỉ lấy sự kiện thực tế cần xử lý
 **Không lấy toàn bộ Event ID** và **không lấy đăng nhập/đăng xuất thường ngày** – các log này chiếm phần lớn khối lượng, gần như luôn là hoạt động bình thường (người dùng, dịch vụ, tài khoản máy) và làm quản trị viên/helpdesk bị nhiễu.
@@ -39,5 +40,6 @@ Linux / macOS: tương đương – sudo/su thất bại, thêm user vào sudo/w
 **Hiển thị dễ đọc cho IT helpdesk:** mỗi Event ID có mẫu tiếng Việt cố định **Ai · Từ đâu · Chuyện gì · Nên làm gì** (vd. *"Tài khoản `lan.nt` bị khoá sau 5 lần nhập sai từ máy `KT-PC07` – xác nhận với người dùng rồi mở khoá trong AD"*); sự kiện lặp lại được **gom** (×12 trong 10 phút); ID chưa có mẫu thì hiện câu Windows tự sinh. Danh sách thu/bỏ chỉnh được ở server theo nhóm máy, không cần cài lại agent.
 
 ## Hệ quả
-- Server: migration mới cho bảng máy/agent (`jsonb` cho inventory), API `/api/agent/v1` có schema Pydantic + test hợp đồng, rule mới dùng chung đường cảnh báo hiện có.
+- Server: migration 0004 (bảng agent, `jsonb` cho inventory/sự kiện), API `/api/agent/v1` kiểm dữ liệu bằng Pydantic, cảnh báo dùng chung bảng `alerts` (source = `agent`).
+- Máy trạm tắt buổi tối là bình thường → cảnh báo mất kết nối chỉ bật mặc định cho **máy chủ** (chỉnh được từng máy).
 - Agent không bao giờ nhận lệnh → muốn sửa máy trạm vẫn dùng công cụ hiện có (GPO, RDP, SCCM/Intune nếu có).

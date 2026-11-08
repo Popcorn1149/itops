@@ -131,3 +131,12 @@ Không có tính năng gửi dữ liệu lên cloud. **Ngoại lệ**: nội dun
 ## Báo lỗi bảo mật
 
 Gửi trực tiếp cho người phụ trách IT Ops, không đăng lên nhóm chat chung. Ghi rõ phiên bản (`git log -1`), cách tái hiện và ảnh hưởng.
+
+## 11. Agent máy trạm (ADR 0004)
+- **Chỉ đọc, chỉ gửi lên:** không có API nào để server ra lệnh, cài phần mềm hay chạy script trên máy trạm. Cấu hình server gửi xuống chỉ gồm chu kỳ thu thập và danh sách Event ID.
+- **Đăng ký:** token dùng chung một đợt cài, có hạn (1–90 ngày) và giới hạn số máy, server chỉ lưu SHA-256; sai 10 lần / 10 phút từ một IP → chặn. Sau đăng ký mỗi máy có **khoá riêng** (chỉ lưu SHA-256), thu hồi từng máy được; token bị xoá khỏi `agent.json`.
+- **Kênh truyền:** HTTPS; không có AD CS thì ghim khoá công khai chứng chỉ (`ca_pin`). `http://` chỉ khi bật `--allow-http` (demo).
+- **Dữ liệu nhận:** Pydantic giới hạn kiểu/độ dài/số phần tử, body ≤ 8 MB, gzip giải nén ≤ 32 MB (chặn bom zip), ≤ 30 báo cáo/phút/máy. Sự kiện ngoài danh mục hoặc đăng nhập thường ngày (4624/4634/4672...) bị bỏ ở server dù agent gửi lên.
+- **Trên máy trạm:** thư mục dữ liệu chỉ SYSTEM/Administrators (Windows, icacls) hoặc root (600) đọc được; dịch vụ systemd chạy với `ProtectSystem/ProtectHome/NoNewPrivileges`. Lệnh hệ thống gọi trực tiếp, không qua shell.
+- **Tự cập nhật:** manifest ký Ed25519 bằng khoá riêng giữ ngoài server; agent kiểm chữ ký bằng khoá công khai trong `agent.json`, kiểm SHA-256 + kích thước file, chỉ nâng phiên bản. Đã thử: server đưa file giả (sửa cả SHA-256 trong manifest) → agent từ chối.
+- **Phân phối qua GPO:** thư mục chia sẻ chỉ admin được ghi; script cài kiểm SHA-256 với `SHA256SUMS.txt`. File chưa ký code signing.

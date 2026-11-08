@@ -13,6 +13,7 @@ Bản tách riêng khỏi bản đang chạy (`Documents\itops`) để làm cấ
 | 9 | Công cụ mô phỏng thiết bị (gói tin thật); vá lỗ hổng trap vượt bộ lọc IP qua agentAddress |
 | 10 | Giao diện Sáng/Tối/Theo hệ thống, ghim/bỏ ghim thanh bên; giữ lý do đăng xuất qua lần tải lại |
 | 11 | **PostgreSQL** thay SQLite (tự chạy kèm khi demo), sao lưu/khôi phục mới, chuyển dữ liệu v1, ADR agent + chính sách event log |
+| 12 | **Agent máy trạm** (Go, Windows/Linux/macOS) + trang **Máy trạm**: hiệu năng, Defender, dịch vụ, phần mềm, sự kiện đã lọc và dịch tiếng Việt, tự cập nhật có ký số |
 
 Chi tiết cơ chế bảo mật: **`SECURITY.md`**. Lý do các quyết định: **`DECISIONS/`**.
 
@@ -115,9 +116,17 @@ Thiếu `.secret_key` của v1 thì mật khẩu thiết bị cũ không giải 
 `cp .env.example .env` → đặt `ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `DEMO_DATA=false` → `docker compose up -d --build`. Chuyển dữ liệu từ máy demo: sao lưu ở máy demo → chép `.zip` lên máy chủ → `docker compose exec itops python -m app.admin_tools restore /data/<file>.zip --wipe`.
 *(Phần Docker chưa chạy thử được trong môi trường đóng gói – sẽ kiểm khi dựng VM.)*
 
-## Agent cho máy trạm (bước tiếp theo)
-Thiết kế đã chốt ở **`DECISIONS/0004`**: agent Go, chỉ gửi lên + chỉ đọc (không nhận lệnh từ xa), Windows + Linux trước.
-Event log **chỉ lấy sự kiện cần xử lý** (đăng nhập sai, khoá tài khoản, thêm quyền admin, xoá nhật ký, tắt máy đột ngột, dịch vụ chết, mã độc, tắt Defender…), **bỏ đăng nhập/đăng xuất thường ngày** và đăng nhập của dịch vụ/tài khoản máy để quản trị viên không bị nhiễu.
+## Agent máy trạm
+Trang **Máy trạm** (menu Vận hành). Với dữ liệu mẫu có sẵn 12 máy mẫu (Windows, Linux, macOS) kèm sự cố "như thật": dò mật khẩu RDP vào DC, khoá tài khoản, thêm người vào nhóm Administrators, mã độc bị Defender chặn, Defender bị tắt, ổ gần đầy, tắt máy đột ngột, dịch vụ backup chết, lỗi ổ đĩa. Tắt máy mẫu: `DEMO_AGENTS=0`.
+
+Thử agent THẬT trên chính máy demo (Windows):
+1. Máy trạm → **Cài đặt agent** → **Tạo token** → chép lệnh "Windows".
+2. Tải `itops-agent-windows-amd64.exe` ở cùng trang. Mở PowerShell **Run as administrator** trong thư mục tải về, dán lệnh (có `--allow-http` vì bản demo chạy http://).
+3. Sau ~1 phút máy hiện trong danh sách. Kiểm tra: `& "C:\Program Files\ITOpsAgent\itops-agent.exe" status`. Xem thông tin thu được mà không gửi: `itops-agent.exe collect`.
+4. Gỡ: `& "C:\Program Files\ITOpsAgent\itops-agent.exe" uninstall --purge`, rồi xoá máy trên giao diện.
+
+Chi tiết cài GPO, HTTPS/`ca_pin` (có hoặc không có AD CS), tự cập nhật: **`agent/README.md`**. Thiết kế + danh sách Event ID: **`DECISIONS/0004`**.
+Event log **chỉ lấy sự kiện cần xử lý**, **bỏ đăng nhập/đăng xuất thường ngày** và đăng nhập của dịch vụ/tài khoản máy; mỗi sự kiện hiện theo *Ai · Từ đâu · Chuyện gì · Nên làm gì*, lặp lại thì gộp (×số lần).
 
 ## Chạy test
 Test tự dựng một PostgreSQL tạm (thư mục tạm, cổng ngẫu nhiên) rồi xoá – **không đụng** dữ liệu mẫu hay dữ liệu thật. Task VS Code **5** làm sẵn các bước dưới.
@@ -127,7 +136,9 @@ cd backend
 .venv\Scripts\python.exe -m pytest tests -q -p no:cacheprovider --ignore=tests/test_real_agents.py --ignore=tests/load_test.py
 .venv\Scripts\python.exe -m playwright install chromium
 .venv\Scripts\python.exe tests\e2e_security.py
+.venv\Scripts\python.exe tests\e2e_agents.py     (cần agent Linux đã build – chỉ chạy được trên Linux)
 ```
+Agent (Go ≥ 1.24, không cần Internet): `cd agent && go test ./... && ./scripts/build.sh 1.0.0`.
 Đã có PostgreSQL dùng để test: đặt `TEST_DATABASE_URL=postgresql://user:pass@host:5432/postgres` (user có quyền CREATEDB) – mỗi lần chạy tạo một CSDL `itops_test_…` rồi xoá.
 
 ## Kết quả kiểm tra trước khi đóng gói (Linux, Python 3.13, PostgreSQL 17.11, Chrome)

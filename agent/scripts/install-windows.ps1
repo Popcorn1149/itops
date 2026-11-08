@@ -1,4 +1,4 @@
-<#
+﻿<#
   Cài / nâng cấp IT Ops Agent trên Windows – chạy được nhiều lần (dùng làm GPO Startup Script).
 
   GPO: Computer Configuration → Policies → Windows Settings → Scripts → Startup → PowerShell Scripts

@@ -104,6 +104,9 @@ func newAgent() (*agent.Agent, error) {
 		return nil, err
 	}
 	a.Restart = func() { os.Exit(3) } // trình quản lý dịch vụ (SCM / systemd / launchd) tự chạy lại bản mới
+	if exe, err := os.Executable(); err == nil {
+		_ = os.Remove(exe + ".old") // bản cũ còn lại sau lần tự cập nhật trước
+	}
 	return a, nil
 }
 

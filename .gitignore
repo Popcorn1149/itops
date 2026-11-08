@@ -12,3 +12,4 @@ backend/data-v2-local/
 .env.local
 backend/tools/pgsql/
 agent/dist/
+backend/agent_dist/
