@@ -185,7 +185,8 @@ class Report(BaseModel):
     services: list[Service] | None = Field(None, max_length=5000)
     software: list[Software] | None = Field(None, max_length=10000)
     updates: dict | None = None
-    events: list[AgentEventIn] = Field(default_factory=list, max_length=2000)
+    posture: dict | None = None                       # tường lửa, BitLocker/FileVault, Gatekeeper...
+    events: list[AgentEventIn] | None = Field(default_factory=list, max_length=2000)
 
 
 class Enroll(BaseModel):
@@ -297,6 +298,10 @@ def _state_alerts(db, a: models.Agent, pol: dict, metrics: Metrics | None, defen
                                "Nên làm: dọn thư mục Temp/Downloads, thùng rác, file log; ổ hệ thống đầy làm Windows chậm và lỗi cập nhật.")
             elif d.used_pct < pol["disk_warn"] - 5:
                 notes += _resolve(db, k, f"ổ {d.mount} còn {d.used_pct:.0f}%")
+        for al in db.query(models.Alert).filter(models.Alert.dedupe_key.like(f"agent:{a.id}:disk:%"),
+                                                models.Alert.status != "resolved"):
+            if al.dedupe_key not in seen:              # ổ đã tháo / không còn theo dõi
+                notes += _resolve(db, al.dedupe_key, "ổ không còn trong danh sách máy gửi lên")
     if defender:
         mode = str(defender.get("running_mode") or "").lower()
         passive = "passive" in mode or bool(defender.get("other_av"))     # có phần mềm diệt virus khác làm chính
@@ -475,7 +480,9 @@ def process_report(agent_id: int, rep: Report, ip: str) -> tuple[dict, list]:
         if rep.services is not None:
             _inventory(db, a, "services", [s.model_dump() for s in rep.services])
             summ["services_stopped_auto"] = sum(1 for s in rep.services if s.start.lower().startswith("auto")
-                                                and s.state.lower() not in ("running", "active"))
+                                                and s.state.lower() not in ("running", "active", "exited", "starting"))
+        if rep.posture is not None:
+            _inventory(db, a, "posture", {k: rep.posture.get(k) for k in list(rep.posture)[:20]})
         if rep.updates is not None:
             _inventory(db, a, "updates", rep.updates)
             summ["reboot_pending"] = bool(rep.updates.get("reboot_pending"))
@@ -496,7 +503,7 @@ def process_report(agent_id: int, rep: Report, ip: str) -> tuple[dict, list]:
         if was_offline:
             notes += _resolve(db, f"agent:{a.id}:offline", "máy đã kết nối lại")
         notes += _state_alerts(db, a, pol, rep.metrics, rep.defender)
-        stored, dropped, ev_notes = ingest_events(db, a, rep.events, pol)
+        stored, dropped, ev_notes = ingest_events(db, a, rep.events or [], pol)
         notes += ev_notes
         cfg = agent_config(pol, a.os_family)
         db.commit()
@@ -716,6 +723,7 @@ def agent_detail(aid: int, user=Depends(current_user), db: Session = Depends(get
     inv = {r.kind: r for r in db.query(models.AgentInventory).filter_by(agent_id=a.id)}
     d["defender_detail"] = inv["defender"].data if "defender" in inv else None
     d["updates"] = inv["updates"].data if "updates" in inv else None
+    d["posture"] = inv["posture"].data if "posture" in inv else None
     d["inventory_at"] = {k: r.updated_at.isoformat() + "Z" for k, r in inv.items()}
     d["alerts_open"] = [{"id": x.id, "title": x.title, "severity": x.severity, "opened_at": x.opened_at.isoformat() + "Z",
                          "count": x.count} for x in db.query(models.Alert).filter(

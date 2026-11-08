@@ -183,6 +183,11 @@ def test_state_alerts_disk_and_defender(client, admin, agent):
     report(client, agent, metrics={"disks": [{"mount": "C:", "total_gb": 237, "used_pct": 50}]},
            defender={"realtime": True, "signature_age_days": 0})
     assert all(st == "resolved" for _, _, st in alerts(f"agent:{aid}:%"))
+    # ổ USB đầy rồi bị rút ra → cảnh báo tự đóng
+    report(client, agent, metrics={"disks": [{"mount": "E:", "total_gb": 32, "used_pct": 99}]})
+    assert ("Ổ E: sắp đầy: PC-KT01", "critical", "open") in alerts(f"agent:{aid}:disk:%")
+    report(client, agent, metrics={"disks": [{"mount": "C:", "total_gb": 237, "used_pct": 50}]})
+    assert all(st == "resolved" for _, _, st in alerts(f"agent:{aid}:disk:%"))
     # có phần mềm diệt virus khác làm chính (Defender chạy thụ động) → không báo
     report(client, agent, defender={"realtime": False, "running_mode": "Passive Mode", "signature_age_days": 30})
     assert all(st == "resolved" for _, _, st in alerts(f"agent:{aid}:av-%"))
@@ -221,6 +226,7 @@ def test_config_policy_and_gzip(client, admin, agent):
 
 
 def test_invalid_payload_rejected(client, agent):
+    assert report(client, agent, events=None).status_code == 200            # agent cũ gửi null khi không có sự kiện
     assert report(client, agent, metrics={"cpu": 500}).status_code == 422
     assert report(client, agent, events=[{"ts": "khong-phai-ngay"}]).status_code == 422
     big = {"Authorization": H(agent)["Authorization"], "Content-Length": str(ag.MAX_BODY + 1)}
