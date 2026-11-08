@@ -146,6 +146,14 @@
       "problemMatcher": []
     },
     {
+      "label": "18. Kiểm tra mã nguồn (bị sửa / thiếu / lỗi thụt lề)",
+      "type": "shell",
+      "options": { "cwd": "${workspaceFolder}" },
+      "windows": { "command": "backend\\.venv\\Scripts\\python.exe backend\\tools\\kiem_tra_file.py" },
+      "command": "backend/.venv/bin/python backend/tools/kiem_tra_file.py",
+      "problemMatcher": []
+    },
+    {
       "label": "17. Giả lập agent: 3 máy Windows + 2 máy macOS (dữ liệu mẫu, cổng 8100)",
       // Cần app đang chạy (F5). Tạo token ở Máy trạm → Cài đặt agent (số lượt ≥ 5) rồi dán vào ô hỏi. Ctrl+C để dừng.
       "type": "shell",

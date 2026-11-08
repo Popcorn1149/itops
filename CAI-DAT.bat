@@ -14,6 +14,14 @@ if errorlevel 1 (
 )
 python --version
 echo.
+echo [0/5] Kiem tra file ma nguon (bi sua / giai nen thieu?) ...
+python backend\tools\kiem_tra_file.py
+if errorlevel 1 (
+  echo [LOI] Ma nguon khac ban phat hanh - xem danh sach o tren.
+  pause
+  exit /b 1
+)
+echo.
 echo [1/5] Chep cau hinh VS Code vao .vscode ...
 if not exist ".vscode" mkdir ".vscode"
 copy /Y "vscode-config\*.json" ".vscode\" >nul
