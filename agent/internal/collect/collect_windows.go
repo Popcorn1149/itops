@@ -3,11 +3,12 @@
 package collect
 
 import (
-	"encoding/base64"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -15,7 +16,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	"unicode/utf16"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -23,6 +23,7 @@ import (
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 
+	"itops/agent/internal/config"
 	"itops/agent/pkg/protocol"
 )
 
@@ -321,13 +322,15 @@ $b=Get-CimInstance Win32_BIOS
 if($b){ $o.serial=[string]$b.SerialNumber }
 $o | ConvertTo-Json -Depth 4 -Compress`
 
-func encodePS(s string) string {
-	u := utf16.Encode([]rune(s))
-	b := make([]byte, len(u)*2)
-	for i, c := range u {
-		b[2*i], b[2*i+1] = byte(c), byte(c>>8)
+// psFile: ghi script ra file .ps1 dễ đọc trong thư mục agent (chỉ SYSTEM/Administrators ghi được) rồi chạy bằng -File.
+// Không dùng -EncodedCommand: Defender/EDR thường coi đó là dấu hiệu mã độc.
+func psFile() (string, error) {
+	p := filepath.Join(config.Dir(), "collect.ps1")
+	want := append([]byte{0xEF, 0xBB, 0xBF}, []byte(psScript)...) // UTF-8 có BOM cho PowerShell 5.1
+	if cur, err := os.ReadFile(p); err == nil && bytes.Equal(cur, want) {
+		return p, nil
 	}
-	return base64.StdEncoding.EncodeToString(b)
+	return p, os.WriteFile(p, want, 0o600)
 }
 
 func (w *win) powershell() map[string]any {
@@ -336,9 +339,13 @@ func (w *win) powershell() map[string]any {
 	if w.ps != nil && time.Since(w.psAt) < time.Minute {
 		return w.ps
 	}
-	out, err := run(120*time.Second, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-		"-EncodedCommand", encodePS(psScript))
 	res := map[string]any{}
+	f, err := psFile()
+	if err != nil {
+		w.ps, w.psAt = res, time.Now()
+		return res
+	}
+	out, err := run(120*time.Second, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", f)
 	if err == nil {
 		_ = json.Unmarshal([]byte(strings.TrimPrefix(strings.TrimSpace(string(out)), "\uFEFF")), &res)
 	}
