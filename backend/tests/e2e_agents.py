@@ -16,7 +16,9 @@ from playwright.sync_api import sync_playwright  # noqa: E402
 from tests import e2e_ui as E  # noqa: E402
 
 SHOTS = os.environ.get("E2E_SHOTS", "/tmp/e2e-agents")
-AGENT = os.path.join(os.path.dirname(__file__), "..", "..", "agent", "dist", "itops-agent-linux-amd64")
+AGENT = next((p for p in (os.path.join(os.path.dirname(__file__), "..", "..", "agent", "dist", "itops-agent-linux-amd64"),
+                          os.path.join(os.path.dirname(__file__), "..", "agent_dist", "itops-agent-linux-amd64")) if os.path.exists(p)),
+             "agent/dist/itops-agent-linux-amd64")
 
 
 def api(path, token, body=None, method=None):
