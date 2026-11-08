@@ -15,7 +15,7 @@ from app.db import SessionLocal
 WEB = {"X-Requested-With": "itops"}        # header giao diện web luôn gửi
 
 
-from tests.pgtest import sql  # noqa: E402
+from tests.pgtest import head_revision, sql  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -312,7 +312,7 @@ def test_backup_contains_db_and_keys_and_restores(client, admin, clean, tmp_path
     names = set(z.namelist())
     assert {"db/manifest.json", "db/checks.jsonl", "db/audit_logs.jsonl", ".secret_key", ".enc_key", "KHOI-PHUC.txt"} <= names
     man = json.loads(z.read("db/manifest.json"))
-    assert man["revision"] == "0003" and man["tables"]["checks"] >= 1 and man["tables"]["users"] >= 1
+    assert man["revision"] == head_revision() and man["tables"]["checks"] >= 1 and man["tables"]["users"] >= 1
     assert not list((tmp_path / "bk").glob("*.part")), "không để lại file dở"
     # bí mật trong bản sao lưu vẫn ở dạng mã hoá, giải được bằng .enc_key đi kèm
     rows = [json.loads(line) for line in z.read("db/checks.jsonl").splitlines()]
@@ -339,7 +339,7 @@ def test_backup_contains_db_and_keys_and_restores(client, admin, clean, tmp_path
             cfg = conn.execute(text("select config from checks where id=:i"), {"i": c["id"]}).scalar()
             assert cfg["password"] == raw and cfg["port"] == 22                       # json → dict
             assert conn.execute(text("select pg_typeof(config)::text from checks limit 1")).scalar() == "json"
-            assert conn.execute(text("select version_num from alembic_version")).scalar() == "0003"
+            assert conn.execute(text("select version_num from alembic_version")).scalar() == head_revision()
             nid = conn.execute(text("select nextval(pg_get_serial_sequence('checks','id'))")).scalar()
             assert nid > max(r["id"] for r in rows), "sequence phải nối tiếp id lớn nhất đã nạp"
         with pytest.raises(SystemExit, match="đang có dữ liệu"):

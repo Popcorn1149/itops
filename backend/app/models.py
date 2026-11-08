@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
-from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey, JSON, Text, Float, Index
+from sqlalchemy import BigInteger, String, Integer, Boolean, DateTime, ForeignKey, JSON, Text, Float, Index
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from .db import Base
 
@@ -276,3 +277,121 @@ class DailyUptime(Base):
     total: Mapped[int] = mapped_column(Integer, default=0)
     down: Mapped[int] = mapped_column(Integer, default=0)
     down_minutes: Mapped[float] = mapped_column(Float, default=0)
+
+
+# ================================================================ AGENT MÁY TRẠM (ADR 0004)
+# Agent chỉ GỬI LÊN, chỉ đọc. Server không có kênh ra lệnh cho máy trạm.
+class AgentEnrollToken(Base):
+    """Token đăng ký dùng chung cho một đợt cài (GPO/script). Chỉ lưu SHA-256; chuỗi gốc hiện đúng 1 lần lúc tạo."""
+    __tablename__ = "agent_enroll_tokens"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(128))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    prefix: Mapped[str] = mapped_column(String(12), default="")            # vài ký tự đầu để nhận diện
+    site_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id", ondelete="SET NULL"), nullable=True)
+    tags: Mapped[str] = mapped_column(String(255), default="")             # gắn cho máy đăng ký bằng token này
+    max_uses: Mapped[int] = mapped_column(Integer, default=0)              # 0 = không giới hạn
+    uses: Mapped[int] = mapped_column(Integer, default=0)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class Agent(Base):
+    __tablename__ = "agents"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    uid: Mapped[str] = mapped_column(String(64), unique=True)             # định danh máy do agent tạo (giữ qua cài lại)
+    key_hash: Mapped[str] = mapped_column(String(64))                     # SHA-256 khoá riêng của máy
+    hostname: Mapped[str] = mapped_column(String(255), index=True)
+    domain: Mapped[str] = mapped_column(String(255), default="")
+    os_family: Mapped[str] = mapped_column(String(16), default="")         # windows | linux | darwin
+    os_name: Mapped[str] = mapped_column(String(255), default="")
+    os_version: Mapped[str] = mapped_column(String(128), default="")
+    os_kind: Mapped[str] = mapped_column(String(16), default="client")     # client | server
+    arch: Mapped[str] = mapped_column(String(16), default="")
+    agent_version: Mapped[str] = mapped_column(String(32), default="")
+    ip: Mapped[str] = mapped_column(String(64), default="")                # IP nguồn server thấy
+    ips: Mapped[list] = mapped_column(JSON, default=list)                  # IP các card mạng do agent báo
+    manufacturer: Mapped[str] = mapped_column(String(128), default="")
+    model: Mapped[str] = mapped_column(String(128), default="")
+    serial: Mapped[str] = mapped_column(String(128), default="")
+    cpu_model: Mapped[str] = mapped_column(String(255), default="")
+    cpu_cores: Mapped[int] = mapped_column(Integer, default=0)
+    ram_mb: Mapped[int] = mapped_column(Integer, default=0)
+    logged_user: Mapped[str] = mapped_column(String(128), default="")      # người đang dùng máy (phiên console)
+    boot_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    summary: Mapped[dict] = mapped_column(JSON, default=dict)             # số liệu mới nhất: cpu, mem, disks, defender...
+    site_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id", ondelete="SET NULL"), nullable=True)
+    asset_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id", ondelete="SET NULL"), nullable=True)
+    token_id: Mapped[int | None] = mapped_column(ForeignKey("agent_enroll_tokens.id", ondelete="SET NULL"), nullable=True)
+    tags: Mapped[str] = mapped_column(String(255), default="")
+    note: Mapped[str] = mapped_column(Text, default="")
+    alert_offline: Mapped[bool | None] = mapped_column(Boolean, nullable=True)   # None = theo loại máy (server: có)
+    enrolled_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    last_seen: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_report_seq: Mapped[int] = mapped_column(BigInteger, default=0)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    revoked_by: Mapped[str] = mapped_column(String(64), default="")
+
+
+class AgentMetric(Base):
+    __tablename__ = "agent_metrics"
+    __table_args__ = (Index("ix_agent_metrics_agent_ts", "agent_id", "ts"),)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"))
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now)
+    cpu: Mapped[float | None] = mapped_column(Float, nullable=True)
+    mem: Mapped[float | None] = mapped_column(Float, nullable=True)
+    disk: Mapped[float | None] = mapped_column(Float, nullable=True)       # % ổ đầy nhất
+
+
+class AgentInventory(Base):
+    """Ảnh chụp mới nhất theo loại: services | defender | updates | system. Phần mềm nằm ở agent_software (tìm kiếm)."""
+    __tablename__ = "agent_inventory"
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32), primary_key=True)
+    data: Mapped[dict] = mapped_column(JSONB, default=dict)
+    hash: Mapped[str] = mapped_column(String(64), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class AgentSoftware(Base):
+    __tablename__ = "agent_software"
+    __table_args__ = (Index("ix_agent_software_name", "name"),)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    version: Mapped[str] = mapped_column(String(128), default="")
+    publisher: Mapped[str] = mapped_column(String(255), default="")
+    installed_on: Mapped[str] = mapped_column(String(32), default="")
+    source: Mapped[str] = mapped_column(String(32), default="")           # registry | msi | dpkg | rpm | app ...
+
+
+class AgentEvent(Base):
+    """Sự kiện ĐÃ LỌC (ADR 0004) – đã dịch sang tiếng Việt và gom các lần lặp lại."""
+    __tablename__ = "agent_events"
+    __table_args__ = (Index("ix_agent_events_agent_ts", "agent_id", "ts"), Index("ix_agent_events_key_ts", "catalog_key", "ts"),
+                      Index("ix_agent_events_group", "agent_id", "group_key", "last_ts"))
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"))
+    ts: Mapped[datetime] = mapped_column(DateTime)                        # lần đầu (giờ UTC của máy trạm)
+    last_ts: Mapped[datetime] = mapped_column(DateTime)                   # lần gần nhất trong nhóm
+    count: Mapped[int] = mapped_column(Integer, default=1)
+    received_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    catalog_key: Mapped[str] = mapped_column(String(48), default="")      # vd. win:security:4625
+    group_key: Mapped[str] = mapped_column(String(255), default="")
+    category: Mapped[str] = mapped_column(String(32), default="")         # account | system | security | disk | service
+    severity: Mapped[str] = mapped_column(String(16), default="info")     # info | attention | trouble | critical
+    title: Mapped[str] = mapped_column(String(255), default="")
+    who: Mapped[str] = mapped_column(String(255), default="")             # Ai
+    where: Mapped[str] = mapped_column(String(255), default="")           # Từ đâu
+    what: Mapped[str] = mapped_column(Text, default="")                   # Chuyện gì
+    advice: Mapped[str] = mapped_column(Text, default="")                 # Nên làm gì
+    channel: Mapped[str] = mapped_column(String(128), default="")
+    provider: Mapped[str] = mapped_column(String(255), default="")
+    event_id: Mapped[int] = mapped_column(Integer, default=0)
+    record_id: Mapped[int] = mapped_column(BigInteger, default=0)
+    message: Mapped[str] = mapped_column(Text, default="")                # câu gốc của hệ điều hành (rút gọn)
+    data: Mapped[dict] = mapped_column(JSONB, default=dict)

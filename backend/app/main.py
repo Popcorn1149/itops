@@ -23,6 +23,7 @@ from .collectors import COLLECTORS
 from .notify import notify, CHANNELS
 from .topology import build_topology, build_risks, critical_view
 from . import events as ev_mod, receivers, secmon, virt
+from . import agents as agents_mod
 from .security import open_config
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -85,6 +86,7 @@ async def lifespan(app: FastAPI):
         from .automation import engine as auto_engine
         tasks.append(asyncio.create_task(auto_engine.loop()))      # tự động hoá chạy cùng bộ lập lịch
         tasks.append(asyncio.create_task(secmon.loop()))           # SLA, log source im lặng, archive + hash, cảnh báo audit
+        tasks.append(asyncio.create_task(agents_mod.loop()))       # agent máy trạm: mất kết nối, dọn số liệu cũ
     tasks += [asyncio.create_task(ev_mod.consumer()), asyncio.create_task(ev_mod.housekeeping())]
     if os.environ.get("DISABLE_SCHEDULER", "").lower() not in ("1", "true"):
         from .admin_tools import backup_loop
@@ -102,6 +104,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="IT Ops Workspace", version=VERSION, lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+app.include_router(agents_mod.router)      # /api/agent/v1/* (agent gửi lên) + /api/agents* (giao diện)
 
 
 @app.middleware("http")

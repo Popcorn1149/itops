@@ -350,7 +350,7 @@ def test_import_sqlite_v1_into_postgresql(tmp_path, monkeypatch):
     from sqlalchemy.orm import sessionmaker
     from app import admin_tools
     from app import db as dbm
-    from tests.pgtest import scratch_db
+    from tests.pgtest import head_revision, scratch_db
     src_dir = tmp_path / "v1"
     src_dir.mkdir()
     path = src_dir / "itops.db"
@@ -396,7 +396,7 @@ def test_import_sqlite_v1_into_postgresql(tmp_path, monkeypatch):
             u = conn.execute(text("select full_name, totp_enabled, totp_last_step from users where username='admin'")).one()
             assert u.full_name == "Quản trị" and u.totp_enabled is False and u.totp_last_step == 0   # cột mới (0002) lấy default
             assert conn.execute(text("select nextval(pg_get_serial_sequence('assets','id'))")).scalar() > 5
-            assert conn.execute(text("select version_num from alembic_version")).scalar() == "0003"
+            assert conn.execute(text("select version_num from alembic_version")).scalar() == head_revision()
         assert (keys_dir / ".enc_key").read_text() == "khoa-ma-hoa-v1"
         assert any(p.name.startswith(".enc_key.bak-") and p.read_text() == "khoa-dang-co" for p in keys_dir.iterdir())
         import pytest

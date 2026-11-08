@@ -89,3 +89,9 @@ class scratch_db:
         self.engine.dispose()
         with psycopg.connect(self.server, autocommit=True) as c:
             c.execute(f'DROP DATABASE IF EXISTS "{self.name}" WITH (FORCE)')
+
+
+def head_revision() -> str:
+    from alembic.script import ScriptDirectory
+    from app.db import _alembic_config
+    return ScriptDirectory.from_config(_alembic_config()).get_current_head()
