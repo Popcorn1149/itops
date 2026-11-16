@@ -77,18 +77,18 @@ func (a *Agent) saveState() {
 	}
 }
 
-// Enroll: dùng token đăng ký 1 lần để lấy khoá riêng của máy. Token bị xoá khỏi file ngay sau đó.
+// Enroll: đăng ký mở với server (chỉ cần địa chỉ server) để lấy khoá riêng của máy.
 func (a *Agent) Enroll() error {
 	if a.cfg.UID == "" {
 		a.cfg.UID = config.NewUID()
 	}
 	sys := a.col.System()
-	res, err := a.cli.Enroll(protocol.EnrollRequest{Token: a.cfg.EnrollToken, UID: a.cfg.UID, OSFamily: a.col.OSFamily(),
-		AgentVersion: a.Version, System: sys})
+	res, err := a.cli.Enroll(protocol.EnrollRequest{UID: a.cfg.UID, OSFamily: a.col.OSFamily(),
+		AgentVersion: a.Version, Site: a.cfg.Site, Tags: a.cfg.Tags, System: sys})
 	if err != nil {
 		return err
 	}
-	a.cfg.AgentID, a.cfg.Key, a.cfg.EnrollToken = res.AgentID, res.Key, ""
+	a.cfg.AgentID, a.cfg.Key = res.AgentID, res.Key
 	if err := a.cfg.Save(); err != nil {
 		return err
 	}
@@ -113,7 +113,7 @@ func (a *Agent) Collect() (*protocol.Report, collect.EventState) {
 	if hs := hex.EncodeToString(h[:]); hs != a.st.SystemHash || due(a.st.LastSystem, 6*time.Hour) {
 		r.System = &sys
 	} else if sys.LoggedUser != "" || a.st.SystemHash != "" {
-		r.System = &protocol.SystemInfo{Hostname: sys.Hostname, LoggedUser: sys.LoggedUser, IPs: sys.IPs}
+		r.System = &protocol.SystemInfo{Hostname: sys.Hostname, LoggedUser: sys.LoggedUser, UserSource: sys.UserSource, IPs: sys.IPs}
 	}
 	if due(a.st.LastServices, time.Duration(c.ServicesMinutes)*time.Minute) {
 		if s, err := a.col.Services(); err == nil {
@@ -216,7 +216,7 @@ func (a *Agent) flush() {
 		}
 	})
 	if errors.Is(err, transport.ErrRevoked) {
-		logx.Errorf("%v – ngừng gửi. Cài lại agent với token mới nếu cần.", err)
+		logx.Errorf("%v – ngừng gửi. Cài lại agent nếu cần.", err)
 		a.st.Revoked = true
 		a.saveState()
 		return
@@ -260,24 +260,29 @@ func (a *Agent) maybeUpdate() {
 func (a *Agent) Run(ctx context.Context) error {
 	backoff := 30 * time.Second
 	for a.cfg.AgentID == 0 {
-		if a.cfg.EnrollToken == "" {
-			return errors.New("chưa đăng ký và không có token – chạy lại lệnh cài với --token")
-		}
 		err := a.Enroll()
 		if err == nil {
 			break
 		}
 		var rej *transport.ErrRejected
 		if errors.As(err, &rej) && rej.Status == 403 {
-			return err // token sai/hết hạn: thử lại vô ích
+			return err // IT từ chối yêu cầu đè máy cũ / máy bị thu hồi: thử lại vô ích
 		}
-		logx.Warnf("đăng ký chưa được: %v – thử lại sau %s", err, backoff)
+		wait := backoff
+		var pend *transport.ErrPending
+		if errors.As(err, &pend) {
+			// máy này trùng một máy đã có trong IT Ops → chờ IT duyệt; hỏi lại đều đặn (không tăng dần)
+			wait = time.Duration(min(max(pend.RetryS, 60), 900)) * time.Second
+			logx.Warnf("%v – hỏi lại sau %s", err, wait)
+		} else {
+			logx.Warnf("đăng ký chưa được: %v – thử lại sau %s", err, backoff)
+			backoff = min(backoff*2, 30*time.Minute)
+		}
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-time.After(backoff):
+		case <-time.After(wait):
 		}
-		backoff = min(backoff*2, 30*time.Minute)
 	}
 	logx.Infof("agent %s chạy – server %s, mã máy %d", a.Version, a.cfg.ServerURL, a.cfg.AgentID)
 	// lệch pha ngẫu nhiên vài giây: 200 máy khởi động cùng lúc (GPO) không dồn vào server cùng một giây

@@ -7,3 +7,4 @@ data
 .env
 backend/tools/pgsql
 pgdata
+_backup

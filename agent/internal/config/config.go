@@ -22,8 +22,9 @@ type File struct {
 	Key       string `json:"key,omitempty"`
 	// Khoá công khai Ed25519 (base64) để kiểm chữ ký bản cập nhật. Trống = không tự cập nhật.
 	UpdatePubKey string `json:"update_pubkey,omitempty"`
-	// Token đăng ký – chỉ dùng một lần, xoá khỏi file ngay khi đăng ký xong.
-	EnrollToken string `json:"enroll_token,omitempty"`
+	// Site/Tags: gửi kèm lần đăng ký (tuỳ chọn, --site/--tags lúc cài). Đăng ký MỞ như Wazuh – không cần token.
+	Site string `json:"site,omitempty"`
+	Tags string `json:"tags,omitempty"`
 
 	path string // khác rỗng: lưu vào đây thay vì Path() (máy giả lập)
 }

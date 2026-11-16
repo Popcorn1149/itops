@@ -27,7 +27,7 @@ Hiện tại vẫn **demo bằng VS Code trên Windows**, sau này mới chạy 
 - *Thư viện `pgserver` (PostgreSQL nhúng qua pip):* chỉ hỗ trợ Python ≤ 3.12 – loại.
 
 ## Hệ quả
-- Lần chạy đầu cần Internet để tải ~30 MB (CAI-DAT.bat tải sẵn). PostgreSQL vẫn chạy sau khi tắt app; dừng bằng task VS Code 11/12.
+- Lần chạy đầu cần Internet để tải ~30 MB (SETUP.bat tải sẵn). PostgreSQL vẫn chạy sau khi tắt app; dừng bằng task VS Code 11/12.
 - Không còn file `itops.db` – dữ liệu nằm ở `DATA_DIR/pgdata`. Sao lưu/khôi phục bằng `admin_tools`, không chép thư mục `pgdata` khi đang chạy.
 - Chạy app bằng tài khoản **root** trên Linux với `PG_LOCAL=1` bị từ chối (PostgreSQL không cho) – trên máy chủ dùng Docker.
 - Người có quyền owner CSDL vẫn tắt được trigger audit; chuỗi hash của archive và log PostgreSQL là lớp phát hiện.

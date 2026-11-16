@@ -1,8 +1,9 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
-  LayoutDashboard, Map, Globe2, Shield, Server, Monitor, Network, HardDrive, ShieldCheck, Activity, Bell,
-  ScrollText, Settings, Search, PanelLeft, Laptop, Clock, Boxes, LogOut, KeyRound, Menu, FileText, Gauge, Zap,
+  LayoutDashboard, Map, Globe2, Shield, ShieldAlert, Bug, Server, Monitor, Network, HardDrive, ShieldCheck, Activity, Bell,
+  ScrollText, Settings, Search, PanelLeft, Laptop, Clock, Boxes, LogOut, KeyRound, Menu, FileText, Gauge, Zap, ArrowDownUp,
 } from "lucide-react";
+import { getInitialLanguage, saveLanguage, translate, getDateLocale } from "./i18n";
 import { useUi, setPinned } from "./theme";
 import ThemeSwitch from "./components/ThemeSwitch";
 import { api } from "./api";
@@ -11,6 +12,9 @@ import { Dot, TypeIcon, useClickOutside, useApi, DEMO } from "./ui";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import MapPage from "./pages/MapPage";
+import Cves from "./pages/Cves";
+import Vulnerabilities from "./pages/Vulnerabilities";
+import Report from "./pages/Report";
 import Sites from "./pages/Sites";
 import Assets, { AssetDrawer } from "./pages/Assets";
 import Critical from "./pages/Critical";
@@ -20,13 +24,14 @@ import Audit from "./pages/Audit";
 import Agents from "./pages/Agents";
 import SettingsPage from "./pages/Settings";
 import Logs from "./pages/Logs";
+import Traffic from "./pages/Traffic";
 import Resources from "./pages/Resources";
 import Automation from "./pages/Automation";
 
 const AppCtx = createContext(null);
 export const useApp = () => useContext(AppCtx);
 
-// Router: dùng hash (#/trang?x=y). Bản demo chạy trong khung artifact nên giữ route trong bộ nhớ.
+// Router uses hashes (#/page?x=y). The demo runs in an embedded artifact, so routes are kept in memory.
 let _demoRoute = "dashboard";
 const _listeners = new Set();
 export function go(path) {
@@ -41,30 +46,37 @@ function parseHash() {
   return { page, id, params: Object.fromEntries(new URLSearchParams(qs || "")) };
 }
 
+// Language switcher is hidden for now: the UI ships English-only until terminology is stable.
+// Keep the i18n code; set to true to re-enable VN/EN switching (the saved choice is honoured again).
+const SHOW_LANG_SWITCH = false;
+
 const NAV = [
-  { key: "dashboard", label: "Bảng điều khiển", icon: LayoutDashboard },
-  { group: "Hạ tầng" },
-  { key: "map", label: "Bản đồ hệ thống", icon: Map },
-  { key: "sites", label: "Sites", icon: Globe2 },
-  { key: "assets", q: "type=firewall", label: "Firewall", icon: Shield, types: ["firewall"] },
-  { key: "assets", q: "type=switch,router,ap", label: "Thiết bị mạng", icon: Network, types: ["switch", "router", "ap"] },
-  { key: "assets", q: "type=host,server", label: "Host vật lý", icon: Server, types: ["host", "server"] },
-  { key: "assets", q: "type=vm,container", label: "Máy ảo & container", icon: Monitor, types: ["vm", "container"] },
-  { key: "assets", q: "type=nas,ups,printer,camera,device,other,service,website,cloud", label: "Thiết bị khác", icon: HardDrive, types: ["nas", "ups", "printer", "camera", "device", "other", "service", "website", "cloud"] },
-  { key: "assets", q: "", label: "Tất cả tài sản", icon: Boxes },
-  { group: "Vận hành" },
-  { key: "critical", label: "Hệ thống trọng yếu", icon: ShieldCheck },
-  { key: "checks", label: "Giám sát", icon: Activity },
-  { key: "resources", label: "Tài nguyên", icon: Gauge },
-  { key: "automation", label: "Tự động hoá", icon: Zap },
-  { key: "agents", label: "Máy trạm", icon: Laptop },
-  { key: "alerts", label: "Cảnh báo", icon: Bell, badge: true },
-  { key: "logs", label: "Log thiết bị", icon: FileText },
-  { key: "audit", label: "Audit log", icon: ScrollText },
-  { key: "settings", label: "Cài đặt", icon: Settings },
+  { key: "dashboard", label: "Dashboard", tk: "dashboard", icon: LayoutDashboard },
+  { group: "Infrastructure", tk: "infrastructure" },
+  { key: "map", label: "System map", tk: "map", icon: Map },
+  { key: "sites", label: "Sites", tk: "sites", icon: Globe2 },
+  { key: "assets", q: "type=firewall", label: "Firewall", tk: "firewall", icon: Shield, types: ["firewall"] },
+  { key: "assets", q: "type=switch,router,ap", label: "Network devices", tk: "networkDevices", icon: Network, types: ["switch", "router", "ap"] },
+  { key: "assets", q: "type=host,server", label: "Physical Hosts", tk: "physicalHosts", icon: Server, types: ["host", "server"] },
+  { key: "assets", q: "type=vm,container", label: "Virtual machines & containers", tk: "virtualMachines", icon: Monitor, types: ["vm", "container"] },
+  { key: "assets", q: "type=nas,ups,printer,camera,device,other,service,website,cloud", label: "Other Devices", tk: "otherDevices", icon: HardDrive, types: ["nas", "ups", "printer", "camera", "device", "other", "service", "website", "cloud"] },
+  { key: "assets", q: "", label: "All assets", tk: "allAssets", icon: Boxes },
+  { group: "Operations", tk: "operations" },
+  { key: "critical", label: "Critical systems", tk: "criticalSystems", icon: ShieldCheck },
+  { key: "checks", label: "Monitoring", tk: "monitoring", icon: Activity },
+  { key: "resources", label: "Resources", tk: "resources", icon: Gauge },
+  { key: "traffic", label: "Network traffic", tk: "traffic", icon: ArrowDownUp },
+  { key: "automation", label: "Automation", tk: "automation", icon: Zap },
+  { key: "agents", label: "Workstation", tk: "endpoints", icon: Laptop },
+  { key: "cves", label: "CVEs", tk: "cves", icon: ShieldAlert },
+  { key: "vulns", label: "Vulnerabilities", tk: "vulns", icon: Bug },
+  { key: "alerts", label: "Warning", tk: "alerts", icon: Bell, badge: true },
+  { key: "logs", label: "Device Logs", tk: "deviceLogs", icon: FileText },
+  { key: "audit", label: "Audit log", tk: "auditLog", icon: ScrollText },
+  { key: "settings", label: "Settings", tk: "settings", icon: Settings },
 ];
 
-// Status backend thật: hỏi /api/health mỗi 30 giây. Bản demo (không có backend) thì ẩn.
+// Live backend status: query /api/health every 30 seconds. Hidden in the demo when no backend is available.
 function ApiStatus() {
   const [st, setSt] = useState(null);
   useEffect(() => {
@@ -78,26 +90,26 @@ function ApiStatus() {
         const d = await r.json();
         const ms = Math.round(performance.now() - t0);
         if (!alive) return;
-        if (!r.ok || !d.db) setSt({ s: "fail", t: "Lỗi cơ sở dữ liệu", ms });
-        else if (d.scheduler === "stalled") setSt({ s: "warn", t: "Bộ giám sát ngừng chạy", ms });
-        else if (d.receivers_ok === false) setSt({ s: "warn", t: "API ổn · bộ nhận log lỗi", ms });
-        else setSt({ s: "ok", t: d.scheduler === "off" ? "API hoạt động (tắt lập lịch)" : "API hoạt động", ms });
-      } catch { if (alive) setSt({ s: "fail", t: "Mất kết nối API" }); }
+        if (!r.ok || !d.db) setSt({ s: "fail", t: "Database error", ms });
+        else if (d.scheduler === "stalled") setSt({ s: "warn", t: "Monitoring scheduler stopped", ms });
+        else if (d.receivers_ok === false) setSt({ s: "warn", t: "API online · log receiver error", ms });
+        else setSt({ s: "ok", t: d.scheduler === "off" ? "API online (scheduler disabled)" : "API online", ms });
+      } catch { if (alive) setSt({ s: "fail", t: "Disconnected API" }); }
     };
     probe(); const i = setInterval(probe, 30000);
     return () => { alive = false; clearInterval(i); };
   }, []);
   if (DEMO || !st) return null;
-  return <div className="row" title={st.ms != null ? `Phản hồi ${st.ms} ms · kiểm tra mỗi 30 giây` : "Không gọi được /api/health"}>
+  return <div className="row" title={st.ms != null ? `Response time: ${st.ms} ms · checked every 30 seconds` : "Unable to reach /api/health"}>
     <Dot status={st.s} pulse={st.s !== "ok"} /><span style={{ color: st.s === "ok" ? undefined : `var(--${st.s})` }}>{st.t}</span>
     {st.ms != null && st.s === "ok" && <span className="faint">· {st.ms} ms</span>}
   </div>;
 }
 
-function ClockBox() {
+function ClockBox({ locale = "vi-VN" }) {
   const [t, setT] = useState(new Date());
   useEffect(() => { const i = setInterval(() => setT(new Date()), 1000); return () => clearInterval(i); }, []);
-  return <div className="clock"><Clock size={14} /><b>{t.toLocaleTimeString("vi-VN", { hour12: false })}</b>{t.toLocaleDateString("vi-VN")}</div>;
+  return <div className="clock"><Clock size={14} /><b>{t.toLocaleTimeString(locale, { hour12: false })}</b>{t.toLocaleDateString(locale)}</div>;
 }
 
 function GlobalSearch() {
@@ -126,7 +138,7 @@ function GlobalSearch() {
   return (
     <div className="search" ref={ref}>
       <Search size={16} />
-      <input placeholder="Tìm máy chủ, IP, check...  (Ctrl K)" value={q} onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} />
+      <input placeholder="Search servers, IPs, checks... (Ctrl+K)" value={q} onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} />
       {open && res.length > 0 && (
         <div className="search-results">
           {res.map((r) => (
@@ -151,9 +163,9 @@ function UserMenu({ me, onLogout }) {
       {open && (
         <div className="search-results" style={{ right: 0, left: "auto", width: 220 }}>
           <div style={{ padding: "8px 10px" }}><b>{me.full_name || me.username}</b><div className="small muted">{me.username} · {me.role}</div></div>
-          <div className="search-item" onClick={() => { setOpen(false); nav("settings", null, { tab: "account" }); }}><KeyRound size={15} />Mật khẩu · 2FA · Phiên</div>
-          <div style={{ padding: "6px 10px 8px", display: "flex", alignItems: "center", gap: 8 }}><span className="small muted grow">Giao diện</span><ThemeSwitch /></div>
-          <div className="search-item" onClick={onLogout}><LogOut size={15} />Đăng xuất</div>
+          <div className="search-item" onClick={() => { setOpen(false); nav("settings", null, { tab: "account" }); }}><KeyRound size={15} />Password · 2FA · Sessions</div>
+          <div style={{ padding: "6px 10px 8px", display: "flex", alignItems: "center", gap: 8 }}><span className="small muted grow">Appearance</span><ThemeSwitch /></div>
+          <div className="search-item" onClick={onLogout}><LogOut size={15} />Sign out</div>
         </div>
       )}
     </div>
@@ -161,12 +173,14 @@ function UserMenu({ me, onLogout }) {
 }
 
 export default function App() {
+  const [lang, setLangState] = useState(() => (SHOW_LANG_SWITCH ? getInitialLanguage() : "en"));
+  const setLanguage = (next) => setLangState(saveLanguage(next));
   const [route, setRoute] = useState(parseHash());
   const [me, setMe] = useState(null);
   const [checked, setChecked] = useState(false);
   const { pinned, theme } = useUi();
   const collapsed = !pinned;
-  const [peek, setPeek] = useState(false);          // bỏ ghim + rê chuột → mở tạm đè lên nội dung
+  const [peek, setPeek] = useState(false);          // when unpinned, hovering temporarily opens the sidebar over the content
   const peekTimer = useRef();
   const peekOn = () => { if (!collapsed) return; clearTimeout(peekTimer.current); peekTimer.current = setTimeout(() => setPeek(true), 120); };
   const peekOff = () => { clearTimeout(peekTimer.current); peekTimer.current = setTimeout(() => setPeek(false), 200); };
@@ -176,13 +190,13 @@ export default function App() {
   const [tick, setTick] = useState(0);
   const [appName, setAppName] = useState("IT Ops Workspace");
   const [version, setVersion] = useState("");
-  const [notice, setNotice] = useState(() => { try { return sessionStorage.getItem("itops_logout_reason") || ""; } catch { return ""; } });   // lý do bị đăng xuất
+  const [notice, setNotice] = useState(() => { try { return sessionStorage.getItem("itops_logout_reason") || ""; } catch { return ""; } });   // sign-out reason
 
   useEffect(() => {
     const h = () => { setRoute(parseHash()); setMobileNav(false); };
     window.addEventListener("hashchange", h);
     _listeners.add(h);
-    const out = (e) => { if (e && e.detail) setNotice(e.detail); setMe(null); };   // e.detail: lý do (hết phiên, không thao tác…)
+    const out = (e) => { if (e && e.detail) setNotice(e.detail); setMe(null); };   // e.detail: reason (session expired, inactivity, etc.)
     const need2fa = () => api.get("/auth/me").then(setMe).catch(() => {});
     window.addEventListener("itops:logout", out);
     window.addEventListener("itops:need2fa", need2fa);
@@ -190,13 +204,13 @@ export default function App() {
     return () => { _listeners.delete(h); window.removeEventListener("hashchange", h); window.removeEventListener("itops:logout", out); window.removeEventListener("itops:need2fa", need2fa); };
   }, []);
   useEffect(() => {
-    // phiên nằm trong cookie HttpOnly (JS không đọc được); cookie gợi ý itops_auth=1 cho biết có nên hỏi server
+    // session is stored in an HttpOnly cookie (not readable by JavaScript); the itops_auth=1 cookie hint indicates whether the server should be queried
     if (!/(^|;\s*)itops_auth=1/.test(document.cookie)) { setChecked(true); return; }
     api.get("/auth/me").then(setMe).catch(() => {}).finally(() => setChecked(true));
   }, []);
   const logout = useCallback(async () => {
-    try { await api.post("/auth/logout"); } catch { /* phiên đã hết hạn thì thôi */ }
-    try { sessionStorage.removeItem("itops_logout_reason"); } catch { /* bỏ qua */ }
+    try { await api.post("/auth/logout"); } catch { /* ignore if the session has already expired */ }
+    try { sessionStorage.removeItem("itops_logout_reason"); } catch { /* ignore */ }
     setNotice(""); setMe(null); go("dashboard");
   }, []);
 
@@ -205,7 +219,10 @@ export default function App() {
     go(`${page}${id ? "/" + id : ""}${qs}`);
   }, []);
   const refresh = useCallback(() => setTick((t) => t + 1), []);
+  const t = (key, params) => translate(lang, key, params);
   const ctx = {
+    appName,
+    lang, setLanguage, t, dateLocale: getDateLocale(lang),
     me, setMe, logout, route, nav, tick, refresh, theme, isAdmin: me?.role === "admin",
     openAsset: (id) => setAssetId(id),
     openCheck: (id) => setCheckEdit({ id }),
@@ -215,32 +232,34 @@ export default function App() {
   const alertsCount = useApi(me && !me.need_2fa_setup ? "/alerts?status=active&limit=500" : null, { interval: 30000, deps: [tick] });
 
   if (!checked) return null;
-  if (!me) return <Login appName={appName} notice={notice} onLogin={(u) => { setNotice(""); try { sessionStorage.removeItem("itops_logout_reason"); } catch { /* bỏ qua */ } setMe(u); }} />;
+  if (!me) return <Login appName={appName} notice={notice} onLogin={(u) => { setNotice(""); try { sessionStorage.removeItem("itops_logout_reason"); } catch { /* ignore */ } setMe(u); }} />;
   if (me.need_2fa_setup) return <ForcedTwoFactor me={me} onDone={(u) => setMe(u)} onLogout={logout} />;
 
   const curQ = new URLSearchParams(route.params).toString().replace(/%2C/g, ",");
   const isActive = (n) => n.key === route.page && (n.key !== "assets" || (n.q ?? "") === curQ);
-  const Page = { dashboard: Dashboard, map: MapPage, sites: Sites, assets: Assets, critical: Critical, checks: Checks, resources: Resources, automation: Automation, alerts: Alerts, agents: Agents, logs: Logs, audit: Audit, settings: SettingsPage }[route.page] || Dashboard;
+  const Page = { dashboard: Dashboard, map: MapPage, sites: Sites, assets: Assets, critical: Critical, checks: Checks, resources: Resources, automation: Automation, alerts: Alerts, agents: Agents, cves: Cves, vulns: Vulnerabilities, report: Report, logs: Logs, traffic: Traffic, audit: Audit, settings: SettingsPage }[route.page] || Dashboard;
   const openAlerts = alertsCount.data?.length || 0;
 
   return (
     <AppCtx.Provider value={ctx}>
       <div className={`app ${collapsed ? "collapsed" : ""} ${mobileNav ? "mobile-nav" : ""}`}>
         <header className="topbar">
-          <button className="icon-btn" title={collapsed ? "Ghim thanh bên" : "Bỏ ghim thanh bên"}
+          <button className="icon-btn" title={collapsed ? "Pin sidebar" : "Unpin sidebar"}
             onClick={() => (window.innerWidth < 760 ? setMobileNav(!mobileNav) : (setPinned(collapsed), setPeek(false)))}>
             {window.innerWidth < 760 ? <Menu size={17} /> : <PanelLeft size={17} />}
           </button>
           <div className="brand"><div className="brand-logo">IT</div><span>{appName}</span></div>
           <nav className="top-links">
-            <button className="top-link" onClick={() => nav("alerts")}>Cảnh báo {openAlerts > 0 && <span className="pill-count">{openAlerts}</span>}</button>
-            <button className="top-link" onClick={() => nav("checks")}>Giám sát</button>
-            <button className="top-link" onClick={() => nav("resources")}>Tài nguyên</button>
-            <button className="top-link" onClick={() => nav("logs")}>Log thiết bị</button>
-            <button className="top-link" onClick={() => nav("audit")}>Audit log</button>
+            <button className="top-link" onClick={() => nav("alerts")}>{t("nav.alerts")} {openAlerts > 0 && <span className="pill-count">{openAlerts}</span>}</button>
+            <button className="top-link" onClick={() => nav("checks")}>{t("nav.monitoring")}</button>
+            <button className="top-link" onClick={() => nav("resources")}>{t("nav.resources")}</button>
+            <button className="top-link" onClick={() => nav("logs")}>{t("nav.deviceLogs")}</button>
+            <button className="top-link" onClick={() => nav("audit")}>{t("nav.auditLog")}</button>
           </nav>
           <div className="top-right">
-            <ClockBox />
+            <ClockBox locale={getDateLocale(lang)} />
+            {SHOW_LANG_SWITCH && <button className="btn sm" title="Vietnamese / English" onClick={() => setLanguage(lang === "vi" ? "en" : "vi")}
+              style={{ fontWeight: 600, minWidth: 44 }}>{lang === "vi" ? "VN" : "EN"}</button>}
             <div className="hide-mobile"><ThemeSwitch /></div>
             <GlobalSearch />
             <UserMenu me={me} onLogout={logout} />
@@ -248,16 +267,16 @@ export default function App() {
         </header>
         {mobileNav && <div className="nav-backdrop" onClick={() => setMobileNav(false)} />}
         <aside className={`sidebar ${collapsed && peek ? "peek" : ""}`} onMouseEnter={peekOn} onMouseLeave={peekOff}>
-          {NAV.map((n, i) => n.group ? <div key={i} className="nav-group">{n.group}</div> : (
-            <button key={i} className={`nav-item ${isActive(n) ? "active" : ""}`} title={n.label}
+          {NAV.map((n, i) => n.group ? <div key={i} className="nav-group">{t(`nav.${n.tk}`)}</div> : (
+            <button key={i} className={`nav-item ${isActive(n) ? "active" : ""}`} title={t(`nav.${n.tk}`)}
               onClick={() => (n.key === "assets" ? go(`assets${n.q ? "?" + n.q : ""}`) : nav(n.key))}>
-              <n.icon size={18} /><span>{n.label}</span>
+              <n.icon size={18} /><span>{t(`nav.${n.tk}`)}</span>
               {n.badge && openAlerts > 0 && <span className="count" style={{ color: "var(--fail)", fontWeight: 700 }}>{openAlerts}</span>}
             </button>
           ))}
           <div className="side-foot">
             <ApiStatus />
-            <div className="row faint"><span>Phiên bản {version}</span></div>
+            <div className="row faint"><span>Version {version}</span></div>
           </div>
         </aside>
         <main className="main">

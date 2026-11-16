@@ -1,4 +1,4 @@
-"""Host ảo hoá: Proxmox API (mock), Hyper-V qua SSH (parse), tổng hợp máy ảo trên host (/api/assets/{id}/guests)."""
+"""Host ảo hoá: Proxmox API (mock), Hyper-V qua SSH (parse), tổng hợp machines ảo trên host (/api/assets/{id}/guests)."""
 import asyncio
 import json
 import time
@@ -55,8 +55,8 @@ def pve(monkeypatch):
 def test_proxmox_collector(pve):
     r = asyncio.run(P.proxmox("10.0.10.21", {"token_id": "itops@pve!mon", "token_secret": "s3cret", "snapshot_warn_days": 7}))
     assert pve["auth"] == "PVEAPIToken=itops@pve!mon=s3cret"
-    assert r.status == "warn", r.message                      # snapshot 20 ngày + storage 92%
-    assert "1/2 VM chạy" in r.message and "1/1 LXC" in r.message
+    assert r.status == "warn", r.message                      # snapshot 20 days + storage 92%
+    assert "1/2 running VMs" in r.message and "1/1 LXC" in r.message
     keys = {d["key"]: d for d in r.discovered}
     assert set(keys) == {"pve:pve1", "pve:pve1:100", "pve:pve1:101", "pve:pve1:200"}, "bỏ template"
     host = keys["pve:pve1"]
@@ -90,7 +90,7 @@ def test_hyperv_parse():
     s = {v["name"]: v for v in vms}
     assert s["SQL01"]["status"] == "up" and s["SQL01"]["meta"]["res"]["mem"] == 75.0 and s["SQL01"]["meta"]["mem_mb"] == 16384
     assert s["LAB"]["status"] == "off" and s["LAB"]["meta"]["mem_mb"] == 4096 and s["LAB"]["meta"]["res"] is None
-    assert any("SQL01" in n and "30 ngày" in n for n in notes)
+    assert any("SQL01" in n and "30 days" in n for n in notes)
     assert parse_hyperv("")[2], "không có Hyper-V → ghi chú lý do"
 
 
@@ -196,11 +196,11 @@ def test_snmp_check_merges_esxi_api_perf(monkeypatch):
     vms = S.parse_vminfo({"2.1": "AC.Door", "6.1": "poweredOn", "9.1": 8, "5.1": 4096, "10.1": "u1",
                           "2.2": "FW.Test", "6.2": "poweredOff", "9.2": 4, "5.2": 2048, "10.2": "u2"})
     note = asyncio.run(S._merge_esxi_perf("10.0.20.2", {"esxi_user": "ro", "esxi_password": "p"}, vms))
-    assert note == "hiệu năng 1/2 VM qua API" and seen["username"] == "ro"
+    assert note == "performance data retrieved for 1/2 VMs via API" and seen["username"] == "ro"
     ac = vms[0]
-    assert ac["meta"]["res"]["cpu"] == 7.5 and ac["ip"] == "10.0.20.11" and ac["meta"]["vcpu"] == 8, "giữ cấp phát SNMP, thêm số đo API"
+    assert ac["meta"]["res"]["cpu"] == 7.5 and ac["ip"] == "10.0.20.11" and ac["meta"]["vcpu"] == 8, "preserve SNMP inventory and merge API performance data"
     assert "snapshots" not in ac["meta"]
-    assert ac["key"] == "vmw:u1", "khoá SNMP giữ nguyên → không đổi tài sản"
+    assert ac["key"] == "vmw:u1", "preserve the SNMP key to avoid changing the asset identity"
 
 
 def test_esxi_credentials_endpoint(client, admin, clean, monkeypatch):
@@ -224,10 +224,28 @@ def test_esxi_credentials_endpoint(client, admin, clean, monkeypatch):
     assert r.status_code == 200 and calls == [cid, cid]
     with SessionLocal() as db:
         cfg = security.open_config(db.get(models.Check, cid).config)
-    assert cfg["esxi_user"] == "ro" and cfg["esxi_password"] == "s3cret" and cfg["community"] == "pub", "mật khẩu mã hoá, bí mật cũ giữ nguyên"
-    # đổi user, để trống mật khẩu → giữ mật khẩu cũ
+    assert cfg["esxi_user"] == "ro" and cfg["esxi_password"] == "s3cret" and cfg["community"] == "pub", "password mã hoá, bí mật cũ giữ nguyên"
+    # đổi user, để trống password → giữ password cũ
     client.post(f"/api/assets/{host['id']}/esxi-credentials", json={"user": "ro2", "password": ""}, headers=admin)
     with SessionLocal() as db:
         cfg = security.open_config(db.get(models.Check, cid).config)
     assert cfg["esxi_user"] == "ro2" and cfg["esxi_password"] == "s3cret"
-    assert client.get(f"/api/checks/{cid}", headers=admin).json()["config"]["esxi_password"] != "s3cret", "API không trả mật khẩu"
+    assert client.get(f"/api/checks/{cid}", headers=admin).json()["config"]["esxi_password"] != "s3cret", "API không trả password"
+
+
+def test_esxi_api_inventory_fallback_returns_success_note(monkeypatch):
+    S = importlib.import_module("app.collectors.snmp")
+    E = importlib.import_module("app.collectors.esxi")
+    from app.collectors.base import Result
+
+    async def fake_esxi(target, cfg):
+        return Result("ok", "ok", discovered=[
+            {"key": "vm:1", "type": "vm", "name": "APP01", "ip": "10.0.20.11", "meta": {"res": {"cpu": 12.0}}}
+        ])
+
+    monkeypatch.setattr(E, "esxi", fake_esxi)
+    result = asyncio.run(S._merge_esxi_perf("10.0.20.2", {"esxi_user": "ro", "esxi_password": "secret"}, []))
+    assert isinstance(result, list) and result[0]["name"] == "APP01"
+    note = "performance data retrieved via API (SNMP VM inventory was empty)"
+    assert S._esxi_perf_succeeded(note) is True
+    assert S._esxi_perf_succeeded("API ESXi error: TimeoutError") is False

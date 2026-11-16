@@ -49,7 +49,7 @@ def main():
                         break
                 time.sleep(0.5)
             n = page.evaluate("window.__xss || 0")
-            E.check("Đã rê chuột trúng node và hiện tooltip", hits > 0)
+            E.check("Đã rê chuột trúng node and hiện tooltip", hits > 0)
             E.check("Tooltip bản đồ không thực thi HTML trong tên tài sản (XSS)", n == 0, f"payload chạy {n} lần")
             b.close()
     finally:

@@ -1,4 +1,4 @@
-"""VMware ESXi / vCenter qua pyVmomi: host, datastore, danh sách VM (tự đưa lên bản đồ)."""
+"""VMware ESXi / vCenter via pyVmomi: hosts, datastores, and VM inventory (automatically added to the topology map)."""
 import asyncio
 import ssl
 import time
@@ -83,7 +83,7 @@ def _collect(target: str, cfg: dict) -> Result:
                             stack.extend(sn.childSnapshotList)
                 except Exception:
                     pass
-                # tài nguyên của VM: CPU theo MHz host, RAM guest đang dùng, ổ đĩa trong guest (cần VMware Tools)
+                # tài nguyên of VM: CPU theo MHz host, RAM guest đang dùng, disk đĩa trong guest (cần VMware Tools)
                 vres = {}
                 try:
                     if power == "poweredOn" and hw.cpuMhz and cfgs.numCpu and vs.quickStats.overallCpuUsage is not None:
@@ -115,7 +115,7 @@ def _collect(target: str, cfg: dict) -> Result:
                              "annotation": (cfgs.annotation or "")[:200], "res": vres or None},
                 })
                 if oldest_snap_days is not None and oldest_snap_days > int(cfg.get("snapshot_warn_days", 7)):
-                    notes.append(f"VM {cfgs.name} có snapshot {oldest_snap_days} ngày")
+                    notes.append(f"VM {cfgs.name} has a snapshot older than {oldest_snap_days} days")
                     statuses.append("warn")
 
         ds_list = []
@@ -136,7 +136,7 @@ def _collect(target: str, cfg: dict) -> Result:
                                   cpu=max(cpu_values) if cpu_values else None, mem=max(mems) if mems else None,
                                   disks=ds_list, mem_total_gb=mem_total or None, disk_label="Datastore")
         cpu = metrics.get("cpu")
-        msg = " · ".join([f"{len(hosts)} host", f"{vm_on}/{vm_total} VM chạy"] + res_notes + notes)
+        msg = " · ".join([f"{len(hosts)} host", f"{vm_on}/{vm_total} running VMs"] + res_notes + notes)
         return Result(worst(*statuses), msg, ms, cpu, data, discovered)
     finally:
         Disconnect(si)
@@ -146,7 +146,7 @@ async def esxi(target: str, cfg: dict) -> Result:
     try:
         return await asyncio.wait_for(asyncio.to_thread(_collect, target, cfg), timeout=float(cfg.get("timeout", 60)))
     except asyncio.TimeoutError:
-        return Result("fail", "ESXi/vCenter quá thời gian phản hồi")
+        return Result("fail", "ESXi/vCenter request timed out")
     except Exception as e:
         msg = getattr(e, "msg", None) or str(e)
-        return Result("fail", f"ESXi lỗi: {type(e).__name__} {msg}"[:300])
+        return Result("fail", f"ESXi error: {type(e).__name__} {msg}"[:300])

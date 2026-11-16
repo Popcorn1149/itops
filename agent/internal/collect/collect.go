@@ -53,6 +53,50 @@ func LocalIPs() []string {
 	return out
 }
 
+// LocalMACs: địa chỉ MAC (AA:BB:CC:DD:EE:FF) của các card mạng đang bật VÀ có IP toàn cục
+// (bỏ loopback, card ảo chưa nối mạng, Bluetooth chưa dùng…). Card có IPv4 xếp trước.
+func LocalMACs() []string {
+	type nic struct {
+		mac  string
+		ipv4 bool
+	}
+	var list []nic
+	seen := map[string]bool{}
+	ifs, _ := net.Interfaces()
+	for _, i := range ifs {
+		if i.Flags&net.FlagUp == 0 || i.Flags&net.FlagLoopback != 0 || len(i.HardwareAddr) != 6 {
+			continue
+		}
+		mac := strings.ToUpper(i.HardwareAddr.String())
+		if mac == "00:00:00:00:00:00" || seen[mac] {
+			continue
+		}
+		addrs, _ := i.Addrs()
+		has, v4 := false, false
+		for _, a := range addrs {
+			ipn, ok := a.(*net.IPNet)
+			if !ok || ipn.IP.IsLinkLocalUnicast() || ipn.IP.IsLoopback() {
+				continue
+			}
+			has = true
+			v4 = v4 || ipn.IP.To4() != nil
+		}
+		if has {
+			seen[mac] = true
+			list = append(list, nic{mac, v4})
+		}
+	}
+	sort.SliceStable(list, func(a, b int) bool { return list[a].ipv4 && !list[b].ipv4 })
+	out := make([]string, 0, len(list))
+	for _, n := range list {
+		out = append(out, n.mac)
+	}
+	if len(out) > 16 {
+		out = out[:16]
+	}
+	return out
+}
+
 func f64(v float64) *float64 { return &v }
 
 func round1(v float64) float64 { return float64(int(v*10+0.5)) / 10 }

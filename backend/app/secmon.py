@@ -1,10 +1,9 @@
-"""Giám sát an ninh (ISO 27001 / SOC 2):
-- SLA ack theo mức cảnh báo (24/7 cho Critical, business hours cho Trouble/Attention)  – B5
-- Cảnh báo hành vi trong chính IT Ops từ audit log, gửi người nhận riêng                 – B6 / UC-14
-- Log source im lặng quá threshold theo loại thiết bị                                       – UC-13 / C13
-- Archive log hằng ngày (.jsonl.gz) + chuỗi hash SHA-256, gửi hash ra ngoài             – B7 / B8
-- Khoá chức năng nguy hiểm khi ITOPS_ENV=production                                    – C10
-"""
+"""Security monitoring (ISO 27001 / SOC 2):
+- SLA acknowledgment by alert severity (24/7 for Critical, business hours for Trouble/Attention) – B5
+- Detect behavior within IT Ops itself from audit logs; send to dedicated recipients – B6 / UC-14
+- Silent log sources above type-specific thresholds – UC-13 / C13
+- Archive logs daily (.jsonl.gz) with a SHA-256 hash chain; send the hash externally – B7 / B8
+- Disable dangerous functions when ITOPS_ENV=production – C10"""
 import asyncio
 import copy
 import gzip
@@ -28,7 +27,7 @@ log = logging.getLogger("secmon")
 PRODUCTION = os.environ.get("ITOPS_ENV", "").strip().lower() in ("production", "prod")
 
 DEFAULTS = {
-    "business": {"days": [0, 1, 2, 3, 4, 5], "start": "07:30", "end": "18:30"},      # T2–T7, giờ địa phương (APP_TZ_OFFSET)
+    "business": {"days": [0, 1, 2, 3, 4, 5], "start": "07:30", "end": "18:30"},      # T2–T7, hours địa phương (APP_TZ_OFFSET)
     "sla": {
         "critical": {"mode": "24x7", "ack_min": 15, "ack_min_off": 30},
         "trouble": {"mode": "business", "ack_min": 60},
@@ -111,7 +110,7 @@ def in_business(dt_local: datetime, biz: dict) -> bool:
 
 
 def add_business_minutes(start_local: datetime, minutes: int, biz: dict) -> datetime:
-    """Cộng phút chỉ tính trong business hours."""
+    """Cộng minutes chỉ tính trong business hours."""
     t, left = start_local, float(minutes)
     for _ in range(400):
         sh, sm = _hm(biz["start"])
@@ -129,7 +128,7 @@ def add_business_minutes(start_local: datetime, minutes: int, biz: dict) -> date
 
 
 def sla_due(alert, cfg: dict) -> datetime | None:
-    """Hạn ack (UTC naive) của cảnh báo; None nếu mức này không có SLA."""
+    """Hạn ack (UTC naive) of alerts; None nếu mức này không có SLA."""
     lvl = SEV_SLA.get(alert.severity or "")
     rule = cfg["sla"].get(lvl) if lvl else None
     if not rule or not alert.opened_at:
@@ -159,14 +158,14 @@ def check_sla(db, cfg: dict) -> list:
         if due and now() > due:
             a.sla_breached = True
             if cfg["sla"].get("notify", True):
-                notes.append((f"Quá hạn SLA chưa ack: {a.title}", f"Mở lúc {a.opened_at:%H:%M %d/%m} UTC · hạn ack {due:%H:%M} UTC",
+                notes.append((f"SLA acknowledgement overdue: {a.title}", f"Opened at {a.opened_at:%H:%M %d/%m} UTC · acknowledgement deadline {due:%H:%M} UTC",
                               "critical" if SEV_SLA.get(a.severity) == "critical" else "warning", None))
     return notes
 
 
-# ---------------------------------------------------------------- UC-14: cảnh báo từ audit log
+# ---------------------------------------------------------------- UC-14: alerts from audit log
 def classify_audit(user: str, action: str, entity: str, detail: str, cfg: dict):
-    """Trả (mức, tiêu đề, khoá gộp) hoặc None nếu không cần cảnh báo."""
+    """Trả (mức, title, khoá gộp) hoặc None nếu without requiring alerts."""
     if action == "login_failed":
         ip = detail.rsplit(" ", 1)[-1] if detail else "?"
         w = _login_fails[ip]
@@ -175,26 +174,26 @@ def classify_audit(user: str, action: str, entity: str, detail: str, cfg: dict):
         while w and t - w[0] > cfg["audit_alert"]["window_min"] * 60:
             w.popleft()
         if len(w) >= cfg["audit_alert"]["login_fail_threshold"]:
-            return "trouble", f"IT Ops: đăng nhập sai liên tục từ {ip}", f"login:{ip}"
+            return "trouble", f"IT Ops: repeated failed sign-ins from {ip}", f"login:{ip}"
         return None
     if action in ("reset", "reset_blocked") or (entity == "data" and action == "delete"):
-        return "critical", f"IT Ops: {user} xoá toàn bộ dữ liệu" if action != "reset_blocked" else f"IT Ops: {user} thử xoá dữ liệu khi chạy thật", f"reset:{user}"
+        return "critical", f"IT Ops: {user} deleted all data" if action != "reset_blocked" else f"IT Ops: {user} attempted to delete data in production", f"reset:{user}"
     if entity == "user" and action == "create":
         sev = "critical" if "role=admin" in detail else "trouble"
-        return sev, f"IT Ops: {user} tạo tài khoản {detail.split(' ')[0]}", f"user-create:{detail}"
+        return sev, f"IT Ops: {user} created account {detail.split(' ')[0]}", f"user-create:{detail}"
     if entity == "user" and action == "update" and "role=" in detail:
-        return "critical" if "role=admin" in detail else "trouble", f"IT Ops: {user} đổi vai trò {detail}", f"user-role:{detail}"
+        return "critical" if "role=admin" in detail else "trouble", f"IT Ops: {user} changed role {detail}", f"user-role:{detail}"
     if entity == "user" and action == "delete":
-        return "trouble", f"IT Ops: {user} xoá tài khoản {detail}", f"user-del:{detail}"
+        return "trouble", f"IT Ops: {user} deleted account {detail}", f"user-del:{detail}"
     if entity == "secmon" and action == "update":
-        return "critical", f"IT Ops: {user} sửa cấu hình Giám sát an ninh", f"secmon:{user}"
+        return "critical", f"IT Ops: {user} changed Security Monitoring settings", f"secmon:{user}"
     if entity == "settings" and action == "update":
         return "trouble", f"IT Ops: {user} – {detail}", f"settings:{detail}"
     if action in ("delete", "disable") and entity in ("checks", "event-rules", "automation"):
-        verb = "xoá" if action == "delete" else "tắt"
+        verb = "delete" if action == "delete" else "disabled"
         return "trouble", f"IT Ops: {user} {verb} {detail}", f"{entity}:{action}:{detail}"
     if action == "import":
-        return "trouble", f"IT Ops: {user} nhập dữ liệu ({detail})", f"import:{user}"
+        return "trouble", f"IT Ops: {user} imported data ({detail})", f"import:{user}"
     return None
 
 
@@ -214,11 +213,11 @@ def on_audit(db, user: str, action: str, entity: str, entity_id, detail: str):
             ex.last_seen = now()
             return
         a = models.Alert(source="audit", dedupe_key=dkey, severity=sev, title=title[:255], actor=user[:64],
-                         message=f"Người thực hiện: {user} · {action} {entity} {detail}"[:2000], last_seen=now(), count=1)
+                         message=f"Performed by: {user} · {action} {entity} {detail}"[:2000], last_seen=now(), count=1)
         db.add(a)
         _pending.append((title, a.message, sev, cfg["audit_alert"].get("targets") or [{"type": "default"}]))
     except Exception:
-        log.exception("audit alert lỗi")
+        log.exception("Audit alert failed")
 
 
 async def flush_pending():
@@ -226,9 +225,9 @@ async def flush_pending():
     while _pending:
         title, text, sev, targets = _pending.popleft()
         try:
-            await send_to(targets, title, text + "\n(Cảnh báo về thao tác của quản trị viên – người thực hiện không tự đóng được)", sev)
+            await send_to(targets, title, text + "\n(Alert about an administrator action – the actor cannot close this alert)", sev)
         except Exception:
-            log.exception("gửi cảnh báo audit lỗi")
+            log.exception("Failed to send audit alerts")
 
 
 # ---------------------------------------------------------------- UC-13: log source im lặng
@@ -254,22 +253,22 @@ def check_silence(db, cfg: dict) -> list:
             a = open_keys.get(key)
             if a:
                 a.status, a.resolved_at = "resolved", now()
-                a.message = f"{a.message} · đã nhận log trở lại"[:2000]
-                notes.append((f"{a.title} – đã nhận log trở lại", "", "resolved", {"kind": "resolve", "alert_id": a.id, "asset_id": aid}))
+                a.message = f"{a.message} · log reception has resumed"[:2000]
+                notes.append((f"{a.title} – log reception has resumed", "", "resolved", {"kind": "resolve", "alert_id": a.id, "asset_id": aid}))
             continue
         checks = db.query(models.Check).filter(models.Check.asset_id == aid, models.Check.enabled == True).all()  # noqa: E712
         if grp == "switch":
             snmp = [c for c in checks if c.type == "snmp"]
             if snmp and not any(c.status in ("ok", "warn") for c in snmp):
-                continue          # SNMP cũng không trả lời → thiết bị DOWN, check giám sát đã báo
+                continue          # SNMP cũng không trả lời → devices DOWN, monitoring check already báo
         elif checks and all(c.severity == "down" or c.status == "fail" and c.severity in (None, "down") for c in checks):
-            continue              # thiết bị không truy cập được → không phải im lặng log
+            continue              # devices không truy cập được → không phải im lặng log
         if key in open_keys:
             continue
         h = int(quiet // 60)
-        txt = f"Không nhận log {h} giờ {int(quiet % 60)} phút (threshold {limit} phút cho nhóm {grp}) trong khi thiết bị vẫn hoạt động."
+        txt = f"No logs received for {h} hours and {int(quiet % 60)} minutes (threshold: {limit} minutes for group {grp}) while the device is still active."
         a = models.Alert(source="silence", dedupe_key=key, asset_id=aid, site_id=asset.site_id, severity="trouble",
-                         title=f"Log source im lặng: {asset.name}"[:255], message=txt, last_seen=now(), count=1)
+                         title=f"Silent log source: {asset.name}"[:255], message=txt, last_seen=now(), count=1)
         db.add(a)
         db.flush()
         notes.append((a.title, txt, "trouble", {"kind": "open", "alert_id": a.id, "asset_id": aid, "site_id": asset.site_id}))
@@ -278,7 +277,7 @@ def check_silence(db, cfg: dict) -> list:
 
 # ---------------------------------------------------------------- B7/B8: archive + chuỗi hash
 def archive_dir(cfg: dict) -> Path:
-    """Đường dẫn tương đối tính từ thư mục dữ liệu (DATA_DIR). Dùng đường dẫn tuyệt đối / ổ mạng (\\\\NAS\\itops) để lưu ra NAS."""
+    """Đường dẫn tương đối tính from thư items dữ liệu (DATA_DIR). Use đường dẫn tuyệt đối / disk mạng (\\\\NAS\\itops) để lưu ra NAS."""
     from .db import DATA_DIR
     p = Path(cfg["archive"]["dir"])
     return p if p.is_absolute() or str(p).startswith("\\\\") else Path(DATA_DIR) / p
@@ -318,7 +317,7 @@ def read_chain(base: Path) -> list[dict]:
 
 
 def archive_day(db, cfg: dict, day) -> dict | None:
-    """Xuất log + audit của một ngày (giờ địa phương) ra file nén, nối vào chuỗi hash. Không ghi đè file đã có."""
+    """Xuất log + audit of một days (hours địa phương) ra file nén, nối ando chuỗi hash. Không ghi đè file already có."""
     from .automation.engine import to_utc_naive
     base = archive_dir(cfg)
     base.mkdir(parents=True, exist_ok=True)
@@ -372,7 +371,7 @@ def prune_archive(cfg: dict):
     for p in base.glob("*/*/itops-*.jsonl.gz"):
         d = p.name[6:16]
         if d < cut:
-            p.unlink(missing_ok=True)   # dòng trong hash-chain.csv giữ lại làm bằng chứng đã từng tồn tại
+            p.unlink(missing_ok=True)   # dòng trong hash-chain.csv giữ lại làm bằng chứng already fromng tồn tại
 
 
 async def run_archive(force_day=None) -> list:
@@ -380,7 +379,7 @@ async def run_archive(force_day=None) -> list:
     if not cfg["archive"].get("enabled", True) and not force_day:
         return []
     today = datetime.now(_tz()).date()
-    days = [force_day] if force_day else [today - timedelta(days=i) for i in range(7, 0, -1)]   # bù tối đa 7 ngày bị lỡ
+    days = [force_day] if force_day else [today - timedelta(days=i) for i in range(7, 0, -1)]   # bù tối đa 7 days bị lỡ
 
     def work():
         db = SessionLocal()
@@ -397,8 +396,8 @@ async def run_archive(force_day=None) -> list:
     made = await asyncio.to_thread(work)
     if made and cfg["archive"].get("hash_targets"):
         from .automation.engine import send_to
-        text = "\n".join(f"{m['day']}: {m['rows']} bản ghi\nSHA-256 {m['sha256']}\nChuỗi {m['chain']}" for m in made)
-        await send_to(cfg["archive"]["hash_targets"], f"IT Ops – hash log ngày {made[-1]['day']}", text, "info")
+        text = "\n".join(f"{m['day']}: {m['rows']} records\nSHA-256 {m['sha256']}\nChain {m['chain']}" for m in made)
+        await send_to(cfg["archive"]["hash_targets"], f"IT Ops – log hash for {made[-1]['day']}", text, "info")
     return made
 
 
@@ -430,5 +429,5 @@ async def loop():
                 _state["archive_day"] = lt.date()
                 await run_archive()
         except Exception:
-            log.exception("secmon lỗi")
+            log.exception("Security Monitor failed")
         await asyncio.sleep(20)

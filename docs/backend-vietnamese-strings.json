@@ -1,0 +1,5106 @@
+{
+ "summary": {
+  "admin/CLI/DB tools": {
+   "files": 5,
+   "strings": 85
+  },
+  "alerts & events (syslog/SNMP/agent)": {
+   "files": 20,
+   "strings": 495
+  },
+  "automation templates": {
+   "files": 4,
+   "strings": 488
+  },
+  "seed & demo data": {
+   "files": 2,
+   "strings": 61
+  },
+  "API responses & errors": {
+   "files": 2,
+   "strings": 122
+  }
+ },
+ "strings": {
+  "admin/CLI/DB tools": {
+   "app/admin_tools.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"Công cụ quản trị chạy trên máy chủ (không qua web) – dùng khi khẩn cấp hoặc bảo trì.\n\nChạy trong thư mục backend, với cùng DATA_DIR như app:\n    python -m app.admin_tools reset-2fa <username>      # admin duy nhất mất điện thoại\n    python -m app.admin_tools reset-password <username> # quên mật k"
+    },
+    {
+     "line": 43,
+     "text": "Không có tài khoản '"
+    },
+    {
+     "line": 46,
+     "text": "Đặt lại 2FA của "
+    },
+    {
+     "line": 46,
+     "text": " bằng dòng lệnh, thu hồi "
+    },
+    {
+     "line": 46,
+     "text": " phiên"
+    },
+    {
+     "line": 48,
+     "text": "Đã đặt lại 2FA của "
+    },
+    {
+     "line": 48,
+     "text": ". Lần đăng nhập tới sẽ được yêu cầu bật lại 2FA."
+    },
+    {
+     "line": 57,
+     "text": "\"(chưa có tài khoản nào – chạy app một lần để tạo admin)\""
+    },
+    {
+     "line": 58,
+     "text": "Không có tài khoản '"
+    },
+    {
+     "line": 58,
+     "text": "'. Tài khoản đang có: "
+    },
+    {
+     "line": 62,
+     "text": "Đặt lại mật khẩu "
+    },
+    {
+     "line": 62,
+     "text": " bằng dòng lệnh, thu hồi "
+    },
+    {
+     "line": 62,
+     "text": " phiên"
+    },
+    {
+     "line": 64,
+     "text": "Mật khẩu mới của "
+    },
+    {
+     "line": 64,
+     "text": "\\n(2FA giữ nguyên. Đổi mật khẩu sau khi đăng nhập.)"
+    },
+    {
+     "line": 77,
+     "text": "Thu hồi "
+    },
+    {
+     "line": 77,
+     "text": " phiên ("
+    },
+    {
+     "line": 77,
+     "text": ") bằng dòng lệnh"
+    },
+    {
+     "line": 79,
+     "text": "Đã thu hồi "
+    },
+    {
+     "line": 79,
+     "text": " phiên."
+    },
+    {
+     "line": 83,
+     "text": "\"thủ công\""
+    },
+    {
+     "line": 110,
+     "text": "Sao lưu ("
+    },
+    {
+     "line": 110,
+     "text": " bản ghi · schema "
+    },
+    {
+     "line": 115,
+     "text": "\"\"\"Khôi phục IT Ops Workspace v2 từ bản sao lưu\n1. Dừng app (PostgreSQL vẫn chạy).\n2. Trong thư mục backend, cùng DATA_DIR / PG_LOCAL hoặc DATABASE_URL như khi chạy app:\n       python -m app.admin_tools restore <file.zip> --wipe\n   (--wipe xoá sạch CSDL hiện tại trước khi nạp; bỏ --wipe nếu CSDL đíc"
+    },
+    {
+     "line": 165,
+     "text": "Không khôi phục được: "
+    },
+    {
+     "line": 176,
+     "text": "Khôi phục từ "
+    },
+    {
+     "line": 176,
+     "text": ", khoá: "
+    },
+    {
+     "line": 176,
+     "text": "'giữ nguyên'"
+    },
+    {
+     "line": 178,
+     "text": "Đã khôi phục "
+    },
+    {
+     "line": 178,
+     "text": " bản ghi (schema "
+    },
+    {
+     "line": 178,
+     "text": " → mới nhất). Khoá: "
+    },
+    {
+     "line": 178,
+     "text": "'giữ nguyên'"
+    },
+    {
+     "line": 185,
+     "text": "Không thấy file "
+    },
+    {
+     "line": 189,
+     "text": "Không chuyển được: "
+    },
+    {
+     "line": 194,
+     "text": "Chuyển dữ liệu SQLite "
+    },
+    {
+     "line": 194,
+     "text": " bản ghi)"
+    },
+    {
+     "line": 196,
+     "text": "Đã chuyển "
+    },
+    {
+     "line": 196,
+     "text": " bản ghi từ "
+    },
+    {
+     "line": 199,
+     "text": "\"Bảng không có trong bản v2 (bỏ qua): \""
+    },
+    {
+     "line": 200,
+     "text": "Khoá đã chép: "
+    },
+    {
+     "line": 200,
+     "text": "'không có (bí mật thiết bị cũ có thể không giải mã được)'"
+    },
+    {
+     "line": 201,
+     "text": "\"Phiên đăng nhập cũ không chuyển – mọi người đăng nhập lại.\""
+    },
+    {
+     "line": 202,
+     "text": "\"Chạy app: lần khởi động đầu tự mã hoá lại mật khẩu thiết bị kiểu cũ sang AES-256-GCM.\""
+    },
+    {
+     "line": 225,
+     "text": "\"tự động hằng ngày\""
+    },
+    {
+     "line": 227,
+     "text": "\"Đã sao lưu %s (xoá %d bản cũ)\""
+    },
+    {
+     "line": 229,
+     "text": "\"Sao lưu tự động lỗi\""
+    },
+    {
+     "line": 293,
+     "text": "Đã sao lưu: "
+    },
+    {
+     "line": 296,
+     "text": "Đã tạo chứng chỉ tự ký:\\n  "
+    },
+    {
+     "line": 296,
+     "text": "\\nTrình duyệt sẽ cảnh báo vì chứng chỉ tự ký – bấm Advanced → Proceed (chỉ dùng trong LAN)."
+    }
+   ],
+   "app/db.py": [
+    {
+     "line": 18,
+     "text": "\"DATABASE_URL phải là PostgreSQL (postgresql+psycopg://...). Bản v2 không còn dùng SQLite – \""
+    },
+    {
+     "line": 19,
+     "text": "\"dữ liệu SQLite cũ chuyển sang bằng:  python -m app.admin_tools import-sqlite <itops.db>\""
+    },
+    {
+     "line": 26,
+     "text": "PostgreSQL kèm theo: "
+    },
+    {
+     "line": 27,
+     "text": "\"Chưa cấu hình CSDL: đặt PG_LOCAL=1 (demo, PostgreSQL tự chạy) hoặc DATABASE_URL=postgresql+psycopg://...\""
+    }
+   ],
+   "app/dbdump.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"Sao lưu / khôi phục / chuyển dữ liệu ở mức logic (không cần pg_dump – chạy được cả với PostgreSQL di động trên Windows).\n\nĐịnh dạng trong file .zip:\n    db/manifest.json          {\"format\": 1, \"revision\": \"<alembic>\", \"tables\": {\"users\": 3, ...}, \"created\": \"...\"}\n    db/<bảng>.jsonl           mỗ"
+    },
+    {
+     "line": 36,
+     "text": "\"Cột kiểu nhị phân chưa hỗ trợ sao lưu logic\""
+    },
+    {
+     "line": 192,
+     "text": "\"File không phải bản sao lưu v2 (thiếu db/manifest.json). Bản sao lưu SQLite cũ → dùng import-sqlite.\""
+    },
+    {
+     "line": 194,
+     "text": "Định dạng sao lưu "
+    },
+    {
+     "line": 194,
+     "text": " không hỗ trợ"
+    },
+    {
+     "line": 200,
+     "text": "\"CSDL đích đang có dữ liệu. Dùng --wipe để xoá sạch trước khi khôi phục.\""
+    },
+    {
+     "line": 206,
+     "text": "Số bản ghi bảng "
+    },
+    {
+     "line": 206,
+     "text": " không khớp: sao lưu "
+    },
+    {
+     "line": 206,
+     "text": ", nạp "
+    },
+    {
+     "line": 250,
+     "text": "\"CSDL PostgreSQL đích đang có dữ liệu. Dùng --wipe để xoá sạch trước khi chuyển.\""
+    }
+   ],
+   "app/models.py": [
+    {
+     "line": 88,
+     "text": "\"Ứng dụng\""
+    }
+   ],
+   "app/pg_local.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"PostgreSQL chạy kèm (PG_LOCAL=1) – dùng cho demo/dev bằng VS Code trên Windows, không cần cài PostgreSQL.\n\n- Binary: backend/tools/pgsql (lần đầu tự tải, hoặc chạy tay `python tools/get_postgres.py`) hoặc thư mục bin trong biến PG_BIN.\n- Dữ liệu: <DATA_DIR>/pgdata  ·  mật khẩu ngẫu nhiên: <DATA_D"
+    },
+    {
+     "line": 50,
+     "text": "Tự tải PostgreSQL không được ("
+    },
+    {
+     "line": 50,
+     "text": "). Chạy tay: python tools/get_postgres.py"
+    },
+    {
+     "line": 52,
+     "text": "\"Chưa có PostgreSQL di động. Chạy:  python tools/get_postgres.py  (hoặc task VS Code \""
+    },
+    {
+     "line": 53,
+     "text": "\"\\\"0. Tải PostgreSQL\\\"), hoặc đặt DATABASE_URL tới PostgreSQL có sẵn.\""
+    },
+    {
+     "line": 78,
+     "text": "\"PostgreSQL không chạy bằng tài khoản root. Hãy chạy app bằng user thường, \""
+    },
+    {
+     "line": 79,
+     "text": "\"hoặc dùng PostgreSQL riêng (DATABASE_URL).\""
+    },
+    {
+     "line": 94,
+     "text": "initdb lỗi:\\n"
+    },
+    {
+     "line": 126,
+     "text": "Cổng "
+    },
+    {
+     "line": 126,
+     "text": " đang có chương trình khác dùng (PostgreSQL khác?). Đổi PG_LOCAL_PORT hoặc tắt chương trình đó."
+    },
+    {
+     "line": 147,
+     "text": "Không khởi động được PostgreSQL:\\n"
+    },
+    {
+     "line": 172,
+     "text": "Thiếu "
+    },
+    {
+     "line": 172,
+     "text": " (mật khẩu CSDL). Không xoá file này; nếu đã mất hãy xoá cả thư mục "
+    },
+    {
+     "line": 172,
+     "text": " để tạo lại."
+    },
+    {
+     "line": 198,
+     "text": "PostgreSQL đang chạy – 127.0.0.1:"
+    },
+    {
+     "line": 198,
+     "text": "  dữ liệu: "
+    },
+    {
+     "line": 200,
+     "text": "\"Đã dừng PostgreSQL.\""
+    },
+    {
+     "line": 200,
+     "text": "\"PostgreSQL không chạy.\""
+    },
+    {
+     "line": 202,
+     "text": "'ĐANG CHẠY'"
+    },
+    {
+     "line": 202,
+     "text": "'không chạy'"
+    },
+    {
+     "line": 209,
+     "text": "LỖI: "
+    }
+   ]
+  },
+  "alerts & events (syslog/SNMP/agent)": {
+   "app/agent_catalog.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"Danh mục sự kiện máy trạm – CHỈ những sự kiện cần người xử lý (ADR 0004).\n\nKhông có ở đây = không thu: đăng nhập/đăng xuất thành công (4624/4634/4647/4672), đăng nhập của dịch vụ, tiến trình\n(4688), tường lửa cho phép kết nối (5156)… – các log này chiếm phần lớn khối lượng và gần như luôn là hoạt"
+    },
+    {
+     "line": 12,
+     "text": "\"quản trị viên\""
+    },
+    {
+     "line": 14,
+     "text": "\"đăng nhập tại máy\""
+    },
+    {
+     "line": 14,
+     "text": "\"qua mạng (chia sẻ file, dịch vụ)\""
+    },
+    {
+     "line": 14,
+     "text": "\"tác vụ hẹn giờ\""
+    },
+    {
+     "line": 14,
+     "text": "\"dịch vụ\""
+    },
+    {
+     "line": 15,
+     "text": "\"mở khoá màn hình\""
+    },
+    {
+     "line": 15,
+     "text": "\"qua mạng (mật khẩu dạng rõ)\""
+    },
+    {
+     "line": 16,
+     "text": "\"đăng nhập bằng thông tin lưu sẵn\""
+    },
+    {
+     "line": 19,
+     "text": "\"sai mật khẩu\""
+    },
+    {
+     "line": 19,
+     "text": "\"tài khoản không tồn tại\""
+    },
+    {
+     "line": 19,
+     "text": "\"tài khoản đang bị vô hiệu hoá\""
+    },
+    {
+     "line": 20,
+     "text": "\"tài khoản đang bị khoá\""
+    },
+    {
+     "line": 20,
+     "text": "\"mật khẩu đã hết hạn\""
+    },
+    {
+     "line": 20,
+     "text": "\"tài khoản đã hết hạn\""
+    },
+    {
+     "line": 21,
+     "text": "\"đăng nhập ngoài giờ cho phép\""
+    },
+    {
+     "line": 21,
+     "text": "\"không được phép đăng nhập từ máy này\""
+    },
+    {
+     "line": 22,
+     "text": "\"bắt buộc đổi mật khẩu\""
+    },
+    {
+     "line": 22,
+     "text": "\"không có quyền kiểu đăng nhập này\""
+    },
+    {
+     "line": 23,
+     "text": "\"lệch giờ giữa máy và domain controller\""
+    },
+    {
+     "line": 23,
+     "text": "\"không có máy chủ đăng nhập (DC) phản hồi\""
+    },
+    {
+     "line": 52,
+     "text": "\"chính máy này\""
+    },
+    {
+     "line": 60,
+     "text": "\"thông tin đăng nhập không hợp lệ\""
+    },
+    {
+     "line": 62,
+     "text": "\"(không rõ tài khoản)\""
+    },
+    {
+     "line": 62,
+     "text": "\"không rõ nguồn\""
+    },
+    {
+     "line": 63,
+     "text": "Đăng nhập thất bại vào "
+    },
+    {
+     "line": 63,
+     "text": " – kiểu "
+    },
+    {
+     "line": 64,
+     "text": "\"Một vài lần: thường do người dùng gõ sai/mật khẩu cũ lưu trong ứng dụng, ổ mạng, điện thoại. \""
+    },
+    {
+     "line": 65,
+     "text": "\"Lặp nhiều lần từ cùng nguồn hoặc thử nhiều tài khoản: nghi dò mật khẩu – kiểm tra máy nguồn, chặn IP nếu từ ngoài.\""
+    },
+    {
+     "line": 70,
+     "text": "\"(không rõ)\""
+    },
+    {
+     "line": 70,
+     "text": "\"không rõ máy\""
+    },
+    {
+     "line": 71,
+     "text": "Tài khoản bị KHOÁ do nhập sai mật khẩu quá số lần cho phép (ghi nhận tại "
+    },
+    {
+     "line": 72,
+     "text": "\"Gọi xác nhận với người dùng. Nếu đúng là họ: mở khoá (AD Users & Computers → Account → Unlock) và kiểm tra \""
+    },
+    {
+     "line": 73,
+     "text": "\"máy nguồn có ứng dụng/ổ mạng/điện thoại còn lưu mật khẩu cũ. Không phải họ: đổi mật khẩu, kiểm tra máy nguồn.\""
+    },
+    {
+     "line": 79,
+     "text": "\"(không rõ)\""
+    },
+    {
+     "line": 80,
+     "text": "Đã thêm "
+    },
+    {
+     "line": 80,
+     "text": "'(không rõ)'"
+    },
+    {
+     "line": 80,
+     "text": " vào nhóm \\\""
+    },
+    {
+     "line": 80,
+     "text": "\" – nhóm có QUYỀN QUẢN TRỊ.\""
+    },
+    {
+     "line": 81,
+     "text": "\"Xác nhận thay đổi này có phiếu yêu cầu/được duyệt. Không ai yêu cầu: gỡ thành viên ra ngay, đổi mật khẩu \""
+    },
+    {
+     "line": 82,
+     "text": "\"tài khoản đã thực hiện và kiểm tra máy đó.\""
+    },
+    {
+     "line": 82,
+     "text": "\"Xác nhận thay đổi có được yêu cầu.\""
+    },
+    {
+     "line": 86,
+     "text": "\"(không rõ)\""
+    },
+    {
+     "line": 87,
+     "text": "Tạo tài khoản mới: "
+    },
+    {
+     "line": 87,
+     "text": "'(không rõ)'"
+    },
+    {
+     "line": 88,
+     "text": "\"Đối chiếu với yêu cầu tạo tài khoản. Tài khoản cục bộ lạ trên máy trạm thường là dấu hiệu bị xâm nhập.\""
+    },
+    {
+     "line": 92,
+     "text": "\"(không rõ)\""
+    },
+    {
+     "line": 93,
+     "text": "Xoá tài khoản: "
+    },
+    {
+     "line": 93,
+     "text": "'(không rõ)'"
+    },
+    {
+     "line": 93,
+     "text": "\"Đối chiếu với yêu cầu nghỉ việc/thu hồi tài khoản.\""
+    },
+    {
+     "line": 97,
+     "text": "\"(không rõ)\""
+    },
+    {
+     "line": 98,
+     "text": "\"Nhật ký bảo mật (Security log) của máy vừa bị XOÁ.\""
+    },
+    {
+     "line": 99,
+     "text": "\"Rất hiếm khi cần làm việc này. Nếu không có ai trong IT chủ động xoá: coi như máy có thể đã bị xâm nhập \""
+    },
+    {
+     "line": 100,
+     "text": "\"(kẻ tấn công xoá dấu vết) – cách ly máy khỏi mạng và báo trưởng nhóm.\""
+    },
+    {
+     "line": 104,
+     "text": "\"Hệ thống\""
+    },
+    {
+     "line": 104,
+     "text": "\"Máy khởi động lại mà KHÔNG tắt đúng cách (mất điện, treo, giữ nút nguồn\""
+    },
+    {
+     "line": 105,
+     "text": ", lỗi màn hình xanh mã "
+    },
+    {
+     "line": 106,
+     "text": "\"Một lần: hỏi người dùng có tắt nóng/mất điện không. Lặp lại: kiểm tra nguồn/UPS, nhiệt độ, driver, RAM, \""
+    },
+    {
+     "line": 107,
+     "text": "\"và ổ đĩa (xem thêm sự kiện lỗi ổ đĩa).\""
+    },
+    {
+     "line": 111,
+     "text": "\"Hệ thống\""
+    },
+    {
+     "line": 111,
+     "text": "\"Lần tắt máy trước đó là bất thường (không tắt đúng cách).\""
+    },
+    {
+     "line": 115,
+     "text": "\"(không rõ dịch vụ)\""
+    },
+    {
+     "line": 119,
+     "text": "\"Hệ thống\""
+    },
+    {
+     "line": 119,
+     "text": "Dịch vụ \\\""
+    },
+    {
+     "line": 119,
+     "text": "\\\" bị dừng bất thường"
+    },
+    {
+     "line": 120,
+     "text": " (lần thứ "
+    },
+    {
+     "line": 120,
+     "text": "\"; Windows sẽ tự khởi động lại nếu có cấu hình.\""
+    },
+    {
+     "line": 121,
+     "text": "\"Kiểm tra dịch vụ đã chạy lại chưa (services.msc). Lặp lại nhiều lần: xem log của ứng dụng, cập nhật/cài lại.\""
+    },
+    {
+     "line": 126,
+     "text": "Có dịch vụ MỚI được cài: \\\""
+    },
+    {
+     "line": 126,
+     "text": "\\\" – chạy "
+    },
+    {
+     "line": 126,
+     "text": "'(không rõ đường dẫn)'"
+    },
+    {
+     "line": 127,
+     "text": "\"Bình thường khi cài phần mềm/driver. Dịch vụ lạ, chạy từ thư mục Temp/AppData/Users, hoặc dùng powershell/cmd: \""
+    },
+    {
+     "line": 128,
+     "text": "\"nghi mã độc – cách ly máy và kiểm tra.\""
+    },
+    {
+     "line": 132,
+     "text": "\"Hệ thống\""
+    },
+    {
+     "line": 132,
+     "text": "Lỗi ổ đĩa: "
+    },
+    {
+     "line": 132,
+     "text": "'ổ đĩa'"
+    },
+    {
+     "line": 132,
+     "text": " báo lỗi đọc/ghi hoặc cấu trúc file hỏng."
+    },
+    {
+     "line": 133,
+     "text": "\"Sao lưu dữ liệu người dùng NGAY, kiểm tra SMART (CrystalDiskInfo), chạy chkdsk. Lỗi lặp lại: thay ổ.\""
+    },
+    {
+     "line": 137,
+     "text": "Cài bản cập nhật thất bại: "
+    },
+    {
+     "line": 137,
+     "text": "'(không rõ)'"
+    },
+    {
+     "line": 138,
+     "text": " – mã lỗi "
+    },
+    {
+     "line": 139,
+     "text": "\"Thử cài lại; lỗi lặp lại: chạy Windows Update Troubleshooter / kiểm tra dung lượng ổ C.\""
+    },
+    {
+     "line": 146,
+     "text": " (trên "
+    },
+    {
+     "line": 150,
+     "text": "\"(không rõ)\""
+    },
+    {
+     "line": 151,
+     "text": "Windows Defender PHÁT HIỆN mã độc \\\""
+    },
+    {
+     "line": 151,
+     "text": "\\\" (mức "
+    },
+    {
+     "line": 152,
+     "text": "loại "
+    },
+    {
+     "line": 152,
+     "text": " – tiến trình "
+    },
+    {
+     "line": 153,
+     "text": "\"Xem sự kiện \\\"đã xử lý\\\" ngay sau đó. Chưa xử lý được hoặc lặp lại: ngắt mạng máy, quét toàn bộ, \""
+    },
+    {
+     "line": 154,
+     "text": "\"hỏi người dùng nguồn file (email, USB, web).\""
+    },
+    {
+     "line": 158,
+     "text": "\"(không rõ)\""
+    },
+    {
+     "line": 159,
+     "text": "Windows Defender đã xử lý \\\""
+    },
+    {
+     "line": 159,
+     "text": "'đã xử lý'"
+    },
+    {
+     "line": 160,
+     "text": "\"Theo dõi xem có tái phát không; tái phát = nguồn lây vẫn còn (USB, email, phần mềm crack).\""
+    },
+    {
+     "line": 164,
+     "text": "\"Bảo vệ THỜI GIAN THỰC của Windows Defender đã bị TẮT.\""
+    },
+    {
+     "line": 165,
+     "text": "\"Bật lại ngay (Windows Security → Virus & threat protection). Nếu tự tắt lại: kiểm tra GPO, phần mềm diệt virus \""
+    },
+    {
+     "line": 166,
+     "text": "\"khác, hoặc mã độc đang vô hiệu hoá Defender.\""
+    },
+    {
+     "line": 170,
+     "text": "\"Cập nhật mẫu nhận diện virus của Windows Defender THẤT BẠI\""
+    },
+    {
+     "line": 172,
+     "text": "\"Kiểm tra máy có ra Internet/WSUS được không; chạy cập nhật tay trong Windows Security.\""
+    },
+    {
+     "line": 183,
+     "text": "\"Đăng nhập thất bại\""
+    },
+    {
+     "line": 185,
+     "text": "\"Nghi dò mật khẩu\""
+    },
+    {
+     "line": 188,
+     "text": "\"Tài khoản bị khoá\""
+    },
+    {
+     "line": 189,
+     "text": "\"Tài khoản bị khoá\""
+    },
+    {
+     "line": 191,
+     "text": "\"Tạo tài khoản mới\""
+    },
+    {
+     "line": 192,
+     "text": "\"Tạo tài khoản mới\""
+    },
+    {
+     "line": 194,
+     "text": "\"Xoá tài khoản\""
+    },
+    {
+     "line": 196,
+     "text": "\"Thêm thành viên vào nhóm\""
+    },
+    {
+     "line": 198,
+     "text": "\"Thêm vào nhóm QUẢN TRỊ\""
+    },
+    {
+     "line": 198,
+     "text": "\"Thêm thành viên vào nhóm\""
+    },
+    {
+     "line": 200,
+     "text": "\"Thêm tài khoản vào nhóm quản trị\""
+    },
+    {
+     "line": 204,
+     "text": "\"Nhật ký bảo mật bị xoá\""
+    },
+    {
+     "line": 205,
+     "text": "\"Nhật ký bảo mật bị xoá\""
+    },
+    {
+     "line": 208,
+     "text": "\"Tắt máy đột ngột\""
+    },
+    {
+     "line": 209,
+     "text": "\"Máy tắt đột ngột\""
+    },
+    {
+     "line": 211,
+     "text": "\"Lần tắt máy trước bất thường\""
+    },
+    {
+     "line": 213,
+     "text": "\"Dịch vụ dừng bất thường\""
+    },
+    {
+     "line": 214,
+     "text": "\"Dịch vụ dừng bất thường\""
+    },
+    {
+     "line": 216,
+     "text": "\"Cài dịch vụ mới\""
+    },
+    {
+     "line": 218,
+     "text": "\"Lỗi ổ đĩa\""
+    },
+    {
+     "line": 219,
+     "text": "\"Lỗi ổ đĩa\""
+    },
+    {
+     "line": 221,
+     "text": "\"Hệ thống file bị hỏng\""
+    },
+    {
+     "line": 222,
+     "text": "\"Lỗi ổ đĩa\""
+    },
+    {
+     "line": 224,
+     "text": "\"Cập nhật Windows thất bại\""
+    },
+    {
+     "line": 227,
+     "text": "\"Phát hiện mã độc\""
+    },
+    {
+     "line": 229,
+     "text": "\"Phát hiện mã độc\""
+    },
+    {
+     "line": 231,
+     "text": "\"Defender đã xử lý mã độc\""
+    },
+    {
+     "line": 234,
+     "text": "\"Defender: tắt bảo vệ thời gian thực\""
+    },
+    {
+     "line": 236,
+     "text": "\"Defender bị tắt bảo vệ thời gian thực\""
+    },
+    {
+     "line": 238,
+     "text": "\"Defender: cập nhật mẫu thất bại\""
+    },
+    {
+     "line": 246,
+     "text": "\"(không rõ)\""
+    },
+    {
+     "line": 252,
+     "text": "\"Đăng nhập thất bại\""
+    },
+    {
+     "line": 253,
+     "text": "\"Đăng nhập thất bại vào {host} qua {service} (tài khoản {user}).\""
+    },
+    {
+     "line": 254,
+     "text": "\"Một vài lần: gõ sai. Nhiều lần từ cùng IP hoặc nhiều tài khoản: dò mật khẩu – chặn IP, tắt đăng nhập SSH \""
+    },
+    {
+     "line": 255,
+     "text": "\"bằng mật khẩu (chỉ dùng key).\""
+    },
+    {
+     "line": 257,
+     "text": "\"Nghi dò mật khẩu\""
+    },
+    {
+     "line": 258,
+     "text": "\"Dùng sudo sai mật khẩu\""
+    },
+    {
+     "line": 259,
+     "text": "\"Tài khoản {user} nhập sai mật khẩu khi dùng sudo trên {host}.\""
+    },
+    {
+     "line": 260,
+     "text": "\"Xác nhận với người dùng. Không phải họ: tài khoản có thể đã bị lộ.\""
+    },
+    {
+     "line": 262,
+     "text": "\"Tạo tài khoản mới\""
+    },
+    {
+     "line": 263,
+     "text": "\"Tạo tài khoản mới {user} trên {host}.\""
+    },
+    {
+     "line": 263,
+     "text": "\"Đối chiếu với yêu cầu tạo tài khoản.\""
+    },
+    {
+     "line": 265,
+     "text": "\"Tạo tài khoản mới\""
+    },
+    {
+     "line": 266,
+     "text": "\"Thêm vào nhóm QUẢN TRỊ\""
+    },
+    {
+     "line": 267,
+     "text": "\"Thêm {user} vào nhóm quản trị \\\"{group}\\\" trên {host}.\""
+    },
+    {
+     "line": 268,
+     "text": "\"Xác nhận có yêu cầu. Không ai yêu cầu: gỡ ra ngay (gpasswd -d), kiểm tra ai đã thực hiện.\""
+    },
+    {
+     "line": 270,
+     "text": "\"Thêm tài khoản vào nhóm quản trị\""
+    },
+    {
+     "line": 271,
+     "text": "\"Hết bộ nhớ – tiến trình bị dừng\""
+    },
+    {
+     "line": 272,
+     "text": "\"Hết RAM: hệ thống buộc phải dừng tiến trình {process} trên {host}.\""
+    },
+    {
+     "line": 273,
+     "text": "\"Kiểm tra tiến trình ngốn RAM, giới hạn bộ nhớ của dịch vụ, cân nhắc nâng RAM.\""
+    },
+    {
+     "line": 275,
+     "text": "\"Hết bộ nhớ (OOM)\""
+    },
+    {
+     "line": 276,
+     "text": "\"Dịch vụ lỗi\""
+    },
+    {
+     "line": 277,
+     "text": "\"Dịch vụ {unit} trên {host} dừng lỗi ({result}).\""
+    },
+    {
+     "line": 278,
+     "text": "\"Xem log: journalctl -u <dịch vụ> -n 100. Kiểm tra dịch vụ đã chạy lại chưa: systemctl status.\""
+    },
+    {
+     "line": 280,
+     "text": "\"Dịch vụ dừng bất thường\""
+    },
+    {
+     "line": 281,
+     "text": "\"Lỗi ổ đĩa\""
+    },
+    {
+     "line": 282,
+     "text": "\"Lỗi đọc/ghi ổ đĩa {device} trên {host}.\""
+    },
+    {
+     "line": 283,
+     "text": "\"Sao lưu dữ liệu ngay, kiểm tra SMART (smartctl -a), thay ổ nếu lỗi lặp lại.\""
+    },
+    {
+     "line": 285,
+     "text": "\"Lỗi ổ đĩa\""
+    },
+    {
+     "line": 286,
+     "text": "\"Tắt máy đột ngột\""
+    },
+    {
+     "line": 287,
+     "text": "\"Lần chạy trước của {host} kết thúc không đúng cách (mất điện/treo).\""
+    },
+    {
+     "line": 288,
+     "text": "\"Kiểm tra nguồn/UPS, log trước thời điểm đó (journalctl -b -1 -e).\""
+    },
+    {
+     "line": 289,
+     "text": "\"Máy tắt đột ngột\""
+    }
+   ],
+   "app/agents.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"Module agent máy trạm (ADR 0004).\n\nHai nhóm API:\n- /api/agent/v1/*  – agent gọi. Xác thực bằng khoá riêng từng máy (header `Authorization: Agent <id>.<khoá>`), KHÔNG dùng\n  cookie/phiên của người dùng. Agent chỉ gửi lên; server không có API nào ra lệnh cho máy trạm.\n- /api/agents/*    – giao diện"
+    },
+    {
+     "line": 224,
+     "text": "\"Thiếu khoá agent\""
+    },
+    {
+     "line": 227,
+     "text": "\"Khoá agent không đúng\""
+    },
+    {
+     "line": 231,
+     "text": "\"Gửi quá dày\""
+    },
+    {
+     "line": 237,
+     "text": "\"Dữ liệu quá lớn\""
+    },
+    {
+     "line": 240,
+     "text": "\"Dữ liệu quá lớn\""
+    },
+    {
+     "line": 245,
+     "text": "\"Dữ liệu giải nén quá lớn\""
+    },
+    {
+     "line": 249,
+     "text": "\"JSON không hợp lệ\""
+    },
+    {
+     "line": 256,
+     "text": "Dữ liệu agent không hợp lệ: "
+    },
+    {
+     "line": 282,
+     "text": " – đã hết"
+    },
+    {
+     "line": 300,
+     "text": "Ổ "
+    },
+    {
+     "line": 300,
+     "text": " sắp đầy: "
+    },
+    {
+     "line": 301,
+     "text": "Ổ "
+    },
+    {
+     "line": 301,
+     "text": " trên "
+    },
+    {
+     "line": 301,
+     "text": " đã dùng "
+    },
+    {
+     "line": 301,
+     "text": "% (dung lượng "
+    },
+    {
+     "line": 302,
+     "text": "\"Nên làm: dọn thư mục Temp/Downloads, thùng rác, file log; ổ hệ thống đầy làm Windows chậm và lỗi cập nhật.\""
+    },
+    {
+     "line": 304,
+     "text": "ổ "
+    },
+    {
+     "line": 304,
+     "text": " còn "
+    },
+    {
+     "line": 308,
+     "text": "\"ổ không còn trong danh sách máy gửi lên\""
+    },
+    {
+     "line": 314,
+     "text": "Defender tắt bảo vệ thời gian thực: "
+    },
+    {
+     "line": 315,
+     "text": "Windows Defender trên "
+    },
+    {
+     "line": 315,
+     "text": " đang TẮT bảo vệ thời gian thực. Nên làm: bật lại; tự tắt lại → "
+    },
+    {
+     "line": 316,
+     "text": "\"kiểm tra GPO hoặc mã độc vô hiệu hoá Defender.\""
+    },
+    {
+     "line": 318,
+     "text": "\"bảo vệ thời gian thực đã bật\""
+    },
+    {
+     "line": 321,
+     "text": "Mẫu nhận diện virus cũ: "
+    },
+    {
+     "line": 322,
+     "text": "Mẫu nhận diện virus của Defender trên "
+    },
+    {
+     "line": 322,
+     "text": " đã "
+    },
+    {
+     "line": 322,
+     "text": " ngày chưa cập nhật. "
+    },
+    {
+     "line": 323,
+     "text": "\"Nên làm: kiểm tra máy ra Internet/WSUS được không, chạy cập nhật tay.\""
+    },
+    {
+     "line": 325,
+     "text": "\"mẫu nhận diện đã cập nhật\""
+    },
+    {
+     "line": 344,
+     "text": " (từ "
+    },
+    {
+     "line": 346,
+     "text": "\"Hệ thống\""
+    },
+    {
+     "line": 346,
+     "text": "\"(không rõ)\""
+    },
+    {
+     "line": 347,
+     "text": " · Từ đâu: "
+    },
+    {
+     "line": 347,
+     "text": "\\nNên làm: "
+    },
+    {
+     "line": 349,
+     "text": " lần trong "
+    },
+    {
+     "line": 349,
+     "text": " phút. "
+    },
+    {
+     "line": 554,
+     "text": "\"máy đã kết nối lại\""
+    },
+    {
+     "line": 570,
+     "text": "\"gửi thông báo cảnh báo agent lỗi\""
+    },
+    {
+     "line": 578,
+     "text": "\"Thử đăng ký sai quá nhiều lần, đợi 10 phút\""
+    },
+    {
+     "line": 586,
+     "text": "\"Token đăng ký không hợp lệ, đã hết hạn hoặc hết lượt\""
+    },
+    {
+     "line": 589,
+     "text": "\"Máy này đã bị thu hồi. Xoá máy trên giao diện (Máy trạm) rồi mới đăng ký lại được.\""
+    },
+    {
+     "line": 609,
+     "text": "\" – trùng máy cũ (machine-id/serial), dùng lại bản ghi và lịch sử\""
+    },
+    {
+     "line": 611,
+     "text": ") đăng ký bằng token \\\""
+    },
+    {
+     "line": 611,
+     "text": "\\\" từ "
+    },
+    {
+     "line": 661,
+     "text": "\"Tên file không hợp lệ\""
+    },
+    {
+     "line": 664,
+     "text": "\"Không có file\""
+    },
+    {
+     "line": 683,
+     "text": "Mất kết nối agent: "
+    },
+    {
+     "line": 684,
+     "text": ") không gửi dữ liệu "
+    },
+    {
+     "line": 684,
+     "text": " phút. Máy tắt, mất mạng, hoặc dịch vụ agent bị dừng."
+    },
+    {
+     "line": 690,
+     "text": " · tự đóng: không tái diễn "
+    },
+    {
+     "line": 690,
+     "text": " giờ"
+    },
+    {
+     "line": 713,
+     "text": "\"vòng kiểm tra agent lỗi\""
+    },
+    {
+     "line": 776,
+     "text": "\"Không có máy này\""
+    },
+    {
+     "line": 832,
+     "text": "\"Tên máy\""
+    },
+    {
+     "line": 832,
+     "text": "\"agent chưa gửi thông tin hệ thống\""
+    },
+    {
+     "line": 834,
+     "text": "Bản dựng Windows "
+    },
+    {
+     "line": 834,
+     "text": "\"Bản dựng Windows\""
+    },
+    {
+     "line": 835,
+     "text": "\"chưa có build/UBR – không khớp được bản vá Windows\""
+    },
+    {
+     "line": 837,
+     "text": "Phiên bản hệ điều hành "
+    },
+    {
+     "line": 837,
+     "text": "\"chưa xác định được bản phát hành\""
+    },
+    {
+     "line": 838,
+     "text": "\"Người dùng\""
+    },
+    {
+     "line": 839,
+     "text": "\"chưa từng thấy ai đăng nhập\""
+    },
+    {
+     "line": 841,
+     "text": "Danh sách phần mềm ("
+    },
+    {
+     "line": 841,
+     "text": "\"agent chưa gửi danh sách phần mềm\""
+    },
+    {
+     "line": 843,
+     "text": "\"Danh sách phần mềm còn mới\""
+    },
+    {
+     "line": 844,
+     "text": "\"quá 3 ngày chưa cập nhật\""
+    },
+    {
+     "line": 844,
+     "text": "\"chưa có\""
+    },
+    {
+     "line": 845,
+     "text": "\"Định danh máy (machine-id / serial)\""
+    },
+    {
+     "line": 846,
+     "text": "\"agent cũ chưa gửi machine-id – cài lại sẽ thành máy mới (cập nhật agent ≥ 1.0.2)\""
+    },
+    {
+     "line": 849,
+     "text": "\"Gói nguồn Linux\""
+    },
+    {
+     "line": 849,
+     "text": "\"agent cũ không gửi gói nguồn – khớp CVE Ubuntu dễ báo nhầm\""
+    },
+    {
+     "line": 852,
+     "text": "\"không rõ (agent cũ)\""
+    },
+    {
+     "line": 925,
+     "text": "Thu hồi khoá agent "
+    },
+    {
+     "line": 925,
+     "text": " – máy không gửi được dữ liệu nữa"
+    },
+    {
+     "line": 939,
+     "text": "Xoá máy "
+    },
+    {
+     "line": 939,
+     "text": " cùng số liệu/sự kiện của máy"
+    },
+    {
+     "line": 964,
+     "text": "\"Đặt tên cho token (vd. \\\"GPO phòng Kế toán\\\")\""
+    },
+    {
+     "line": 967,
+     "text": "\"Thời hạn 1–90 ngày\""
+    },
+    {
+     "line": 974,
+     "text": " ngày · tối đa "
+    },
+    {
+     "line": 974,
+     "text": "'không giới hạn'"
+    },
+    {
+     "line": 974,
+     "text": " máy"
+    },
+    {
+     "line": 976,
+     "text": "\"Chỉ hiện MỘT lần – lưu vào script cài/GPO ngay.\""
+    },
+    {
+     "line": 984,
+     "text": "\"Không có token\""
+    },
+    {
+     "line": 986,
+     "text": " – máy đã đăng ký vẫn chạy bình thường"
+    },
+    {
+     "line": 1002,
+     "text": "\"Chính sách thu thập của agent\""
+    },
+    {
+     "line": 1016,
+     "text": "\"lỗi đọc manifest.json\""
+    },
+    {
+     "line": 1075,
+     "text": "\"Tên file không hợp lệ\""
+    },
+    {
+     "line": 1078,
+     "text": "\"Không có file\""
+    }
+   ],
+   "app/collectors/base.py": [
+    {
+     "line": 129,
+     "text": "\"Ổ khác vượt threshold: \""
+    }
+   ],
+   "app/collectors/esxi.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"VMware ESXi / vCenter qua pyVmomi: host, datastore, danh sách VM (tự đưa lên bản đồ).\"\"\""
+    },
+    {
+     "line": 118,
+     "text": " có snapshot "
+    },
+    {
+     "line": 118,
+     "text": " ngày"
+    },
+    {
+     "line": 139,
+     "text": " VM chạy"
+    },
+    {
+     "line": 149,
+     "text": "\"ESXi/vCenter quá thời gian phản hồi\""
+    },
+    {
+     "line": 152,
+     "text": "ESXi lỗi: "
+    }
+   ],
+   "app/collectors/network.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"Ping (ICMP), TCP port và HTTP(S) + hạn chứng chỉ SSL.\"\"\""
+    },
+    {
+     "line": 49,
+     "text": "\"Máy chủ thiếu lệnh ping (cài iputils-ping)\""
+    },
+    {
+     "line": 51,
+     "text": "\"Ping quá thời gian\""
+    },
+    {
+     "line": 56,
+     "text": "\"Không phản hồi\""
+    },
+    {
+     "line": 56,
+     "text": "\"Ping lỗi\""
+    },
+    {
+     "line": 59,
+     "text": " ms · mất "
+    },
+    {
+     "line": 59,
+     "text": "mất "
+    },
+    {
+     "line": 73,
+     "text": "Cổng "
+    },
+    {
+     "line": 73,
+     "text": " đóng: "
+    },
+    {
+     "line": 75,
+     "text": "Cổng "
+    },
+    {
+     "line": 75,
+     "text": " mở · "
+    },
+    {
+     "line": 104,
+     "text": "Không truy cập được: "
+    },
+    {
+     "line": 118,
+     "text": "không thấy '"
+    },
+    {
+     "line": 128,
+     "text": "SSL còn "
+    },
+    {
+     "line": 128,
+     "text": " ngày"
+    },
+    {
+     "line": 145,
+     "text": "r\"(?:time|thời gian|thoi gian)\\s?[=<]\\s?([\\d.]+)\\s?ms\""
+    },
+    {
+     "line": 163,
+     "text": "\"thiếu lệnh ping\""
+    },
+    {
+     "line": 165,
+     "text": "\"quá thời gian\""
+    },
+    {
+     "line": 240,
+     "text": "Mất Internet · 0/"
+    },
+    {
+     "line": 240,
+     "text": " đích phản hồi"
+    },
+    {
+     "line": 240,
+     "text": "\" · DNS lỗi\""
+    },
+    {
+     "line": 240,
+     "text": "\" · HTTP lỗi\""
+    },
+    {
+     "line": 243,
+     "text": "\"không ping được đích nào (ICMP bị chặn?)\""
+    },
+    {
+     "line": 245,
+     "text": " đích không phản hồi: "
+    },
+    {
+     "line": 249,
+     "text": "độ trễ cao (> "
+    },
+    {
+     "line": 250,
+     "text": "mất "
+    },
+    {
+     "line": 263,
+     "text": "\"DNS lỗi\""
+    },
+    {
+     "line": 265,
+     "text": "HTTP lỗi ("
+    },
+    {
+     "line": 273,
+     "text": "đổi đường ra: "
+    }
+   ],
+   "app/collectors/pfsense.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"pfSense / OPNsense.\n\n- pfSense: dùng gói REST API (pfrest.org, API v2) → CPU/RAM/disk, gateway WAN (loss/latency),\n  status interface, VPN (IPsec/OpenVPN), tuỳ chọn lấy DHCP lease để đưa thiết bị lên bản đồ.\n- OPNsense: API có sẵn (key + secret).\n- Không cài API được thì chọn mode \"snmp\" (bật SNM"
+    },
+    {
+     "line": 38,
+     "text": " · CLI lỗi: "
+    },
+    {
+     "line": 163,
+     "text": "\" (sai API key/mật khẩu?)\""
+    },
+    {
+     "line": 163,
+     "text": "\" (chưa cài gói REST API?)\""
+    },
+    {
+     "line": 164,
+     "text": "pfSense API trả về "
+    },
+    {
+     "line": 166,
+     "text": "Không kết nối pfSense: "
+    }
+   ],
+   "app/collectors/proxmox.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"Proxmox VE qua REST API (API token, không cần mật khẩu root).\n\nLấy: node (CPU/RAM/rootfs/uptime), storage, VM (QEMU) và container (LXC) trên từng node:\nstatus, vCPU, RAM cấp phát / đang dùng, CPU %, disk, uptime, snapshot. Tùy chọn qua QEMU guest agent: IP và\ndung lượng ổ trong guest. VM/LXC tự đ"
+    },
+    {
+     "line": 73,
+     "text": "\"Thiếu API token (token ID + secret)\""
+    },
+    {
+     "line": 166,
+     "text": " có snapshot "
+    },
+    {
+     "line": 166,
+     "text": " ngày"
+    },
+    {
+     "line": 172,
+     "text": " VM chạy"
+    },
+    {
+     "line": 176,
+     "text": "\" – kiểm tra token ID/secret và quyền PVEAuditor\""
+    },
+    {
+     "line": 179,
+     "text": "Không kết nối được Proxmox: "
+    }
+   ],
+   "app/collectors/snmp.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"SNMP v2c/v3 cho switch, router, AP, UPS, NAS, iLO/iDRAC, pfSense (bsnmpd)...\n\nThu: sysName/sysDescr/uptime, bảng cổng (up/down, tốc độ, alias), CPU (HOST-RESOURCES),\ncộng thêm theo profile: UPS (RFC1628), Synology. Có thể khai báo OID tuỳ chỉnh.\n\"\"\""
+    },
+    {
+     "line": 162,
+     "text": "\"RAM tiến trình đang dùng (SNMP của pfSense/FreeBSD không tính wired/ARC)\""
+    },
+    {
+     "line": 359,
+     "text": "\"API ESXi không trả VM\""
+    },
+    {
+     "line": 382,
+     "text": "hiệu năng "
+    },
+    {
+     "line": 393,
+     "text": "SNMP không phản hồi: "
+    },
+    {
+     "line": 395,
+     "text": "\"SNMP không phản hồi (sai community/ACL?)\""
+    },
+    {
+     "line": 450,
+     "text": " cổng up"
+    },
+    {
+     "line": 464,
+     "text": "\"đang đo lưu lượng (cần 2 lần đọc)\""
+    },
+    {
+     "line": 473,
+     "text": "\"Cổng quan trọng down: \""
+    },
+    {
+     "line": 498,
+     "text": "\"UPS đang chạy pin\""
+    },
+    {
+     "line": 500,
+     "text": "\"Pin yếu\""
+    },
+    {
+     "line": 505,
+     "text": "\"Synology báo lỗi hệ thống\""
+    },
+    {
+     "line": 540,
+     "text": "API ESXi lỗi: "
+    },
+    {
+     "line": 543,
+     "text": "\"hiệu năng VM qua API\""
+    },
+    {
+     "line": 544,
+     "text": "\"hiệu năng\""
+    },
+    {
+     "line": 552,
+     "text": " VM chạy"
+    },
+    {
+     "line": 554,
+     "text": "\"chưa đọc được danh sách VM qua SNMP\""
+    },
+    {
+     "line": 554,
+     "text": "\" (bảng VMWARE-VMINFO-MIB trống)\""
+    }
+   ],
+   "app/collectors/ssh.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"SSH tới máy Linux (hoặc lệnh tuỳ chỉnh): uptime, load, RAM, disk, docker containers.\"\"\""
+    },
+    {
+     "line": 128,
+     "text": "không đọc được số liệu (shell trả về: "
+    },
+    {
+     "line": 195,
+     "text": "\"Không đọc được Hyper-V (chưa cài role Hyper-V hoặc user thiếu quyền Hyper-V Administrators)\""
+    },
+    {
+     "line": 199,
+     "text": "\"Dữ liệu Hyper-V không hợp lệ\""
+    },
+    {
+     "line": 225,
+     "text": " có snapshot "
+    },
+    {
+     "line": 225,
+     "text": " ngày"
+    },
+    {
+     "line": 238,
+     "text": "\"Lệnh SSH tuỳ chỉnh đang bị khoá (ALLOW_SSH_COMMAND chưa bật) – bỏ trống ô lệnh để dùng bộ đo mặc định\""
+    },
+    {
+     "line": 250,
+     "text": "SSH lỗi: "
+    },
+    {
+     "line": 274,
+     "text": "Đọc Windows Event lỗi: "
+    },
+    {
+     "line": 276,
+     "text": "SSH lỗi: "
+    },
+    {
+     "line": 315,
+     "text": "\"Service dừng: \""
+    },
+    {
+     "line": 326,
+     "text": " VM chạy"
+    },
+    {
+     "line": 374,
+     "text": " container chạy"
+    },
+    {
+     "line": 378,
+     "text": "\"Container dừng: \""
+    }
+   ],
+   "app/collectors/winevents.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"Đọc Windows Event qua SSH (không cần agent) – B9 / C14 / C15.\n\n- Đọc theo EventRecordID: lưu RecordId cuối cùng của từng log cho từng server → không trùng, không sót khi IT Ops khởi động lại.\n- Lần đầu chỉ ghi nhận vị trí hiện tại (không đổ log cũ).\n- RecordId mới nhỏ hơn vị trí đã lưu, hoặc bản "
+    },
+    {
+     "line": 86,
+     "text": "Không đọc được log "
+    },
+    {
+     "line": 86,
+     "text": " (thiếu quyền Event Log Readers?)"
+    },
+    {
+     "line": 98,
+     "text": "RecordId giảm từ "
+    },
+    {
+     "line": 98,
+     "text": " xuống "
+    },
+    {
+     "line": 98,
+     "text": " – log đã bị xoá hoặc tạo lại"
+    },
+    {
+     "line": 102,
+     "text": "RecordId có khoảng trống: đã đọc tới "
+    },
+    {
+     "line": 102,
+     "text": ", bản ghi cũ nhất hiện là "
+    },
+    {
+     "line": 103,
+     "text": "– log bị xoá hoặc ghi đè vòng trước khi kịp đọc"
+    },
+    {
+     "line": 180,
+     "text": "\"winevents %s: %d sự kiện trong %.1fs\""
+    }
+   ],
+   "app/demo_agents.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"Máy trạm MẪU cho DỮ LIỆU MẪU (DEMO_DATA=true) – xem trang Máy trạm khi chưa cài agent thật.\n\nDữ liệu đi qua ĐÚNG đường xử lý của agent thật (agents.process_report): lọc, dịch tiếng Việt, gộp, cảnh báo.\nMáy mẫu có uid bắt đầu bằng \"demo-\". Tắt bằng DEMO_AGENTS=0.\n\"\"\""
+    },
+    {
+     "line": 102,
+     "text": "\"Cách ly (Quarantine)\""
+    },
+    {
+     "line": 162,
+     "text": "\"Đã tạo %d máy trạm mẫu (DEMO_AGENTS=0 để tắt)\""
+    },
+    {
+     "line": 205,
+     "text": "\"máy trạm mẫu lỗi\""
+    }
+   ],
+   "app/events.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"Xử lý log/trap nhận về: gắn tài sản theo IP, chống flood, ghi theo lô, áp rule → cảnh báo.\"\"\""
+    },
+    {
+     "line": 193,
+     "text": "\"regex lỗi: %s\""
+    },
+    {
+     "line": 278,
+     "text": "\"ghi sự kiện lỗi\""
+    },
+    {
+     "line": 325,
+     "text": "\"\\nUser đã thử: \""
+    },
+    {
+     "line": 337,
+     "text": "Nguồn: "
+    },
+    {
+     "line": 347,
+     "text": " · phục hồi: "
+    },
+    {
+     "line": 348,
+     "text": " – đã phục hồi"
+    },
+    {
+     "line": 373,
+     "text": "\"notify lỗi\""
+    },
+    {
+     "line": 385,
+     "text": "\"housekeeping lỗi\""
+    },
+    {
+     "line": 397,
+     "text": " · tự đóng sau "
+    },
+    {
+     "line": 397,
+     "text": " phút không lặp lại"
+    },
+    {
+     "line": 413,
+     "text": "\"Bỏ qua log gói tin firewall (filterlog)\""
+    },
+    {
+     "line": 414,
+     "text": "\"pfSense/OPNsense gửi log từng gói tin → rất nhiều. Tắt rule này nếu muốn lưu lại.\""
+    },
+    {
+     "line": 415,
+     "text": "\"Cổng switch down\""
+    },
+    {
+     "line": 417,
+     "text": "\"Cisco %LINK-3-UPDOWN, HPE/Aruba 'port X is now off-line'. Tự đóng khi cổng up lại.\""
+    },
+    {
+     "line": 418,
+     "text": "\"Cổng down (SNMP trap)\""
+    },
+    {
+     "line": 419,
+     "text": "\"Trap linkDown/linkUp chuẩn từ switch, router, firewall.\""
+    },
+    {
+     "line": 422,
+     "text": "\"dpinger báo mất WAN; tự đóng khi gateway available lại.\""
+    },
+    {
+     "line": 423,
+     "text": "\"Mất kết nối datastore (ESXi)\""
+    },
+    {
+     "line": 426,
+     "text": "\"Ổ cứng / RAID lỗi\""
+    },
+    {
+     "line": 429,
+     "text": "\"UPS chuyển sang chạy pin\""
+    },
+    {
+     "line": 433,
+     "text": "\"UPS chạy pin (SNMP trap)\""
+    },
+    {
+     "line": 435,
+     "text": "\"Đăng nhập sai liên tục\""
+    },
+    {
+     "line": 438,
+     "text": "\"UC-01 · ≥5 lần trong 5 phút từ cùng IP source – dò mật khẩu. Một IP thử nhiều user chỉ ra 1 cảnh báo, kèm danh sách user.\""
+    },
+    {
+     "line": 439,
+     "text": "\"IP đổi MAC (nghi giả mạo ARP)\""
+    },
+    {
+     "line": 441,
+     "text": "\"UC-10 · Firewall ghi khi một IP chuyển sang MAC khác. Nhập danh sách IP tĩnh quan trọng (gateway, server, DNS) \""
+    },
+    {
+     "line": 442,
+     "text": "\"vào 'Chỉ áp dụng cho khoá' rồi bật. IP cấp qua DHCP thường đổi MAC hợp lệ nên không đưa vào.\""
+    },
+    {
+     "line": 443,
+     "text": "\"Windows: xóa event log\""
+    },
+    {
+     "line": 445,
+     "text": "\"UC-07 · 1102 (xoá log Security) và 104 (xoá log System/Application). Cần bật 'Đọc Windows Event' trên check SSH.\""
+    },
+    {
+     "line": 446,
+     "text": "\"Windows: dịch vụ log dừng ngoài kế hoạch\""
+    },
+    {
+     "line": 448,
+     "text": "\"UC-08 · 1100 không có 1074/6006 (tắt máy có kế hoạch) đi kèm.\""
+    },
+    {
+     "line": 449,
+     "text": "\"Windows: tạo tài khoản\""
+    },
+    {
+     "line": 451,
+     "text": "\"Windows: thêm vào admin group\""
+    },
+    {
+     "line": 453,
+     "text": "\"UC-04 · Event 4728/4732/4756 vào nhóm đặc quyền.\""
+    },
+    {
+     "line": 454,
+     "text": "\"Windows: RecordId bất thường\""
+    },
+    {
+     "line": 455,
+     "text": "r\"RecordId (?:giảm|có khoảng trống).*Log=(?P<key>\\w+)\""
+    },
+    {
+     "line": 456,
+     "text": "\"Số thứ tự bản ghi giảm hoặc bị hụt so với lần đọc trước: log có thể đã bị xoá hoặc bị ghi đè vòng.\""
+    },
+    {
+     "line": 457,
+     "text": "\"Thiết bị khởi động lại\""
+    },
+    {
+     "line": 460,
+     "text": "\"Có máy đang dò SNMP với community sai.\""
+    },
+    {
+     "line": 461,
+     "text": "\"Lỗi nghiêm trọng (crit trở lên)\""
+    },
+    {
+     "line": 462,
+     "text": "\"Mọi log mức emerg/alert/crit chưa khớp rule nào ở trên.\""
+    },
+    {
+     "line": 468,
+     "text": "\"Windows: xoá nhật ký sự kiện\""
+    },
+    {
+     "line": 468,
+     "text": "\"Windows: xóa event log\""
+    },
+    {
+     "line": 468,
+     "text": "\"Windows: thêm vào nhóm quản trị\""
+    },
+    {
+     "line": 468,
+     "text": "\"Windows: thêm vào admin group\""
+    },
+    {
+     "line": 478,
+     "text": "\"Đăng nhập sai liên tục\""
+    }
+   ],
+   "app/inventory.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"Chuẩn hoá dữ liệu tài sản (module CVE – phần 1).\n\nMọi phần sau (khớp CVE, ưu tiên, báo cáo) chỉ đọc các trường đã chuẩn hoá ở đây, không đọc chuỗi thô của agent.\nMở rộng:\n  - Thêm hệ điều hành: viết hàm parse_<family>() và đăng ký vào OS_PARSERS.\n  - Thêm quy tắc tên phần mềm: thêm vào NAME_RULES"
+    }
+   ],
+   "app/notify.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"Gửi cảnh báo: Telegram, Email (SMTP), Webhook (Slack/Teams/Google Chat/Discord...).\"\"\""
+    },
+    {
+     "line": 59,
+     "text": "\"notify bị tắt (DISABLE_NOTIFY): %s\""
+    },
+    {
+     "line": 60,
+     "text": "\"tắt (DISABLE_NOTIFY – chạy song song với v1)\""
+    },
+    {
+     "line": 81,
+     "text": "\"Chưa cấu hình đủ\""
+    }
+   ],
+   "app/receivers.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"Bộ nhận Syslog (UDP + TCP) và SNMP Trap (v1/v2c/v3).\"\"\""
+    },
+    {
+     "line": 154,
+     "text": "\"SNMP trap đang nghe UDP %s\""
+    },
+    {
+     "line": 176,
+     "text": "\"Không mở được syslog UDP %s: %s\""
+    },
+    {
+     "line": 182,
+     "text": "\"Không mở được syslog TCP %s: %s\""
+    },
+    {
+     "line": 198,
+     "text": "\"Không mở được SNMP trap %s: %s\""
+    }
+   ],
+   "app/scheduler.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"Vòng lặp giám sát: chạy check đến hạn, lưu kết quả, mở/đóng cảnh báo, đồng bộ tài sản phát hiện được.\"\"\""
+    },
+    {
+     "line": 46,
+     "text": "Loại check không hỗ trợ: "
+    },
+    {
+     "line": 52,
+     "text": "Lỗi nội bộ: "
+    },
+    {
+     "line": 138,
+     "text": " đã hoạt động lại"
+    },
+    {
+     "line": 138,
+     "text": ")\\nGián đoạn "
+    },
+    {
+     "line": 138,
+     "text": " phút · "
+    },
+    {
+     "line": 202,
+     "text": " Tự đóng khi < "
+    },
+    {
+     "line": 217,
+     "text": " đã về bình thường ("
+    },
+    {
+     "line": 217,
+     "text": ")\\nKéo dài "
+    },
+    {
+     "line": 217,
+     "text": " phút"
+    },
+    {
+     "line": 220,
+     "text": "% – dưới threshold nhưng chưa xuống dưới Rearm "
+    },
+    {
+     "line": 220,
+     "text": "%, cảnh báo vẫn giữ."
+    }
+   ],
+   "app/secmon.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"Giám sát an ninh (ISO 27001 / SOC 2):\n- SLA ack theo mức cảnh báo (24/7 cho Critical, business hours cho Trouble/Attention)  – B5\n- Cảnh báo hành vi trong chính IT Ops từ audit log, gửi người nhận riêng                 – B6 / UC-14\n- Log source im lặng quá threshold theo loại thiết bị            "
+    },
+    {
+     "line": 162,
+     "text": "Quá hạn SLA chưa ack: "
+    },
+    {
+     "line": 162,
+     "text": "Mở lúc "
+    },
+    {
+     "line": 162,
+     "text": " UTC · hạn ack "
+    },
+    {
+     "line": 178,
+     "text": "IT Ops: đăng nhập sai liên tục từ "
+    },
+    {
+     "line": 181,
+     "text": " xoá toàn bộ dữ liệu"
+    },
+    {
+     "line": 181,
+     "text": " thử xoá dữ liệu khi chạy thật"
+    },
+    {
+     "line": 184,
+     "text": " tạo tài khoản "
+    },
+    {
+     "line": 186,
+     "text": " đổi vai trò "
+    },
+    {
+     "line": 188,
+     "text": " xoá tài khoản "
+    },
+    {
+     "line": 190,
+     "text": " sửa cấu hình Giám sát an ninh"
+    },
+    {
+     "line": 194,
+     "text": "\"xoá\""
+    },
+    {
+     "line": 194,
+     "text": "\"tắt\""
+    },
+    {
+     "line": 197,
+     "text": " nhập dữ liệu ("
+    },
+    {
+     "line": 217,
+     "text": "Người thực hiện: "
+    },
+    {
+     "line": 221,
+     "text": "\"audit alert lỗi\""
+    },
+    {
+     "line": 229,
+     "text": "\"\\n(Cảnh báo về thao tác của quản trị viên – người thực hiện không tự đóng được)\""
+    },
+    {
+     "line": 231,
+     "text": "\"gửi cảnh báo audit lỗi\""
+    },
+    {
+     "line": 257,
+     "text": " · đã nhận log trở lại"
+    },
+    {
+     "line": 258,
+     "text": " – đã nhận log trở lại"
+    },
+    {
+     "line": 270,
+     "text": "Không nhận log "
+    },
+    {
+     "line": 270,
+     "text": " giờ "
+    },
+    {
+     "line": 270,
+     "text": " phút (threshold "
+    },
+    {
+     "line": 270,
+     "text": " phút cho nhóm "
+    },
+    {
+     "line": 270,
+     "text": ") trong khi thiết bị vẫn hoạt động."
+    },
+    {
+     "line": 272,
+     "text": "Log source im lặng: "
+    },
+    {
+     "line": 400,
+     "text": " bản ghi\\nSHA-256 "
+    },
+    {
+     "line": 400,
+     "text": "\\nChuỗi "
+    },
+    {
+     "line": 401,
+     "text": "IT Ops – hash log ngày "
+    },
+    {
+     "line": 433,
+     "text": "\"secmon lỗi\""
+    }
+   ],
+   "app/syslog_parser.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"Phân tích dòng syslog: RFC5424, RFC3164 (BSD), biến thể pfSense / Cisco IOS / ESXi / Synology.\"\"\""
+    },
+    {
+     "line": 5,
+     "text": "\"Khẩn cấp\""
+    },
+    {
+     "line": 5,
+     "text": "\"Báo động\""
+    },
+    {
+     "line": 5,
+     "text": "\"Nghiêm trọng\""
+    },
+    {
+     "line": 5,
+     "text": "\"Lỗi\""
+    },
+    {
+     "line": 5,
+     "text": "\"Cảnh báo\""
+    },
+    {
+     "line": 5,
+     "text": "\"Lưu ý\""
+    },
+    {
+     "line": 5,
+     "text": "\"Thông tin\""
+    }
+   ],
+   "app/topology.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"Bản đồ hệ thống, hệ thống trọng yếu và điểm rủi ro – tính từ dữ liệu tài sản/check/cảnh báo.\"\"\""
+    },
+    {
+     "line": 57,
+     "text": "\" · tắt\""
+    },
+    {
+     "line": 85,
+     "text": "\"gán Line Internet\""
+    },
+    {
+     "line": 116,
+     "text": " line · chưa chạy"
+    },
+    {
+     "line": 160,
+     "text": "\"Chưa gán site\""
+    },
+    {
+     "line": 176,
+     "text": "\"chưa giám sát\""
+    },
+    {
+     "line": 185,
+     "text": "\"Dịch vụ bên ngoài\""
+    },
+    {
+     "line": 190,
+     "text": "\"chưa gán Line Internet\""
+    },
+    {
+     "line": 208,
+     "text": "\"nằm trên\""
+    },
+    {
+     "line": 215,
+     "text": "\"chạy trên\""
+    },
+    {
+     "line": 217,
+     "text": "\"phụ thuộc\""
+    },
+    {
+     "line": 236,
+     "text": "\"Chưa backup\""
+    },
+    {
+     "line": 236,
+     "text": "Hệ thống mức "
+    },
+    {
+     "line": 236,
+     "text": " chưa được đánh dấu có backup"
+    },
+    {
+     "line": 237,
+     "text": " (chạy trên "
+    },
+    {
+     "line": 239,
+     "text": "\"Chưa ghép máy chủ\""
+    },
+    {
+     "line": 239,
+     "text": "\"Không biết hệ thống này chạy trên máy nào\""
+    },
+    {
+     "line": 241,
+     "text": "\"Chưa giám sát\""
+    },
+    {
+     "line": 241,
+     "text": "\"Không có check nào theo dõi hệ thống này\""
+    },
+    {
+     "line": 243,
+     "text": "\"Đang lỗi\""
+    },
+    {
+     "line": 243,
+     "text": "\"Hệ thống trọng yếu đang có check lỗi\""
+    },
+    {
+     "line": 256,
+     "text": "\"Điểm tập trung\""
+    },
+    {
+     "line": 256,
+     "text": " hệ thống High cùng phụ thuộc: "
+    },
+    {
+     "line": 260,
+     "text": "\"Thiết bị down\""
+    },
+    {
+     "line": 263,
+     "text": "\"Snapshot cũ\""
+    },
+    {
+     "line": 263,
+     "text": "Snapshot đã "
+    },
+    {
+     "line": 263,
+     "text": " ngày – dễ đầy datastore"
+    },
+    {
+     "line": 265,
+     "text": "\"Không còn thấy\""
+    },
+    {
+     "line": 265,
+     "text": "\"Tài sản không còn xuất hiện ở nguồn đồng bộ (đã xoá/di chuyển?)\""
+    },
+    {
+     "line": 271,
+     "text": "\"SSL sắp hết hạn\""
+    },
+    {
+     "line": 271,
+     "text": "Chứng chỉ còn "
+    },
+    {
+     "line": 271,
+     "text": " ngày ("
+    },
+    {
+     "line": 274,
+     "text": "\"Datastore đầy\""
+    },
+    {
+     "line": 274,
+     "text": "Đã dùng "
+    },
+    {
+     "line": 274,
+     "text": "% (còn "
+    },
+    {
+     "line": 277,
+     "text": "\"WAN lỗi\""
+    },
+    {
+     "line": 279,
+     "text": "\"Nguồn không cập nhật\""
+    },
+    {
+     "line": 279,
+     "text": "Lần chạy cuối "
+    },
+    {
+     "line": 279,
+     "text": " phút trước"
+    },
+    {
+     "line": 281,
+     "text": "\"Check lỗi\""
+    }
+   ],
+   "app/virt.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"Máy ảo / container chạy trên một host ảo hoá (ESXi, Proxmox, Hyper-V, Docker): số lượng, cấp phát, hiệu năng.\"\"\""
+    },
+    {
+     "line": 57,
+     "text": "\"luồng CPU\""
+    }
+   ]
+  },
+  "automation templates": {
+   "app/automation/__init__.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"Tự động hoá: kịch bản khai báo (trigger → điều kiện → hành động) và thư viện template.\"\"\""
+    }
+   ],
+   "app/automation/blocks.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"Khối nội dung dùng chung cho báo cáo (template RPT-* và kịch bản tự tạo).\n\nMỗi khối trả về (tiêu đề, [dòng], số mục). Số mục = 0 nghĩa là \"không có gì đáng báo\".\n\"\"\""
+    },
+    {
+     "line": 36,
+     "text": " phút"
+    },
+    {
+     "line": 39,
+     "text": " giờ "
+    },
+    {
+     "line": 39,
+     "text": " phút"
+    },
+    {
+     "line": 39,
+     "text": " giờ"
+    },
+    {
+     "line": 41,
+     "text": " ngày "
+    },
+    {
+     "line": 41,
+     "text": " giờ"
+    },
+    {
+     "line": 57,
+     "text": "Tài sản: "
+    },
+    {
+     "line": 57,
+     "text": " đang lỗi/cảnh báo"
+    },
+    {
+     "line": 58,
+     "text": "Cảnh báo đang mở: "
+    },
+    {
+     "line": 59,
+     "text": "\"Tổng quan\""
+    },
+    {
+     "line": 76,
+     "text": " (từ "
+    },
+    {
+     "line": 76,
+     "text": "\" · đã nhận\""
+    },
+    {
+     "line": 79,
+     "text": "… và "
+    },
+    {
+     "line": 79,
+     "text": " cảnh báo khác"
+    },
+    {
+     "line": 80,
+     "text": "\"Cảnh báo đang mở\""
+    },
+    {
+     "line": 80,
+     "text": "\"Không có\""
+    },
+    {
+     "line": 89,
+     "text": " sự cố trong "
+    },
+    {
+     "line": 89,
+     "text": " giờ qua, đã đóng "
+    },
+    {
+     "line": 89,
+     "text": "Không có sự cố trong "
+    },
+    {
+     "line": 89,
+     "text": " giờ qua"
+    },
+    {
+     "line": 90,
+     "text": " giờ qua"
+    },
+    {
+     "line": 103,
+     "text": "'Chưa gán site'"
+    },
+    {
+     "line": 113,
+     "text": "\"Chưa gán Line Internet nào\""
+    },
+    {
+     "line": 124,
+     "text": "'ĐÃ HẾT HẠN'"
+    },
+    {
+     "line": 124,
+     "text": "còn "
+    },
+    {
+     "line": 124,
+     "text": " ngày"
+    },
+    {
+     "line": 125,
+     "text": "SSL hết hạn trong "
+    },
+    {
+     "line": 125,
+     "text": " ngày"
+    },
+    {
+     "line": 125,
+     "text": "\"Không có\""
+    },
+    {
+     "line": 137,
+     "text": "\"Tài nguyên vượt threshold\""
+    },
+    {
+     "line": 137,
+     "text": "\"Không có\""
+    },
+    {
+     "line": 145,
+     "text": " log lỗi/cảnh báo"
+    },
+    {
+     "line": 146,
+     "text": "Log lỗi/cảnh báo nhiều nhất ("
+    },
+    {
+     "line": 146,
+     "text": " giờ)"
+    },
+    {
+     "line": 146,
+     "text": "\"Không có\""
+    },
+    {
+     "line": 169,
+     "text": "'Chưa gán site'"
+    },
+    {
+     "line": 170,
+     "text": " ngày)"
+    },
+    {
+     "line": 170,
+     "text": "\"Chưa có dữ liệu\""
+    },
+    {
+     "line": 180,
+     "text": "Số sự cố: "
+    },
+    {
+     "line": 181,
+     "text": "MTTA (thời gian tới khi có người nhận): "
+    },
+    {
+     "line": 181,
+     "text": "'chưa có ai bấm Nhận'"
+    },
+    {
+     "line": 182,
+     "text": "MTTR (thời gian tới khi đóng): "
+    },
+    {
+     "line": 182,
+     "text": "'chưa có sự cố đóng'"
+    },
+    {
+     "line": 183,
+     "text": "\"Sự cố\""
+    },
+    {
+     "line": 195,
+     "text": " thiết bị nhiều sự cố"
+    },
+    {
+     "line": 195,
+     "text": " lần"
+    },
+    {
+     "line": 195,
+     "text": "\"Không có\""
+    },
+    {
+     "line": 203,
+     "text": "'Thấp'"
+    },
+    {
+     "line": 206,
+     "text": "… và "
+    },
+    {
+     "line": 206,
+     "text": " mục khác"
+    },
+    {
+     "line": 207,
+     "text": "\"Backup & rủi ro\""
+    },
+    {
+     "line": 207,
+     "text": "\"Không có hệ thống trọng yếu nào thiếu backup hay điểm rủi ro\""
+    },
+    {
+     "line": 217,
+     "text": "Tài sản mới ("
+    },
+    {
+     "line": 217,
+     "text": " ngày): "
+    },
+    {
+     "line": 218,
+     "text": "Nguồn lạ gửi log chưa xử lý: "
+    },
+    {
+     "line": 219,
+     "text": "Im lặng > "
+    },
+    {
+     "line": 219,
+     "text": " ngày: "
+    },
+    {
+     "line": 220,
+     "text": "Thiếu người phụ trách: "
+    },
+    {
+     "line": 221,
+     "text": "\"Biến động tài sản\""
+    },
+    {
+     "line": 232,
+     "text": "\"Tổng quan tài sản + cảnh báo\""
+    },
+    {
+     "line": 233,
+     "text": "\"Cảnh báo đang mở\""
+    },
+    {
+     "line": 234,
+     "text": "\"Sự cố trong N giờ\""
+    },
+    {
+     "line": 236,
+     "text": "\"SSL sắp hết hạn\""
+    },
+    {
+     "line": 237,
+     "text": "\"Tài nguyên vượt threshold\""
+    },
+    {
+     "line": 238,
+     "text": "\"Log lỗi nhiều nhất\""
+    },
+    {
+     "line": 240,
+     "text": "\"Số sự cố, MTTA, MTTR\""
+    },
+    {
+     "line": 241,
+     "text": "\"Top thiết bị nhiều sự cố\""
+    },
+    {
+     "line": 242,
+     "text": "\"Backup & rủi ro\""
+    },
+    {
+     "line": 243,
+     "text": "\"Biến động tài sản\""
+    }
+   ],
+   "app/automation/engine.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"Bộ chạy tự động hoá.\n\n- Kịch bản = bản ghi `Automation` với `spec` khai báo:\n    trigger: {type: schedule, cron: \"30 7 * * *\"} | {type: interval, minutes: 5} | {type: event, on: [alert_opened, ...]} | {type: hook}\n    scope:   {sites: all | [id], asset_types: [...], severities: [...], name_contai"
+    },
+    {
+     "line": 46,
+     "text": "\"phút\""
+    },
+    {
+     "line": 46,
+     "text": "\"giờ\""
+    },
+    {
+     "line": 46,
+     "text": "\"ngày\""
+    },
+    {
+     "line": 46,
+     "text": "\"tháng\""
+    },
+    {
+     "line": 46,
+     "text": "\"thứ\""
+    },
+    {
+     "line": 56,
+     "text": "cron: bước '/"
+    },
+    {
+     "line": 56,
+     "text": "' của "
+    },
+    {
+     "line": 56,
+     "text": " không hợp lệ"
+    },
+    {
+     "line": 63,
+     "text": "cron: khoảng '"
+    },
+    {
+     "line": 63,
+     "text": "' của "
+    },
+    {
+     "line": 63,
+     "text": " không hợp lệ"
+    },
+    {
+     "line": 68,
+     "text": "' của "
+    },
+    {
+     "line": 68,
+     "text": " không hợp lệ"
+    },
+    {
+     "line": 70,
+     "text": " phải trong "
+    },
+    {
+     "line": 78,
+     "text": "\"cron cần đúng 5 trường: phút giờ ngày tháng thứ (VD '30 7 * * *' = 07:30 mỗi ngày)\""
+    },
+    {
+     "line": 117,
+     "text": "\"Chủ nhật\""
+    },
+    {
+     "line": 117,
+     "text": "\"Thứ Hai\""
+    },
+    {
+     "line": 117,
+     "text": "\"Thứ Ba\""
+    },
+    {
+     "line": 117,
+     "text": "\"Thứ Tư\""
+    },
+    {
+     "line": 117,
+     "text": "\"Thứ Năm\""
+    },
+    {
+     "line": 117,
+     "text": "\"Thứ Sáu\""
+    },
+    {
+     "line": 117,
+     "text": "\"Thứ Bảy\""
+    },
+    {
+     "line": 117,
+     "text": "\"Chủ nhật\""
+    },
+    {
+     "line": 121,
+     "text": " hằng ngày"
+    },
+    {
+     "line": 123,
+     "text": " hằng tuần"
+    },
+    {
+     "line": 125,
+     "text": " Thứ Hai–Thứ Sáu"
+    },
+    {
+     "line": 127,
+     "text": " ngày "
+    },
+    {
+     "line": 127,
+     "text": " hằng tháng"
+    },
+    {
+     "line": 129,
+     "text": " ngày "
+    },
+    {
+     "line": 129,
+     "text": " các tháng "
+    },
+    {
+     "line": 180,
+     "text": "\"chưa bật kênh nào ở Cài đặt\""
+    },
+    {
+     "line": 185,
+     "text": "\"chưa cấu hình bot Telegram ở Cài đặt\""
+    },
+    {
+     "line": 190,
+     "text": "\"chưa cấu hình SMTP ở Cài đặt\""
+    },
+    {
+     "line": 195,
+     "text": "loại người nhận '"
+    },
+    {
+     "line": 195,
+     "text": "' không hỗ trợ"
+    },
+    {
+     "line": 198,
+     "text": "lỗi: "
+    },
+    {
+     "line": 257,
+     "text": "\"Không tìm thấy kịch bản\""
+    },
+    {
+     "line": 266,
+     "text": " không tồn tại"
+    },
+    {
+     "line": 273,
+     "text": "\"automation %s lỗi\""
+    },
+    {
+     "line": 274,
+     "text": "Lỗi: "
+    },
+    {
+     "line": 354,
+     "text": "\"automation tick lỗi\""
+    },
+    {
+     "line": 470,
+     "text": "\"hook %s lỗi\""
+    },
+    {
+     "line": 494,
+     "text": "\"notify lỗi\""
+    },
+    {
+     "line": 500,
+     "text": "\"event automation lỗi\""
+    },
+    {
+     "line": 507,
+     "text": "\"Kịch bản phải là một khối khoá: giá trị (trigger, scope, params, actions...)\""
+    },
+    {
+     "line": 510,
+     "text": " không tồn tại"
+    },
+    {
+     "line": 516,
+     "text": "trigger.type phải là một trong: "
+    },
+    {
+     "line": 522,
+     "text": "\"trigger.minutes phải là số phút 1–10080\""
+    },
+    {
+     "line": 527,
+     "text": "trigger.on phải là danh sách trong: "
+    },
+    {
+     "line": 531,
+     "text": "\"actions phải là danh sách người nhận\""
+    },
+    {
+     "line": 538,
+     "text": "\"Mỗi người nhận cần type: default / telegram / email / webhook\""
+    },
+    {
+     "line": 540,
+     "text": "' không hợp lệ"
+    },
+    {
+     "line": 542,
+     "text": "\"Webhook phải bắt đầu bằng http:// hoặc https://\""
+    },
+    {
+     "line": 545,
+     "text": "\"level phải là L0 / L1 / L2 / L3\""
+    },
+    {
+     "line": 547,
+     "text": "\"Template này chỉ báo tin – mức L2/L3 chỉ dành cho hành động đảo ngược được\""
+    }
+   ],
+   "app/automation/templates.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"Thư viện template – lấy từ tài liệu \"IT Ops Workspace – Bộ template tự động hoá\".\n\nChỉ gồm template chạy được với dữ liệu hiện có của hệ thống (đều có test trong tests/test_automation.py).\nTemplate cần tích hợp chưa có (Veeam/Synology, Redfish, kho cấu hình, Telegram callback, lịch sử Mbps...)\nđư"
+    },
+    {
+     "line": 35,
+     "text": "\"Thứ Hai\""
+    },
+    {
+     "line": 35,
+     "text": "\"Thứ Ba\""
+    },
+    {
+     "line": 35,
+     "text": "\"Thứ Tư\""
+    },
+    {
+     "line": 35,
+     "text": "\"Thứ Năm\""
+    },
+    {
+     "line": 35,
+     "text": "\"Thứ Sáu\""
+    },
+    {
+     "line": 35,
+     "text": "\"Thứ Bảy\""
+    },
+    {
+     "line": 35,
+     "text": "\"Chủ nhật\""
+    },
+    {
+     "line": 48,
+     "text": "\"Đang mở:\""
+    },
+    {
+     "line": 48,
+     "text": "\"Đang mở: không có\""
+    },
+    {
+     "line": 49,
+     "text": "\"Sắp hết hạn:\""
+    },
+    {
+     "line": 49,
+     "text": "\"Tài nguyên:\""
+    },
+    {
+     "line": 50,
+     "text": "Bản tin IT "
+    },
+    {
+     "line": 51,
+     "text": " cảnh báo mở · "
+    },
+    {
+     "line": 51,
+     "text": " SSL sắp hết hạn"
+    },
+    {
+     "line": 69,
+     "text": "'đạt'"
+    },
+    {
+     "line": 69,
+     "text": "'KHÔNG đạt'"
+    },
+    {
+     "line": 69,
+     "text": " mục tiêu "
+    },
+    {
+     "line": 69,
+     "text": " site dưới mục tiêu)"
+    },
+    {
+     "line": 70,
+     "text": "Đang mở: "
+    },
+    {
+     "line": 70,
+     "text": " cảnh báo"
+    },
+    {
+     "line": 71,
+     "text": "\"Tóm tắt:\\n\""
+    },
+    {
+     "line": 72,
+     "text": "\"Số liệu chính:\\n\""
+    },
+    {
+     "line": 74,
+     "text": "\"Sự cố đáng chú ý:\\n\""
+    },
+    {
+     "line": 74,
+     "text": "\"Log nổi bật:\""
+    },
+    {
+     "line": 76,
+     "text": " cảnh báo còn mở – xem danh sách và giao người xử lý"
+    },
+    {
+     "line": 78,
+     "text": "Cân nhắc nâng cấp/dọn dẹp: "
+    },
+    {
+     "line": 80,
+     "text": "Gia hạn "
+    },
+    {
+     "line": 82,
+     "text": "\"Uptime dưới mục tiêu ở: \""
+    },
+    {
+     "line": 83,
+     "text": "\"Việc cần quyết định:\\n\""
+    },
+    {
+     "line": 83,
+     "text": "\"- Không có\""
+    },
+    {
+     "line": 86,
+     "text": " sự cố · "
+    },
+    {
+     "line": 86,
+     "text": " việc cần quyết định"
+    },
+    {
+     "line": 90,
+     "text": "\"Báo cáo tuần vận hành\""
+    },
+    {
+     "line": 129,
+     "text": " (tháng trước "
+    },
+    {
+     "line": 131,
+     "text": "'Chưa gán site'"
+    },
+    {
+     "line": 143,
+     "text": "Tìm nguyên nhân gốc và phương án dự phòng cho "
+    },
+    {
+     "line": 145,
+     "text": "\"Duy trì: mọi site và hệ thống trọng yếu đạt mục tiêu\""
+    },
+    {
+     "line": 147,
+     "text": "Lưu ý: chỉ có số liệu "
+    },
+    {
+     "line": 147,
+     "text": " ngày (hệ thống chưa chạy liên tục) – kết quả chưa đại diện cả tháng"
+    },
+    {
+     "line": 148,
+     "text": "Mục tiêu uptime: "
+    },
+    {
+     "line": 148,
+     "text": "\"Chưa có dữ liệu\""
+    },
+    {
+     "line": 149,
+     "text": "\"Hệ thống trọng yếu:\\n\""
+    },
+    {
+     "line": 150,
+     "text": "\"Kiến nghị:\\n\""
+    },
+    {
+     "line": 151,
+     "text": "Báo cáo SLA tháng "
+    },
+    {
+     "line": 152,
+     "text": " mục dưới mục tiêu · "
+    },
+    {
+     "line": 152,
+     "text": " ngày có số liệu"
+    },
+    {
+     "line": 158,
+     "text": "\"Không có rủi ro / hệ thống thiếu backup\""
+    },
+    {
+     "line": 159,
+     "text": " mục rủi ro"
+    },
+    {
+     "line": 159,
+     "text": "Backup & rủi ro – "
+    },
+    {
+     "line": 164,
+     "text": " mục cần xem"
+    },
+    {
+     "line": 164,
+     "text": "Biến động tài sản – "
+    },
+    {
+     "line": 211,
+     "text": "Chặn: "
+    },
+    {
+     "line": 211,
+     "text": " (cha) đang DOWN"
+    },
+    {
+     "line": 216,
+     "text": " thiết bị phía sau bị ảnh hưởng: "
+    },
+    {
+     "line": 217,
+     "text": "\"\\nCảnh báo riêng của các thiết bị này sẽ được gom vào sự cố này.\""
+    },
+    {
+     "line": 218,
+     "text": " thiết bị phía sau"
+    },
+    {
+     "line": 241,
+     "text": "Chặn tin lẻ: "
+    },
+    {
+     "line": 241,
+     "text": " đang chập chờn ("
+    },
+    {
+     "line": 241,
+     "text": " lần/"
+    },
+    {
+     "line": 241,
+     "text": " phút)"
+    },
+    {
+     "line": 243,
+     "text": " chập chờn"
+    },
+    {
+     "line": 244,
+     "text": "Đổi status "
+    },
+    {
+     "line": 244,
+     "text": " lần trong "
+    },
+    {
+     "line": 244,
+     "text": " phút. Tạm ngừng gửi tin lẻ trong "
+    },
+    {
+     "line": 244,
+     "text": " phút.\\n"
+    },
+    {
+     "line": 245,
+     "text": "Gần nhất: "
+    },
+    {
+     "line": 246,
+     "text": ": chập chờn ("
+    },
+    {
+     "line": 246,
+     "text": " lần/"
+    },
+    {
+     "line": 246,
+     "text": " phút) – gộp thành 1 tin"
+    },
+    {
+     "line": 255,
+     "text": "\"Xem đèn modem/ONT của nhà mạng\""
+    },
+    {
+     "line": 255,
+     "text": "\"Ping gateway nhà mạng từ firewall (Diagnostics › Ping)\""
+    },
+    {
+     "line": 256,
+     "text": "\"Kiểm tra Gateway Monitor trên pfSense\""
+    },
+    {
+     "line": 256,
+     "text": "\"Gọi tổng đài nhà mạng, đọc mã hợp đồng/khách hàng\""
+    },
+    {
+     "line": 257,
+     "text": "\"Ping lại từ máy khác cùng mạng để loại trừ lỗi đường đi\""
+    },
+    {
+     "line": 257,
+     "text": "\"Kiểm tra cổng switch nối thiết bị (đèn, status port)\""
+    },
+    {
+     "line": 258,
+     "text": "\"Kiểm tra nguồn điện / UPS của thiết bị\""
+    },
+    {
+     "line": 258,
+     "text": "\"Nếu là VM: xem status trên ESXi\""
+    },
+    {
+     "line": 259,
+     "text": "\"Kiểm tra thiết bị còn ping được không\""
+    },
+    {
+     "line": 259,
+     "text": "\"Kiểm tra dịch vụ SNMP và community/ACL trên thiết bị\""
+    },
+    {
+     "line": 260,
+     "text": "\"Kiểm tra firewall có chặn UDP 161 không\""
+    },
+    {
+     "line": 261,
+     "text": "\"Mở thử URL trên trình duyệt\""
+    },
+    {
+     "line": 261,
+     "text": "\"Kiểm tra dịch vụ web/app pool trên máy chủ\""
+    },
+    {
+     "line": 261,
+     "text": "\"Kiểm tra DNS và chứng chỉ SSL\""
+    },
+    {
+     "line": 262,
+     "text": "\"Kiểm tra máy chủ còn ping được không\""
+    },
+    {
+     "line": 262,
+     "text": "\"Đăng nhập console/iLO nếu SSH không vào được\""
+    },
+    {
+     "line": 262,
+     "text": "\"Xem dung lượng ổ đĩa và RAM\""
+    },
+    {
+     "line": 263,
+     "text": "\"Xem tiến trình dùng CPU cao (top / Task Manager)\""
+    },
+    {
+     "line": 263,
+     "text": "\"So với lịch backup/quét virus đang chạy\""
+    },
+    {
+     "line": 263,
+     "text": "\"Cân nhắc thêm vCPU nếu kéo dài\""
+    },
+    {
+     "line": 264,
+     "text": "\"Xem tiến trình dùng RAM nhiều\""
+    },
+    {
+     "line": 264,
+     "text": "\"Kiểm tra rò rỉ bộ nhớ (dịch vụ chạy lâu ngày)\""
+    },
+    {
+     "line": 264,
+     "text": "\"Cân nhắc thêm RAM\""
+    },
+    {
+     "line": 265,
+     "text": "\"Xem thư mục chiếm nhiều dung lượng\""
+    },
+    {
+     "line": 265,
+     "text": "\"Dọn log/bản backup cũ\""
+    },
+    {
+     "line": 265,
+     "text": "\"Mở rộng ổ hoặc chuyển dữ liệu\""
+    },
+    {
+     "line": 266,
+     "text": "\"Kiểm tra các line WAN khác còn chạy không\""
+    },
+    {
+     "line": 266,
+     "text": "\"Xem Gateway Monitor trên firewall\""
+    },
+    {
+     "line": 266,
+     "text": "\"Gọi nhà mạng nếu mọi line đều mất\""
+    },
+    {
+     "line": 289,
+     "text": "hệ thống "
+    },
+    {
+     "line": 298,
+     "text": "\"\\n\\nCách xử lý:\\n\""
+    },
+    {
+     "line": 299,
+     "text": "Gắn runbook ("
+    },
+    {
+     "line": 299,
+     "text": ") vào: "
+    },
+    {
+     "line": 317,
+     "text": "bước "
+    },
+    {
+     "line": 319,
+     "text": "Chưa ai nhận sau "
+    },
+    {
+     "line": 319,
+     "text": " phút (mở lúc "
+    },
+    {
+     "line": 320,
+     "text": "\"Bấm Nhận trên trang Cảnh báo để dừng leo thang.\""
+    },
+    {
+     "line": 329,
+     "text": "\"Không có cảnh báo cần leo thang\""
+    },
+    {
+     "line": 353,
+     "text": " đang gián đoạn"
+    },
+    {
+     "line": 353,
+     "text": "\"{system} đang gián đoạn. IT đã nhận thông tin và đang xử lý. \""
+    },
+    {
+     "line": 354,
+     "text": "\"Sẽ báo lại khi dịch vụ hoạt động trở lại.\""
+    },
+    {
+     "line": 357,
+     "text": " đã hoạt động trở lại"
+    },
+    {
+     "line": 357,
+     "text": "\"{system} đã hoạt động bình thường trở lại \""
+    },
+    {
+     "line": 358,
+     "text": "\"(gián đoạn khoảng {minutes} phút). Cảm ơn mọi người đã chờ.\""
+    },
+    {
+     "line": 361,
+     "text": "\"Không có hệ thống trọng yếu đổi status\""
+    },
+    {
+     "line": 402,
+     "text": "): đã "
+    },
+    {
+     "line": 407,
+     "text": "% → chạm "
+    },
+    {
+     "line": 407,
+     "text": "% khoảng "
+    },
+    {
+     "line": 408,
+     "text": "(còn ~"
+    },
+    {
+     "line": 408,
+     "text": " ngày, tăng "
+    },
+    {
+     "line": 408,
+     "text": "%/ngày)"
+    },
+    {
+     "line": 410,
+     "text": "\"Không ổ nào dự kiến đầy trong khoảng dự báo\""
+    },
+    {
+     "line": 412,
+     "text": " ổ sắp đầy"
+    },
+    {
+     "line": 412,
+     "text": "Dự báo đầy ổ: "
+    },
+    {
+     "line": 412,
+     "text": " ổ trong "
+    },
+    {
+     "line": 412,
+     "text": " ngày tới"
+    },
+    {
+     "line": 413,
+     "text": "\"\\n\\nDự báo theo xu hướng; cần ≥ 7 ngày số liệu để chính xác.\""
+    },
+    {
+     "line": 437,
+     "text": "'đã hết hạn'"
+    },
+    {
+     "line": 437,
+     "text": "còn "
+    },
+    {
+     "line": 437,
+     "text": " ngày"
+    },
+    {
+     "line": 438,
+     "text": "Chứng chỉ của "
+    },
+    {
+     "line": 438,
+     "text": "'đã hết hạn'"
+    },
+    {
+     "line": 438,
+     "text": "hết hạn sau "
+    },
+    {
+     "line": 438,
+     "text": " ngày"
+    },
+    {
+     "line": 438,
+     "text": ". Mốc nhắc: "
+    },
+    {
+     "line": 438,
+     "text": " ngày."
+    },
+    {
+     "line": 439,
+     "text": "\"\\nĐây là lần nhắc cuối – cần gia hạn ngay.\""
+    },
+    {
+     "line": 441,
+     "text": "\"Không có chứng chỉ chạm mốc nhắc mới\""
+    },
+    {
+     "line": 471,
+     "text": " phút (bình thường "
+    },
+    {
+     "line": 473,
+     "text": "\"Độ trễ trong mức bình thường\""
+    },
+    {
+     "line": 474,
+     "text": " check độ trễ tăng bất thường"
+    },
+    {
+     "line": 475,
+     "text": "\"Cảnh báo sớm: độ trễ tăng bất thường\""
+    },
+    {
+     "line": 475,
+     "text": "\"\\n\\nChưa down, nhưng nên kiểm tra đường truyền.\""
+    },
+    {
+     "line": 503,
+     "text": " log lỗi/cảnh báo trong 1 giờ (bình thường ~"
+    },
+    {
+     "line": 506,
+     "text": "\"Lượng log trong mức bình thường\""
+    },
+    {
+     "line": 507,
+     "text": " log source tăng bất thường"
+    },
+    {
+     "line": 507,
+     "text": "\"Log bất thường\""
+    },
+    {
+     "line": 541,
+     "text": "Bảo trì '"
+    },
+    {
+     "line": 541,
+     "text": "': không gửi "
+    },
+    {
+     "line": 550,
+     "text": "\"Bảo trì\""
+    },
+    {
+     "line": 554,
+     "text": "Nhắc lịch bảo trì: "
+    },
+    {
+     "line": 554,
+     "text": "Bắt đầu "
+    },
+    {
+     "line": 554,
+     "text": ", kéo dài "
+    },
+    {
+     "line": 554,
+     "text": " phút, "
+    },
+    {
+     "line": 555,
+     "text": " thiết bị. Cảnh báo của các thiết bị này sẽ tạm không gửi trong khung giờ."
+    },
+    {
+     "line": 561,
+     "text": "Sau bảo trì '"
+    },
+    {
+     "line": 562,
+     "text": "\"Còn lỗi: \""
+    },
+    {
+     "line": 562,
+     "text": "\"Tất cả check đã xanh. Cảnh báo đã bật lại.\""
+    },
+    {
+     "line": 567,
+     "text": "\"Không có mốc bảo trì\""
+    },
+    {
+     "line": 581,
+     "text": "\"Ping + SNMP (hoặc pfSense API)\""
+    },
+    {
+     "line": 595,
+     "text": "\"người phụ trách\""
+    },
+    {
+     "line": 596,
+     "text": "): nên thêm "
+    },
+    {
+     "line": 596,
+     "text": " · thiếu "
+    },
+    {
+     "line": 599,
+     "text": "- Nguồn lạ "
+    },
+    {
+     "line": 599,
+     "text": " log – tạo tài sản rồi thêm check"
+    },
+    {
+     "line": 601,
+     "text": "\"Không có tài sản mới cần onboard\""
+    },
+    {
+     "line": 602,
+     "text": " mục cần onboard"
+    },
+    {
+     "line": 602,
+     "text": "\"Onboard tài sản\""
+    },
+    {
+     "line": 603,
+     "text": "\"\\n\\nChecklist: site · người phụ trách · mức trọng yếu · backup\""
+    },
+    {
+     "line": 618,
+     "text": "): không phản hồi từ "
+    },
+    {
+     "line": 620,
+     "text": "Không có tài sản im lặng > "
+    },
+    {
+     "line": 620,
+     "text": " ngày"
+    },
+    {
+     "line": 621,
+     "text": " tài sản nên rà soát"
+    },
+    {
+     "line": 621,
+     "text": "Đề nghị archive "
+    },
+    {
+     "line": 621,
+     "text": " tài sản"
+    },
+    {
+     "line": 622,
+     "text": "\"\\n\\nXác nhận trên trang Tài sản: tắt check / chuyển status 'Tắt'. \""
+    },
+    {
+     "line": 623,
+     "text": "\"Hệ thống không tự xoá.\""
+    },
+    {
+     "line": 639,
+     "text": "\"Tài sản thiếu người phụ trách\""
+    },
+    {
+     "line": 639,
+     "text": "\"Tài sản chưa gán site\""
+    },
+    {
+     "line": 639,
+     "text": "\"Check tắt > 14 ngày\""
+    },
+    {
+     "line": 640,
+     "text": "\"Rule log 90 ngày không khớp\""
+    },
+    {
+     "line": 640,
+     "text": "\"Tài khoản không đăng nhập > 90 ngày\""
+    },
+    {
+     "line": 641,
+     "text": "\"Hệ thống trọng yếu thiếu người phụ trách\""
+    },
+    {
+     "line": 644,
+     "text": " mục cần dọn"
+    },
+    {
+     "line": 644,
+     "text": "Rà soát dữ liệu quý – "
+    },
+    {
+     "line": 655,
+     "text": " thiết bị phía sau · "
+    },
+    {
+     "line": 655,
+     "text": " cảnh báo con sẽ bị gom"
+    },
+    {
+     "line": 657,
+     "text": "Cây cha–con hiện có "
+    },
+    {
+     "line": 657,
+     "text": " liên kết. Khi thiết bị cha DOWN, cảnh báo của thiết bị con không gửi riêng."
+    },
+    {
+     "line": 658,
+     "text": " sự cố gốc đang mở"
+    },
+    {
+     "line": 658,
+     "text": "\"Xem trước: gom theo nguyên nhân gốc\""
+    },
+    {
+     "line": 659,
+     "text": "\"Hiện không có thiết bị cha nào DOWN.\""
+    },
+    {
+     "line": 673,
+     "text": " lần đổi status trong "
+    },
+    {
+     "line": 673,
+     "text": " phút"
+    },
+    {
+     "line": 674,
+     "text": " check đang chập chờn"
+    },
+    {
+     "line": 674,
+     "text": "\"Xem trước: chống chập chờn\""
+    },
+    {
+     "line": 675,
+     "text": " lần đổi status trong "
+    },
+    {
+     "line": 675,
+     "text": " phút → gộp 1 tin, ngừng tin lẻ "
+    },
+    {
+     "line": 676,
+     "text": " phút.\\n\\n"
+    },
+    {
+     "line": 676,
+     "text": "\"Hiện không có check nào chập chờn.\""
+    },
+    {
+     "line": 688,
+     "text": "\"Ví dụ khi WAN down:\\nCách xử lý:\\n\""
+    },
+    {
+     "line": 689,
+     "text": " ví dụ"
+    },
+    {
+     "line": 689,
+     "text": "\"Xem trước: runbook đính kèm\""
+    },
+    {
+     "line": 697,
+     "text": "\"Chưa có khung bảo trì\""
+    },
+    {
+     "line": 697,
+     "text": "\"Xem trước: lịch bảo trì\""
+    },
+    {
+     "line": 697,
+     "text": "\"Chưa khai báo khung bảo trì nào. Thêm khung: tên, giờ bắt đầu (cron), \""
+    },
+    {
+     "line": 698,
+     "text": "\"thời lượng, thiết bị hoặc site.\""
+    },
+    {
+     "line": 703,
+     "text": "'Bảo trì'"
+    },
+    {
+     "line": 703,
+     "text": "'ĐANG DIỄN RA'"
+    },
+    {
+     "line": 703,
+     "text": "'lần tới '"
+    },
+    {
+     "line": 704,
+     "text": " phút · "
+    },
+    {
+     "line": 704,
+     "text": " thiết bị"
+    },
+    {
+     "line": 705,
+     "text": " khung bảo trì"
+    },
+    {
+     "line": 705,
+     "text": "\"Xem trước: lịch bảo trì\""
+    },
+    {
+     "line": 719,
+     "text": "\"Sự kiện không khớp trigger\""
+    },
+    {
+     "line": 726,
+     "text": "\"Ngoài phạm vi\""
+    },
+    {
+     "line": 729,
+     "text": "\"Đã xử lý\""
+    },
+    {
+     "line": 738,
+     "text": "\"Không có gì để báo (send_when: has_items)\""
+    },
+    {
+     "line": 741,
+     "text": " mục"
+    },
+    {
+     "line": 755,
+     "text": "Khối không tồn tại: "
+    },
+    {
+     "line": 755,
+     "text": ". Dùng: "
+    },
+    {
+     "line": 757,
+     "text": "\"send_when phải là always hoặc has_items\""
+    },
+    {
+     "line": 759,
+     "text": "\"Kịch bản theo lịch cần content.blocks (VD [overview, open_alerts])\""
+    },
+    {
+     "line": 766,
+     "text": "\"Mỗi khung bảo trì cần cron (giờ bắt đầu) và duration_min\""
+    },
+    {
+     "line": 769,
+     "text": "' cần assets hoặc sites"
+    },
+    {
+     "line": 775,
+     "text": "\"Mỗi bước leo thang cần after_min (phút)\""
+    },
+    {
+     "line": 779,
+     "text": "\"Có sẵn\""
+    },
+    {
+     "line": 790,
+     "text": "\"Bản tin sáng\""
+    },
+    {
+     "line": 790,
+     "text": "\"Thiết bị đang đỏ, cảnh báo mở, sự cố 24h, status WAN/line Internet, SSL sắp hết hạn, tài nguyên vượt threshold.\""
+    },
+    {
+     "line": 792,
+     "text": "\"Đúng giờ 100%; IT không phải tự gom tin mỗi sáng\""
+    },
+    {
+     "line": 793,
+     "text": "\"Báo SSL hết hạn trong (ngày)\""
+    },
+    {
+     "line": 793,
+     "text": "\"Số cảnh báo liệt kê tối đa\""
+    },
+    {
+     "line": 794,
+     "text": "\"Báo cáo tuần vận hành\""
+    },
+    {
+     "line": 794,
+     "text": "\"Uptime theo site, số sự cố, MTTA/MTTR, top thiết bị lỗi nhiều, log nổi bật, việc cần quyết định.\""
+    },
+    {
+     "line": 796,
+     "text": "\"Quản lý đọc trong 24h; không cần hỏi thêm số liệu\""
+    },
+    {
+     "line": 796,
+     "text": "\"Có sẵn · MTTA cần mọi người bấm Nhận\""
+    },
+    {
+     "line": 797,
+     "text": "\"Mục tiêu uptime (%)\""
+    },
+    {
+     "line": 797,
+     "text": "\"Top N thiết bị\""
+    },
+    {
+     "line": 798,
+     "text": "\"Báo cáo SLA tháng\""
+    },
+    {
+     "line": 798,
+     "text": "\"% uptime tháng trước theo site và hệ thống trọng yếu so với mục tiêu, phút DOWN, so với tháng trước nữa, kiến nghị.\""
+    },
+    {
+     "line": 800,
+     "text": "\"Ban giám đốc có số SLA đúng hạn mỗi tháng\""
+    },
+    {
+     "line": 800,
+     "text": "\"Có sẵn (gộp uptime theo ngày) · đúng khi hệ thống chạy liên tục\""
+    },
+    {
+     "line": 801,
+     "text": "\"Mục tiêu uptime (%)\""
+    },
+    {
+     "line": 802,
+     "text": "\"Backup & rủi ro\""
+    },
+    {
+     "line": 802,
+     "text": "\"Hệ thống trọng yếu chưa backup, điểm đơn lẻ gây sập (SPOF), phụ thuộc đang lỗi trên bản đồ.\""
+    },
+    {
+     "line": 803,
+     "text": "\"Có sẵn (cờ backup)\""
+    },
+    {
+     "line": 804,
+     "text": "\"0 hệ thống High thiếu backup\""
+    },
+    {
+     "line": 804,
+     "text": "\"Không gửi khi không có rủi ro\""
+    },
+    {
+     "line": 805,
+     "text": "\"Biến động tài sản\""
+    },
+    {
+     "line": 805,
+     "text": "\"Tài sản mới, Nguồn lạ chưa xử lý, tài sản im lặng, tài sản thiếu người phụ trách.\""
+    },
+    {
+     "line": 807,
+     "text": "\"100% tài sản có người phụ trách\""
+    },
+    {
+     "line": 807,
+     "text": "\"Kỳ báo cáo (ngày)\""
+    },
+    {
+     "line": 807,
+     "text": "\"Im lặng quá (ngày)\""
+    },
+    {
+     "line": 809,
+     "text": "\"Gom theo nguyên nhân gốc\""
+    },
+    {
+     "line": 809,
+     "text": "\"Thiết bị cha (firewall, switch, host) DOWN → chặn cảnh báo của thiết bị phía sau, chỉ gửi 1 tin kèm số thiết bị bị ảnh hưởng.\""
+    },
+    {
+     "line": 810,
+     "text": "\"Có sẵn (cây cha–con trên bản đồ)\""
+    },
+    {
+     "line": 811,
+     "text": "\"Số tin mỗi sự cố ≤ 2\""
+    },
+    {
+     "line": 812,
+     "text": "\"Chống chập chờn\""
+    },
+    {
+     "line": 812,
+     "text": "\"≥ N lần đổi status trong M phút → gộp thành 1 tin 'chập chờn', tạm ngừng gửi tin lẻ.\""
+    },
+    {
+     "line": 814,
+     "text": "\"Không còn chuỗi tin bật/tắt liên tục\""
+    },
+    {
+     "line": 815,
+     "text": "\"Số lần đổi status\""
+    },
+    {
+     "line": 815,
+     "text": "\"Trong (phút)\""
+    },
+    {
+     "line": 815,
+     "text": "\"Ngừng gửi tin lẻ (phút)\""
+    },
+    {
+     "line": 816,
+     "text": "\"Leo thang theo mức\""
+    },
+    {
+     "line": 816,
+     "text": "\"Cảnh báo chưa ai bấm Nhận sau X phút → báo bước tiếp theo (trưởng nhóm, quản lý).\""
+    },
+    {
+     "line": 818,
+     "text": "\"Trưởng nhóm\""
+    },
+    {
+     "line": 819,
+     "text": "\"Quản lý\""
+    },
+    {
+     "line": 820,
+     "text": "\"Nhóm IT (Medium)\""
+    },
+    {
+     "line": 821,
+     "text": "\"Có sẵn · cần điền người nhận từng bước\""
+    },
+    {
+     "line": 822,
+     "text": "\"MTTA High < 15 phút\""
+    },
+    {
+     "line": 822,
+     "text": "\"Các bước leo thang\""
+    },
+    {
+     "line": 823,
+     "text": "\"Runbook đính kèm\""
+    },
+    {
+     "line": 823,
+     "text": "\"Gắn 3–5 bước kiểm tra vào tin cảnh báo theo loại check (WAN, ping, SNMP, HTTP, SSH, CPU/RAM/Disk) hoặc runbook của hệ thống trọng yếu.\""
+    },
+    {
+     "line": 824,
+     "text": "\"Có sẵn (runbook mặc định + runbook hệ thống trọng yếu)\""
+    },
+    {
+     "line": 825,
+     "text": "\"On-call xử lý được ngay không cần hỏi\""
+    },
+    {
+     "line": 825,
+     "text": "\"Runbook riêng theo từ khoá\""
+    },
+    {
+     "line": 826,
+     "text": "\"Thông báo người dùng\""
+    },
+    {
+     "line": 826,
+     "text": "\"Hệ thống trọng yếu DOWN quá X phút → gửi tin 'đang gián đoạn' tới nhóm chung; xanh lại → gửi tin khôi phục.\""
+    },
+    {
+     "line": 828,
+     "text": "\"{system} đang gián đoạn. IT đã nhận thông tin và đang xử lý. Sẽ báo lại khi dịch vụ hoạt động trở lại.\""
+    },
+    {
+     "line": 829,
+     "text": "\"{system} đã hoạt động bình thường trở lại (gián đoạn khoảng {minutes} phút). Cảm ơn mọi người đã chờ.\""
+    },
+    {
+     "line": 831,
+     "text": "\"Có sẵn (hệ thống trọng yếu + check gắn kèm)\""
+    },
+    {
+     "line": 832,
+     "text": "\"Người dùng biết sự cố trước khi gọi IT\""
+    },
+    {
+     "line": 833,
+     "text": "\"Gửi khi DOWN quá (phút)\""
+    },
+    {
+     "line": 833,
+     "text": "\"Mức trọng yếu\""
+    },
+    {
+     "line": 834,
+     "text": "\"Mẫu tin gián đoạn\""
+    },
+    {
+     "line": 834,
+     "text": "\"Mẫu tin khôi phục\""
+    },
+    {
+     "line": 836,
+     "text": "\"Dự báo đầy ổ / datastore\""
+    },
+    {
+     "line": 836,
+     "text": "\"Hồi quy tuyến tính % dùng ổ (Linux, Windows, datastore, volume NAS) – báo nếu sẽ chạm threshold trong N ngày.\""
+    },
+    {
+     "line": 838,
+     "text": "\"Có sẵn (lịch sử CPU/RAM/Disk) · chính xác sau ≥ 7 ngày\""
+    },
+    {
+     "line": 838,
+     "text": "\"≥ 50% sự cố đầy ổ được báo trước\""
+    },
+    {
+     "line": 839,
+     "text": "\"Threshold đầy (%)\""
+    },
+    {
+     "line": 839,
+     "text": "\"Báo nếu đầy trong (ngày)\""
+    },
+    {
+     "line": 839,
+     "text": "\"Dựa trên số liệu (ngày)\""
+    },
+    {
+     "line": 840,
+     "text": "\"Cần tối thiểu (giờ số liệu)\""
+    },
+    {
+     "line": 841,
+     "text": "\"SSL hết hạn\""
+    },
+    {
+     "line": 841,
+     "text": "\"Nhắc 3 lần ở mốc 30 / 14 / 7 ngày, lần cuối mức Critical. Gia hạn xong tự reset.\""
+    },
+    {
+     "line": 842,
+     "text": "\"Có sẵn (check HTTP có SSL)\""
+    },
+    {
+     "line": 843,
+     "text": "\"0 sự cố vì SSL hết hạn\""
+    },
+    {
+     "line": 843,
+     "text": "\"Mốc nhắc (ngày)\""
+    },
+    {
+     "line": 844,
+     "text": "\"Độ trễ tăng bất thường\""
+    },
+    {
+     "line": 844,
+     "text": "\"Trung bình 15 phút gần nhất vượt đường nền 7 ngày + 3 độ lệch chuẩn → cảnh báo sớm trước khi down.\""
+    },
+    {
+     "line": 846,
+     "text": "\"Có sẵn (lịch sử độ trễ) · chính xác sau ≥ 7 ngày\""
+    },
+    {
+     "line": 846,
+     "text": "\"Phát hiện đường truyền xấu trước khi rớt\""
+    },
+    {
+     "line": 847,
+     "text": "\"Số độ lệch chuẩn\""
+    },
+    {
+     "line": 847,
+     "text": "\"Window gần nhất (phút)\""
+    },
+    {
+     "line": 847,
+     "text": "\"Tăng tối thiểu (ms)\""
+    },
+    {
+     "line": 848,
+     "text": "\"Cần đường nền tối thiểu (giờ)\""
+    },
+    {
+     "line": 848,
+     "text": "\"Không nhắc lại trong (giờ)\""
+    },
+    {
+     "line": 849,
+     "text": "\"Log bất thường\""
+    },
+    {
+     "line": 849,
+     "text": "\"Số log lỗi/cảnh báo 1 giờ qua gấp X lần trung bình cùng khung giờ 7 ngày trước → báo kèm 10 dòng tiêu biểu.\""
+    },
+    {
+     "line": 850,
+     "text": "\"Có sẵn (log thiết bị)\""
+    },
+    {
+     "line": 851,
+     "text": "\"Phát hiện thiết bị bất thường qua log\""
+    },
+    {
+     "line": 851,
+     "text": "\"Gấp (lần)\""
+    },
+    {
+     "line": 851,
+     "text": "\"Tối thiểu (log/giờ)\""
+    },
+    {
+     "line": 852,
+     "text": "\"Không nhắc lại trong (giờ)\""
+    },
+    {
+     "line": 854,
+     "text": "\"Lịch bảo trì\""
+    },
+    {
+     "line": 854,
+     "text": "\"Trong khung giờ bảo trì: không gửi cảnh báo của thiết bị trong phạm vi. Nhắc trước 1 ngày; hết giờ chạy lại mọi check và gửi kết quả.\""
+    },
+    {
+     "line": 856,
+     "text": "\"0 cảnh báo giả trong khung giờ bảo trì\""
+    },
+    {
+     "line": 857,
+     "text": "\"Khung bảo trì\""
+    },
+    {
+     "line": 857,
+     "text": "\"Nhắc trước (giờ)\""
+    },
+    {
+     "line": 858,
+     "text": "\"Onboard tài sản\""
+    },
+    {
+     "line": 858,
+     "text": "\"Tài sản mới chưa có check / Nguồn lạ gửi log → gợi ý bộ check theo loại và checklist bắt buộc.\""
+    },
+    {
+     "line": 859,
+     "text": "\"Tài sản mới có check trong 24h\""
+    },
+    {
+     "line": 860,
+     "text": "\"Tài sản tạo trong (ngày)\""
+    },
+    {
+     "line": 861,
+     "text": "\"Offboard / thanh lý\""
+    },
+    {
+     "line": 861,
+     "text": "\"Tài sản không phản hồi quá N ngày → đề nghị archive. Không tự xoá, không tự tắt.\""
+    },
+    {
+     "line": 862,
+     "text": "\"Danh sách tài sản luôn đúng thực tế\""
+    },
+    {
+     "line": 863,
+     "text": "\"Không phản hồi quá (ngày)\""
+    },
+    {
+     "line": 864,
+     "text": "\"Rà soát dữ liệu định kỳ\""
+    },
+    {
+     "line": 864,
+     "text": "\"Đầu quý: tài sản thiếu người phụ trách/site, check tắt lâu, rule log không khớp, tài khoản không đăng nhập.\""
+    },
+    {
+     "line": 865,
+     "text": "\"Dữ liệu tài sản sạch mỗi quý\""
+    },
+    {
+     "line": 867,
+     "text": "\"Kịch bản tự tạo\""
+    },
+    {
+     "line": 867,
+     "text": "\"Tự chọn trigger (lịch / chu kỳ / sự kiện cảnh báo), phạm vi, nội dung và người nhận.\""
+    },
+    {
+     "line": 868,
+     "text": "\"Tình hình hạ tầng {time}\""
+    },
+    {
+     "line": 874,
+     "text": "\"WAN & băng thông\""
+    },
+    {
+     "line": 874,
+     "text": "\"Cần lưu lịch sử Mbps theo đường WAN (hiện chỉ có lần đọc gần nhất)\""
+    },
+    {
+     "line": 875,
+     "text": "\"Xử lý ngay trên Telegram\""
+    },
+    {
+     "line": 875,
+     "text": "\"Cần Telegram bot nhận callback (máy chạy IT Ops phải có địa chỉ public)\""
+    },
+    {
+     "line": 876,
+     "text": "\"Tự khắc phục có kiểm soát\""
+    },
+    {
+     "line": 876,
+     "text": "\"Cần danh sách lệnh SSH được phép + bước duyệt\""
+    },
+    {
+     "line": 877,
+     "text": "\"Hồ sơ sự cố + postmortem\""
+    },
+    {
+     "line": 877,
+     "text": "\"Cần bảng hồ sơ sự cố\""
+    },
+    {
+     "line": 878,
+     "text": "\"WAN sắp bão hoà\""
+    },
+    {
+     "line": 878,
+     "text": "\"Cần lịch sử Mbps + băng thông hợp đồng từng đường\""
+    },
+    {
+     "line": 879,
+     "text": "\"Sức khoẻ phần cứng\""
+    },
+    {
+     "line": 879,
+     "text": "\"Cần Redfish (iLO/iDRAC) hoặc trap RAID/SMART đã chuẩn hoá\""
+    },
+    {
+     "line": 880,
+     "text": "\"Kiểm chứng backup\""
+    },
+    {
+     "line": 880,
+     "text": "\"Cần tích hợp Veeam / Synology Active Backup + RPO\""
+    },
+    {
+     "line": 881,
+     "text": "\"Cấu hình bị thay đổi\""
+    },
+    {
+     "line": 881,
+     "text": "\"Cần kho lưu cấu hình qua SSH\""
+    },
+    {
+     "line": 882,
+     "text": "\"Bảo hành, license, hợp đồng\""
+    },
+    {
+     "line": 882,
+     "text": "\"Cần trường ngày hết hạn, nhà cung cấp, chi phí\""
+    },
+    {
+     "line": 883,
+     "text": "\"Firmware / bản vá\""
+    },
+    {
+     "line": 883,
+     "text": "\"Cần bảng phiên bản tối thiểu\""
+    },
+    {
+     "line": 884,
+     "text": "\"Thay thế theo tuổi thọ\""
+    },
+    {
+     "line": 884,
+     "text": "\"Cần trường ngày mua\""
+    },
+    {
+     "line": 885,
+     "text": "\"Diễn tập khôi phục\""
+    },
+    {
+     "line": 885,
+     "text": "\"Cần bảng kết quả test + RTO\""
+    },
+    {
+     "line": 895,
+     "text": "mỗi "
+    },
+    {
+     "line": 895,
+     "text": " phút"
+    },
+    {
+     "line": 895,
+     "text": "\"khi có cảnh báo\""
+    }
+   ]
+  },
+  "seed & demo data": {
+   "app/demo_logs.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"Log thiết bị \"như thật\" cho DỮ LIỆU MẪU (DEMO_DATA=true) – để test tính năng mà không cần thiết bị.\n\n* seed_history(): một lần khi tạo dữ liệu mẫu – dựng 24 giờ log/trap đã qua (có sự cố đã tự đóng và còn mở).\n* live_loop():   khi app chạy – log thường vài giây/lần, cứ vài phút một sự cố rồi tự p"
+    },
+    {
+     "line": 209,
+     "text": "\"IP đổi MAC%\""
+    },
+    {
+     "line": 246,
+     "text": "\"Dữ liệu mẫu: đã dựng %d giờ log (%d sự kiện, %d cảnh báo đang mở, %d đã tự đóng)\""
+    },
+    {
+     "line": 260,
+     "text": " · tự đóng sau "
+    },
+    {
+     "line": 260,
+     "text": " phút không lặp lại"
+    },
+    {
+     "line": 303,
+     "text": "\"Dữ liệu mẫu: bắt đầu sự cố %s\""
+    },
+    {
+     "line": 307,
+     "text": "\"bộ phát log mẫu lỗi\""
+    }
+   ],
+   "app/seed.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"Dữ liệu mẫu (DEMO_DATA=true) để xem thử giao diện. Các check mẫu chạy ở chế độ mô phỏng.\"\"\""
+    },
+    {
+     "line": 42,
+     "text": "\"Trụ sở chính\""
+    },
+    {
+     "line": 42,
+     "text": "\"Tầng 5, Q.1, TP.HCM\""
+    },
+    {
+     "line": 42,
+     "text": "\"2 đường FPT + Viettel (IP tĩnh)\""
+    },
+    {
+     "line": 42,
+     "text": "\"OpenVPN cho nhân viên\""
+    },
+    {
+     "line": 43,
+     "text": "\"Chi nhánh Hà Nội\""
+    },
+    {
+     "line": 43,
+     "text": "\"Cầu Giấy, Hà Nội\""
+    },
+    {
+     "line": 43,
+     "text": "\"VNPT IP động\""
+    },
+    {
+     "line": 43,
+     "text": "\"IPsec site-to-site về HQ\""
+    },
+    {
+     "line": 69,
+     "text": "\"Veeam job hằng đêm\""
+    },
+    {
+     "line": 97,
+     "text": "\"Máy in tầng 3\""
+    },
+    {
+     "line": 105,
+     "text": "\"Snapshot nhà cung cấp\""
+    },
+    {
+     "line": 124,
+     "text": "\"SW-CORE · uptime 120d 4h · 31/52 cổng up\""
+    },
+    {
+     "line": 125,
+     "text": "\"SW-TANG3 · 18/28 cổng up\""
+    },
+    {
+     "line": 126,
+     "text": "\"SW-HN · 12/28 cổng up\""
+    },
+    {
+     "line": 128,
+     "text": "\"1 host · 6/6 VM chạy\""
+    },
+    {
+     "line": 131,
+     "text": "\"1 host · 3/4 VM chạy\""
+    },
+    {
+     "line": 135,
+     "text": "\"UPS-RACK · Pin {val}% · điện lưới\""
+    },
+    {
+     "line": 137,
+     "text": "\"Không phản hồi\""
+    },
+    {
+     "line": 139,
+     "text": "\"{lat} ms · mất 0%\""
+    },
+    {
+     "line": 145,
+     "text": "\"{lat} ms · mất 0% · jitter 1.4 ms · DNS 11 ms · IP 113.161.20.5\""
+    },
+    {
+     "line": 151,
+     "text": "\"{lat} ms · mất 13% · jitter 41 ms · DNS 35 ms · IP 14.232.8.71\""
+    },
+    {
+     "line": 153,
+     "text": "\"Cổng 389 mở · {lat} ms\""
+    },
+    {
+     "line": 155,
+     "text": "\"HTTP 200 · {lat} ms · chậm\""
+    },
+    {
+     "line": 157,
+     "text": "\"monitor · up 63d · 3/3 container chạy\""
+    },
+    {
+     "line": 158,
+     "text": "\"Website công ty\""
+    },
+    {
+     "line": 159,
+     "text": "\"HTTP 200 · {lat} ms · SSL còn 12 ngày\""
+    },
+    {
+     "line": 161,
+     "text": "\"Cổng 81 mở · {lat} ms\""
+    },
+    {
+     "line": 171,
+     "text": "\"Cửa ngõ Internet + VPN trụ sở\""
+    },
+    {
+     "line": 171,
+     "text": "\"Cửa vào & đăng nhập\""
+    },
+    {
+     "line": 172,
+     "text": "\"Đăng nhập, DNS nội bộ, GPO\""
+    },
+    {
+     "line": 172,
+     "text": "\"Cửa vào & đăng nhập\""
+    },
+    {
+     "line": 173,
+     "text": "\"Ổ chung các phòng ban\""
+    },
+    {
+     "line": 173,
+     "text": "\"Dữ liệu\""
+    },
+    {
+     "line": 174,
+     "text": "\"Dữ liệu\""
+    },
+    {
+     "line": 175,
+     "text": "\"ERP – Ứng dụng\""
+    },
+    {
+     "line": 175,
+     "text": "\"Phần mềm kế toán/kho\""
+    },
+    {
+     "line": 175,
+     "text": "\"Ứng dụng\""
+    },
+    {
+     "line": 176,
+     "text": "\"Mail toàn công ty\""
+    },
+    {
+     "line": 176,
+     "text": "\"Ứng dụng\""
+    },
+    {
+     "line": 177,
+     "text": "\"Website công ty\""
+    },
+    {
+     "line": 177,
+     "text": "\"Ứng dụng\""
+    },
+    {
+     "line": 178,
+     "text": "\"Backup VM hằng đêm ra NAS\""
+    },
+    {
+     "line": 178,
+     "text": "\"Dữ liệu\""
+    },
+    {
+     "line": 178,
+     "text": "\"Cấu hình Veeam export ra NAS\""
+    },
+    {
+     "line": 179,
+     "text": "\"Hạ tầng ảo hoá\""
+    },
+    {
+     "line": 179,
+     "text": "\"Cụm ESXi chạy toàn bộ VM\""
+    },
+    {
+     "line": 179,
+     "text": "\"Hạ tầng\""
+    },
+    {
+     "line": 180,
+     "text": "\"Wi-Fi văn phòng\""
+    },
+    {
+     "line": 180,
+     "text": "\"Aruba AP + SSID nhân viên/khách\""
+    },
+    {
+     "line": 180,
+     "text": "\"Hạ tầng\""
+    },
+    {
+     "line": 181,
+     "text": "\"Phần mềm chấm công\""
+    },
+    {
+     "line": 181,
+     "text": "\"Máy chấm công + server\""
+    },
+    {
+     "line": 181,
+     "text": "\"Ứng dụng\""
+    }
+   ]
+  },
+  "API responses & errors": {
+   "app/main.py": [
+    {
+     "line": 37,
+     "text": "\"Đã nâng cấp CSDL: %s → %s\""
+    },
+    {
+     "line": 37,
+     "text": "\"(trống)\""
+    },
+    {
+     "line": 42,
+     "text": "\"Đã mã hoá lại %d cấu hình sang AES-256-GCM (khoá riêng .enc_key)\""
+    },
+    {
+     "line": 50,
+     "text": "\"ADMIN_PASSWORD chưa đặt → đã sinh mật khẩu ngẫu nhiên cho '%s': %s\""
+    },
+    {
+     "line": 51,
+     "text": "\"Quản trị viên\""
+    },
+    {
+     "line": 53,
+     "text": "\"Đã tạo tài khoản %s – hãy đổi mật khẩu sau khi đăng nhập!\""
+    },
+    {
+     "line": 176,
+     "text": "\"tài sản\""
+    },
+    {
+     "line": 176,
+     "text": "\"hệ thống trọng yếu\""
+    },
+    {
+     "line": 176,
+     "text": "\"check giám sát\""
+    },
+    {
+     "line": 186,
+     "text": "Biểu thức "
+    },
+    {
+     "line": 186,
+     "text": " không hợp lệ: "
+    },
+    {
+     "line": 188,
+     "text": "\"action/kind không hợp lệ\""
+    },
+    {
+     "line": 190,
+     "text": "\"group_by không hợp lệ\""
+    },
+    {
+     "line": 226,
+     "text": " sai quá "
+    },
+    {
+     "line": 226,
+     "text": " lần. Thử lại sau "
+    },
+    {
+     "line": 226,
+     "text": " phút."
+    },
+    {
+     "line": 245,
+     "text": "\"Đăng nhập\""
+    },
+    {
+     "line": 247,
+     "text": "Máy "
+    },
+    {
+     "line": 247,
+     "text": " đăng nhập"
+    },
+    {
+     "line": 252,
+     "text": " từ "
+    },
+    {
+     "line": 258,
+     "text": "\"Đăng nhập sai\""
+    },
+    {
+     "line": 258,
+     "text": "\"Sai tài khoản hoặc mật khẩu\""
+    },
+    {
+     "line": 263,
+     "text": "\"Nhập mã 6 số từ ứng dụng xác thực\""
+    },
+    {
+     "line": 266,
+     "text": "\"Sai mã 2FA\""
+    },
+    {
+     "line": 266,
+     "text": "\"Mã xác thực không đúng hoặc đã dùng\""
+    },
+    {
+     "line": 315,
+     "text": "\"Không tìm thấy phiên\""
+    },
+    {
+     "line": 318,
+     "text": "Thu hồi phiên của "
+    },
+    {
+     "line": 328,
+     "text": "\"2FA đã bật. Muốn đổi điện thoại: tắt rồi bật lại (hoặc nhờ admin đặt lại).\""
+    },
+    {
+     "line": 342,
+     "text": "\"Chưa tạo mã QR – bấm Bật 2FA lại\""
+    },
+    {
+     "line": 345,
+     "text": "\"Mã không đúng. Kiểm tra giờ trên điện thoại và nhập mã mới nhất.\""
+    },
+    {
+     "line": 349,
+     "text": "\"Bật xác thực 2 lớp\""
+    },
+    {
+     "line": 349,
+     "text": ", thu hồi "
+    },
+    {
+     "line": 349,
+     "text": " phiên khác"
+    },
+    {
+     "line": 360,
+     "text": "\"Tài khoản admin bắt buộc dùng 2FA – không thể tắt. Đổi điện thoại: nhờ admin khác đặt lại 2FA.\""
+    },
+    {
+     "line": 362,
+     "text": "\"Mật khẩu không đúng\""
+    },
+    {
+     "line": 364,
+     "text": "\"Mã xác thực không đúng\""
+    },
+    {
+     "line": 366,
+     "text": "\"Tắt xác thực 2 lớp\""
+    },
+    {
+     "line": 376,
+     "text": "\"Không tìm thấy người dùng\""
+    },
+    {
+     "line": 378,
+     "text": "\"Không tự đặt lại 2FA của chính mình – nhờ admin khác, hoặc dùng lệnh admin_tools trên máy chủ\""
+    },
+    {
+     "line": 381,
+     "text": "Đặt lại 2FA của "
+    },
+    {
+     "line": 381,
+     "text": ", thu hồi "
+    },
+    {
+     "line": 381,
+     "text": " phiên"
+    },
+    {
+     "line": 390,
+     "text": "\"Mật khẩu cũ không đúng\""
+    },
+    {
+     "line": 392,
+     "text": "\"Mật khẩu mới tối thiểu 8 ký tự\""
+    },
+    {
+     "line": 395,
+     "text": "\"Đổi mật khẩu\""
+    },
+    {
+     "line": 395,
+     "text": ", thu hồi "
+    },
+    {
+     "line": 395,
+     "text": " phiên khác"
+    },
+    {
+     "line": 408,
+     "text": "\"Cần username và mật khẩu ≥ 8 ký tự\""
+    },
+    {
+     "line": 410,
+     "text": "\"Username đã tồn tại\""
+    },
+    {
+     "line": 423,
+     "text": "\"Không tìm thấy người dùng\""
+    },
+    {
+     "line": 429,
+     "text": "\"Không tự hạ quyền chính mình\""
+    },
+    {
+     "line": 431,
+     "text": " (trước: "
+    },
+    {
+     "line": 435,
+     "text": "\"Mật khẩu tối thiểu 8 ký tự\""
+    },
+    {
+     "line": 437,
+     "text": "\" (đặt lại mật khẩu)\""
+    },
+    {
+     "line": 440,
+     "text": ", thu hồi "
+    },
+    {
+     "line": 440,
+     "text": " phiên"
+    },
+    {
+     "line": 449,
+     "text": "\"Không thể xoá chính mình\""
+    },
+    {
+     "line": 462,
+     "text": "\"Lệnh SSH tuỳ chỉnh đang bị khoá (nguyên tắc: tài khoản thiết bị chỉ để đọc). \""
+    },
+    {
+     "line": 463,
+     "text": "\"Bỏ trống ô lệnh để dùng bộ đo mặc định, hoặc bật ALLOW_SSH_COMMAND=1 nếu thật sự cần.\""
+    },
+    {
+     "line": 558,
+     "text": "\"Host này không có check SNMP đọc máy ảo ESXi\""
+    },
+    {
+     "line": 567,
+     "text": "\"Cần mật khẩu\""
+    },
+    {
+     "line": 572,
+     "text": "Sửa check giám sát "
+    },
+    {
+     "line": 572,
+     "text": ": tài khoản ESXi đọc hiệu năng VM"
+    },
+    {
+     "line": 572,
+     "text": "\" (xoá)\""
+    },
+    {
+     "line": 629,
+     "text": "\"Không tìm thấy\""
+    },
+    {
+     "line": 652,
+     "text": "\"Thiếu tên\""
+    },
+    {
+     "line": 658,
+     "text": "\"Loại check không hợp lệ\""
+    },
+    {
+     "line": 667,
+     "text": "Tạo "
+    },
+    {
+     "line": 690,
+     "text": "\"Không thể đặt cha: tạo vòng lặp (tài sản nằm dưới chính nó)\""
+    },
+    {
+     "line": 708,
+     "text": "Loại check không hợp lệ: "
+    },
+    {
+     "line": 709,
+     "text": "Đổi loại check "
+    },
+    {
+     "line": 711,
+     "text": "Đã đổi loại từ "
+    },
+    {
+     "line": 711,
+     "text": " – chờ lần chạy đầu"
+    },
+    {
+     "line": 712,
+     "text": "loại "
+    },
+    {
+     "line": 714,
+     "text": "\"Check đã tắt\""
+    },
+    {
+     "line": 718,
+     "text": "Sửa "
+    },
+    {
+     "line": 733,
+     "text": "\"Check đã bị xoá\""
+    },
+    {
+     "line": 739,
+     "text": "Xoá "
+    },
+    {
+     "line": 750,
+     "text": "\"Check đang chạy, thử lại sau vài giây\""
+    },
+    {
+     "line": 759,
+     "text": "\"Loại check không hợp lệ\""
+    },
+    {
+     "line": 896,
+     "text": "\"Không tự xử lý cảnh báo về thao tác của chính mình – người khác phải xem xét (tách nhiệm vụ)\""
+    },
+    {
+     "line": 920,
+     "text": "mỗi "
+    },
+    {
+     "line": 920,
+     "text": " phút"
+    },
+    {
+     "line": 921,
+     "text": "\"khi có cảnh báo\""
+    },
+    {
+     "line": 953,
+     "text": "YAML lỗi: "
+    },
+    {
+     "line": 970,
+     "text": "\"Template không tồn tại\""
+    },
+    {
+     "line": 972,
+     "text": " đã được thêm – sửa kịch bản có sẵn"
+    },
+    {
+     "line": 1000,
+     "text": "kịch bản "
+    },
+    {
+     "line": 1002,
+     "text": "'bật'"
+    },
+    {
+     "line": 1002,
+     "text": "'tắt'"
+    },
+    {
+     "line": 1045,
+     "text": "\"Xem trước\""
+    },
+    {
+     "line": 1149,
+     "text": "Trọng yếu · "
+    },
+    {
+     "line": 1174,
+     "text": "\"Cấu hình kênh cảnh báo\""
+    },
+    {
+     "line": 1181,
+     "text": "\"Tin nhắn thử từ IT Ops Workspace\""
+    },
+    {
+     "line": 1181,
+     "text": "Gửi bởi "
+    },
+    {
+     "line": 1181,
+     "text": " lúc "
+    },
+    {
+     "line": 1209,
+     "text": "Nhập "
+    },
+    {
+     "line": 1209,
+     "text": " bản ghi"
+    },
+    {
+     "line": 1218,
+     "text": "\"Thử xoá toàn bộ dữ liệu khi ITOPS_ENV=production\""
+    },
+    {
+     "line": 1220,
+     "text": "\"Chức năng xoá dữ liệu bị khoá khi chạy thật (ITOPS_ENV=production)\""
+    },
+    {
+     "line": 1222,
+     "text": "\"Cần xác nhận\""
+    },
+    {
+     "line": 1228,
+     "text": "\"Xoá toàn bộ dữ liệu hạ tầng\""
+    },
+    {
+     "line": 1268,
+     "text": "Giá trị không hợp lệ: "
+    },
+    {
+     "line": 1269,
+     "text": "\"Cấu hình Giám sát an ninh\""
+    },
+    {
+     "line": 1288,
+     "text": "\"Ngày dạng YYYY-MM-DD\""
+    },
+    {
+     "line": 1378,
+     "text": " itops-selftest test: Tin thử syslog từ "
+    },
+    {
+     "line": 1471,
+     "text": "IP/subnet không hợp lệ: "
+    },
+    {
+     "line": 1475,
+     "text": "\"Cấu hình nhận SNMP trap\""
+    },
+    {
+     "line": 1483,
+     "text": "\"Lưu được nhưng không khởi động lại bộ nhận trap: \""
+    }
+   ],
+   "app/security.py": [
+    {
+     "line": 1,
+     "text": "\"\"\"Đăng nhập, phiên, 2FA (TOTP) và mã hoá bí mật trong cấu hình.\n\nHai khoá TÁCH RIÊNG (data/ hoặc biến môi trường):\n  * .secret_key (SECRET_KEY)      – chỉ để KÝ phiên đăng nhập (JWT HS256). Mất/đổi → mọi người phải đăng nhập lại.\n  * .enc_key    (ENCRYPTION_KEY)  – chỉ để MÃ HOÁ mật khẩu/community/"
+    },
+    {
+     "line": 55,
+     "text": "\"ENCRYPTION_KEY / .enc_key phải là 32 byte mã hoá base64 (AES-256)\""
+    },
+    {
+     "line": 192,
+     "text": "\"Chưa đăng nhập\""
+    },
+    {
+     "line": 194,
+     "text": "\"Thiếu header chống CSRF\""
+    },
+    {
+     "line": 198,
+     "text": "\"Phiên đăng nhập hết hạn\""
+    },
+    {
+     "line": 202,
+     "text": "Phiên đã hết hạn do không thao tác quá "
+    },
+    {
+     "line": 202,
+     "text": " phút"
+    },
+    {
+     "line": 204,
+     "text": "\"Phiên đăng nhập đã kết thúc – vui lòng đăng nhập lại\""
+    },
+    {
+     "line": 208,
+     "text": "Phiên đã hết hạn do không thao tác quá "
+    },
+    {
+     "line": 208,
+     "text": " phút"
+    },
+    {
+     "line": 215,
+     "text": "\"Tài khoản không tồn tại\""
+    },
+    {
+     "line": 218,
+     "text": "\"Tài khoản quản trị phải bật xác thực 2 lớp (2FA) trước khi sử dụng\""
+    },
+    {
+     "line": 228,
+     "text": "\"Chỉ admin mới được thay đổi\""
+    }
+   ]
+  }
+ }
+}

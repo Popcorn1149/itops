@@ -1,4 +1,4 @@
-"""Test tải: 1.000 tài sản, 300 check (chu kỳ 30s) chạy liên tục ~90s; đo độ trễ API và độ đúng hạn của scheduler."""
+"""Test tải: 1.000 tài sản, 300 check (chu kỳ 30s) chạy liên tục ~90s; đo độ trễ API and độ đúng hạn of scheduler."""
 import json
 import os
 import statistics
@@ -86,17 +86,17 @@ def main():
         for p, v in lat.items():
             v.sort()
             print(f"  {p:16} n={len(v):4}  p50={statistics.median(v):7.1f} ms  p95={v[int(len(v) * .95)]:7.1f} ms  max={v[-1]:7.1f} ms")
-        print(f"  Số lần chạy mỗi check: min={min(runs)} median={statistics.median(runs)} max={max(runs)} (kỳ vọng ≈{expect})")
+        print(f"  Số lần chạy every check: min={min(runs)} median={statistics.median(runs)} max={max(runs)} (kỳ vọng ≈{expect})")
         print(f"  Check chưa chạy lần nào: {sum(1 for r in runs if r == 0)}")
-        print(f"  Cảnh báo đang mở: {len(alerts)} (kỳ vọng 50 từ check TCP cổng đóng)")
-        print(f"  Lỗi request: {len(errs)} {errs[:3]}")
+        print(f"  Open alerts: {len(alerts)} (kỳ vọng 50 từ check TCP cổng đóng)")
+        print(f"  Error request: {len(errs)} {errs[:3]}")
         print(f"  'database is locked' trong log: {log.count('database is locked')}, Traceback: {log.count('Traceback')}")
         print(f"  RAM server: {rss} MB")
         E.check("Mọi check đều chạy", min(runs) >= 1)
         E.check("Scheduler đúng hạn (median ≥ kỳ vọng-1)", statistics.median(runs) >= expect - 1)
         E.check("Không check nào chạy quá dày", max(runs) <= expect + 1)
         E.check("50 cảnh báo đúng (không trùng)", len(alerts) == 50, str(len(alerts)))
-        E.check("Không lỗi request", not errs)
+        E.check("Không error request", not errs)
         E.check("Không khoá DB / Traceback", "database is locked" not in log and "Traceback" not in log, log[-600:])
         E.check("Bảng điều khiển p95 < 1s", sorted(lat["/api/dashboard"])[int(len(lat["/api/dashboard"]) * .95)] < 1000)
         E.check("Bản đồ (1.000 node) p95 < 1.5s", sorted(lat["/api/topology"])[int(len(lat["/api/topology"]) * .95)] < 1500)

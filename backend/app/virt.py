@@ -1,4 +1,4 @@
-"""Máy ảo / container chạy trên một host ảo hoá (ESXi, Proxmox, Hyper-V, Docker): số lượng, cấp phát, hiệu năng."""
+"""Virtual machines / containers running on a virtualization host (ESXi, Proxmox, Hyper-V, Docker): count, allocation, and performance."""
 from . import models
 
 GUEST_TYPES = ("vm", "container")
@@ -47,14 +47,14 @@ def guest_row(a: models.Asset) -> dict:
 def guests_view(db, host: models.Asset, snap_warn_days: int = 7) -> dict:
     kids = db.query(models.Asset).filter(models.Asset.parent_id == host.id, models.Asset.type.in_(GUEST_TYPES)).all()
     rows = sorted((guest_row(k) for k in kids), key=lambda r: (r["missing"], not r["running"], -(r["cpu"] or 0), r["name"].lower()))
-    live_rows = [r for r in rows if not r["missing"]]   # VM không còn thấy trên host: vẫn liệt kê, không tính vào số lượng
+    live_rows = [r for r in rows if not r["missing"]]   # VM không remaining thấy trên host: vẫn liệt kê, không tính ando số lượng
     run_rows = [r for r in live_rows if r["running"] and r["kind"] != "docker"]
     hm = host.meta or {}
     hres = hm.get("res") or {}
-    # ESXi API có cả core vật lý và luồng → tính theo luồng (đúng cách ESXi chia lịch); SNMP / Proxmox / Hyper-V chỉ có CPU logic
+    # ESXi API có cả core vật lý and luồng → tính theo luồng (đúng cách ESXi chia lịch); SNMP / Proxmox / Hyper-V chỉ có CPU logic
     threads = _num(hm.get("threads"))
     cores = threads or _num(hm.get("cores") or hres.get("cores"))
-    cpu_unit = "luồng CPU" if threads or hm.get("platform") != "esxi" or not hm.get("cores") else "core"
+    cpu_unit = "CPU threads" if threads or hm.get("platform") != "esxi" or not hm.get("cores") else "core"
     host_mem = _num(hm.get("mem_gb") or hres.get("mem_total_gb"))
     platforms = sorted({r["platform"] for r in rows if r["platform"]} | ({hm["platform"]} if hm.get("platform") else set()))
     vms = [r for r in live_rows if r["type"] == "vm"]
@@ -74,7 +74,7 @@ def guests_view(db, host: models.Asset, snap_warn_days: int = 7) -> dict:
             "mem_alloc_gb": round(mem, 1), "mem_ratio": round(mem / host_mem, 2) if host_mem else None,
             "old_snapshots": len(old), "hot": len(hot),
             "no_backup": sum(1 for r in vms if r["backup"] is False),
-            # chỉ có mức cấp phát, chưa có mức dùng (đọc qua SNMP, chưa có tài khoản ESXi)
+            # chỉ có mức cấp phát, none mức dùng (đọc qua SNMP, none account ESXi)
             "allocation_only": bool(run_rows) and all(r["cpu"] is None and r["mem"] is None for r in run_rows),
         },
         "guests": rows,
@@ -83,7 +83,7 @@ def guests_view(db, host: models.Asset, snap_warn_days: int = 7) -> dict:
 
 
 def perf_source(db, host: models.Asset) -> dict | None:
-    """Check SNMP đang đọc VM ESXi của host (để nhập tài khoản ESXi chỉ đọc lấy CPU/RAM/Disk VM). None nếu đã có check API."""
+    """Check SNMP đang đọc VM ESXi of host (để nhập account ESXi chỉ đọc lấy CPU/RAM/Disk VM). None nếu đã có check API."""
     checks = db.query(models.Check).filter(models.Check.asset_id == host.id, models.Check.enabled == True).all()  # noqa: E712
     if any(c.type in ("esxi", "proxmox") for c in checks):
         return None

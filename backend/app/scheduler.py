@@ -1,4 +1,4 @@
-"""Vòng lặp giám sát: chạy check đến hạn, lưu kết quả, mở/đóng cảnh báo, đồng bộ tài sản phát hiện được."""
+"""Monitoring loop: run due checks, store results, open/close alerts, and sync discovered assets."""
 import asyncio
 import copy
 import logging
@@ -18,7 +18,7 @@ RETENTION_DAYS = int(os.environ.get("RETENTION_DAYS", "14"))
 STATUS_TO_ASSET = {"ok": "up", "warn": "warning", "fail": "down", "unknown": "unknown"}
 
 _running: set[int] = set()
-LAST_TICK: float | None = None       # nhịp của vòng lặp – /api/health dùng để biết bộ lập lịch còn chạy
+LAST_TICK: float | None = None       # nhịp of vòng lặp – /api/health dùng để biết bộ lập lịch remaining chạy
 _sem = asyncio.Semaphore(MAX_PARALLEL)
 
 
@@ -43,13 +43,13 @@ async def run_check(check_id: int) -> dict | None:
                 await asyncio.sleep(0.05)
                 res = simulate(cfg)
             elif not fn:
-                res = Result("fail", f"Loại check không hỗ trợ: {ctype}")
+                res = Result("fail", f"Unsupported check type: {ctype}")
             else:
                 try:
                     res = await fn(target, cfg)
                 except Exception as e:  # collector bug must not kill the loop
                     log.exception("check %s crashed", check_id)
-                    res = Result("fail", f"Lỗi nội bộ: {type(e).__name__} {e}"[:300])
+                    res = Result("fail", f"Internal error: {type(e).__name__} {e}"[:300])
             return await _persist(check_id, res)
     finally:
         _running.discard(check_id)
@@ -65,7 +65,7 @@ async def _persist(check_id: int, res: Result) -> dict:
         cfg = chk.config or {}
         prev = chk.status
         rs = (res.data or {}).get("res")
-        avail_sev, is_down = classify(res)                       # kết nối / dịch vụ
+        avail_sev, is_down = classify(res)                       # kết nối / service
         res_lv = (rs or {}).get("level")                          # tài nguyên (Attention/Trouble/Critical)
         sev = max_sev(avail_sev, res_lv if res_lv != "ok" else None)
         chk.status = status_of(sev, res.status)
@@ -74,7 +74,7 @@ async def _persist(check_id: int, res: Result) -> dict:
         chk.last_message = res.message[:1000]
         chk.last_latency = res.latency
         chk.last_data = res.data or {}
-        # chỉ đếm lỗi kết nối/dịch vụ; vượt threshold tài nguyên có bộ đếm riêng (xem _resource_alerts)
+        # chỉ đếm error kết nối/service; vượt threshold tài nguyên có bộ đếm riêng (xem _resource_alerts)
         chk.fail_count = (chk.fail_count + 1) if avail_sev else 0
         metrics = {k: rs.get(k) for k in ("cpu", "mem", "disk") if rs.get(k) is not None} if rs else None
         db.add(models.CheckResult(check_id=chk.id, status=chk.status, latency=res.latency, value=res.value,
@@ -87,7 +87,7 @@ async def _persist(check_id: int, res: Result) -> dict:
             if asset:
                 sibling = db.query(models.Check).filter(models.Check.asset_id == asset.id,
                                                         (models.Check.enabled == True) | (models.Check.id == chk.id)).all()  # noqa: E712
-                # tài sản chỉ "down" khi thật sự mất kết nối; vượt threshold / lỗi dịch vụ → "warning"
+                # assets chỉ "down" khi thật sự mất kết nối; vượt threshold / error service → "warning"
                 w = max_sev(*[c.severity for c in sibling])
                 if not (asset.type in ("vm",) and asset.source.startswith("check:")):
                     if w == "down":
@@ -135,19 +135,19 @@ async def _persist(check_id: int, res: Result) -> dict:
             open_alert.status = "resolved"
             open_alert.resolved_at = now()
             dur = open_alert.resolved_at - open_alert.opened_at
-            to_notify.append((f"{chk.name} đã hoạt động lại", f"{asset_name} ({chk.target})\nGián đoạn {int(dur.total_seconds() // 60)} phút · {res.message}",
+            to_notify.append((f"{chk.name} has recovered", f"{asset_name} ({chk.target})\nOutage duration {int(dur.total_seconds() // 60)} minutes · {res.message}",
                               "resolved", {"kind": "resolve", "alert": open_alert}))
         if rs:
             to_notify += _resource_alerts(db, chk, cfg, rs, threshold, asset_name)
         db.commit()
-        to_notify = [_ctx_ids(x, chk) for x in to_notify]       # đổi đối tượng → id trước khi đóng phiên DB
+        to_notify = [_ctx_ids(x, chk) for x in to_notify]       # đổi đối tượng → id trước khi đóng sessions DB
         out = {"status": chk.status, "severity": sev, "down": is_down, "message": res.message, "latency": res.latency, "data": res.data, "prev": prev}
     finally:
         db.close()
     if to_notify:
         from .automation.engine import dispatch
         try:
-            await dispatch(to_notify)        # tự động hoá (bảo trì, gom nguyên nhân gốc, chống chập chờn, runbook) rồi gửi
+            await dispatch(to_notify)        # tự động hoá (bảo trì, gom nguyên nhân gốc, chống flapping, runbook) rồi gửi
         except Exception:
             log.exception("dispatch failed")
     return out
@@ -165,7 +165,7 @@ def _ctx_ids(item, chk):
 
 
 def _nsev(sev: str) -> str:
-    """Mức gửi thông báo: down/critical = critical (luôn gửi); trouble/attention = warning (tuỳ chọn 'gửi cả cảnh báo')."""
+    """Mức gửi thông báo: down/critical = critical (luôn gửi); trouble/attention = warning (tuỳ chọn 'gửi cả alerts')."""
     return "critical" if sev in ("down", "critical") else "warning"
 
 
@@ -176,8 +176,8 @@ def _resource_alerts(db, chk: models.Check, cfg: dict, rs: dict, threshold: int,
     """Mỗi chỉ số CPU/RAM/Disk một cảnh báo riêng.
 
     - Mở khi vượt threshold (Attention trở lên) `threshold` lần liên tiếp.
-    - Đổi mức theo giá trị hiện tại; chỉ gửi thông báo khi mức nặng lên.
-    - Chỉ đóng khi giá trị xuống DƯỚI threshold Rearm (chống bật/tắt liên tục quanh threshold).
+    - Đổi mức theo value hiện tại; chỉ gửi thông báo khi mức nặng lên.
+    - Chỉ đóng khi value xuống DƯỚI threshold Rearm (chống bật/tắt liên tục quanh threshold).
     """
     out = []
     recent = None
@@ -199,7 +199,7 @@ def _resource_alerts(db, chk: models.Check, cfg: dict, rs: dict, threshold: int,
                     continue                                   # chưa đủ số lần vượt threshold liên tiếp
             thr = res_threshold(cfg, key, lv)
             title = f"{asset_name}: {label} {v:g}% · {SEV_NAME[lv]}"
-            msg = f"{label} {v:g}% ≥ {thr:g}% ({SEV_NAME[lv]})." + (f" Tự đóng khi < {rearm:g}% (Rearm)." if rearm else "")
+            msg = f"{label} {v:g}% ≥ {thr:g}% ({SEV_NAME[lv]})." + (f" Auto-resolve when < {rearm:g}% (Rearm)." if rearm else "")
             if not a:
                 na = models.Alert(check_id=chk.id, asset_id=chk.asset_id, site_id=chk.site_id, severity=lv, metric=key,
                                   source="resource", dedupe_key=f"res:{chk.id}:{key}", title=title[:255], message=msg, last_seen=now())
@@ -214,10 +214,10 @@ def _resource_alerts(db, chk: models.Check, cfg: dict, rs: dict, threshold: int,
             if rearm is None or v < rearm:
                 a.status, a.resolved_at = "resolved", now()
                 mins = int((a.resolved_at - a.opened_at).total_seconds() // 60)
-                out.append((f"{asset_name}: {label} đã về bình thường ({v:g}%)", f"{chk.name} ({chk.target})\nKéo dài {mins} phút", "resolved",
+                out.append((f"{asset_name}: {label} has returned to normal ({v:g}%)", f"{chk.name} ({chk.target})\nDuration: {mins} minutes", "resolved",
                             {"kind": "resolve", "alert": a}))
             else:
-                a.message = f"{label} {v:g}% – dưới threshold nhưng chưa xuống dưới Rearm {rearm:g}%, cảnh báo vẫn giữ."
+                a.message = f"{label} {v:g}% – below threshold but has not dropped below the rearm threshold {rearm:g}%, alert remains open."
                 a.last_seen = now()
     return out
 
@@ -232,11 +232,11 @@ def _sync_discovered(db, chk: models.Check, items: list[dict]):
     hosts = [i for i in items if i["type"] == "host"]
     if chk.type == "snmp" and anchor and db.query(models.Check).filter(
             models.Check.asset_id == anchor.id, models.Check.type == "esxi", models.Check.enabled == True).count():  # noqa: E712
-        return   # đã có check ESXi (API) cho host này – nguồn đầy đủ hơn, không tạo VM trùng từ SNMP
+        return   # An ESXi API check already exists for this host; do not create duplicate VMs from SNMP.
     snmp_sources = {f"check:{c.id}" for c in db.query(models.Check.id).filter(models.Check.type == "snmp").all()}
     key_to_id: dict[str, int] = {}
     seen = set()
-    # ESXi một host + check gắn vào host có sẵn → dùng luôn host đó
+    # ESXi một host + check gắn ando host có sẵn → dùng luôn host đó
     for it in items:
         key = it["key"]
         seen.add(key)
@@ -246,7 +246,7 @@ def _sync_discovered(db, chk: models.Check, items: list[dict]):
         else:
             a = existing.get(key)
             if not a and chk.type != "snmp" and anchor and snmp_sources:
-                # VM đã được check SNMP tạo trước đó (cùng tên, cùng host) → nhận về, không tạo bản trùng
+                # VM already discovered by the SNMP check tạo trước đó (cùng tên, cùng host) → nhận về, không tạo bản trùng
                 a = db.query(models.Asset).filter(models.Asset.type == it["type"], models.Asset.name == it["name"],
                                                   models.Asset.parent_id == anchor.id, models.Asset.source.in_(snmp_sources)).first()
                 if a:
@@ -266,7 +266,7 @@ def _sync_discovered(db, chk: models.Check, items: list[dict]):
         if new_meta.get("res"):
             new_meta["res"] = {**new_meta["res"], "via_check": chk.id, "ts": now().isoformat() + "Z"}
         if a is anchor and (meta.get("res") or {}).get("check_id") == chk.id:
-            new_meta.pop("res", None)   # đã có số liệu đầy đủ (gồm datastore) từ chính check này
+            new_meta.pop("res", None)   # Complete metrics (including datastore) are already available from this check.
         meta.update(new_meta)
         meta.pop("missing", None)
         a.meta = meta
@@ -295,6 +295,7 @@ def _sync_discovered(db, chk: models.Check, items: list[dict]):
 async def loop():
     log.info("scheduler started")
     last_purge = now() - timedelta(hours=2)
+    first_rollup = True                      # first pass rebuilds the summaries for everything still in raw results
     global LAST_TICK
     import time as _t
     while True:
@@ -315,6 +316,13 @@ async def loop():
                 last_purge = t
                 db = SessionLocal()
                 try:
+                    from . import reports            # summaries for uptime reports, BEFORE raw results are purged
+                    try:
+                        reports.rollup(db, days=RETENTION_DAYS + 1 if first_rollup else 2)
+                        first_rollup = False
+                    except Exception:
+                        db.rollback()
+                        log.exception("report rollup failed")
                     db.query(models.CheckResult).filter(models.CheckResult.ts < t - timedelta(days=RETENTION_DAYS)).delete()
                     db.commit()
                 finally:

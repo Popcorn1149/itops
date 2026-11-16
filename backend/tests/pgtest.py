@@ -1,9 +1,9 @@
-"""CSDL PostgreSQL dùng cho test – mỗi lần chạy một CSDL mới tinh, chạy xong xoá.
+"""CSDL PostgreSQL dùng cho test – every lần chạy một CSDL mới tinh, chạy xong xoá.
 
 Hai cách (chọn tự động):
 1) TEST_DATABASE_URL=postgresql://user:pass@host:port/postgres  (user có quyền CREATEDB)
    → tạo CSDL itops_test_<ngẫu nhiên>, chạy xong DROP.  Dùng cho CI / Docker / PostgreSQL có sẵn.
-2) Không đặt gì → PostgreSQL kèm theo (PG_LOCAL) trong thư mục tạm, cổng trống ngẫu nhiên, chạy xong dừng.
+2) Không đặt gì → PostgreSQL kèm theo (PG_LOCAL) trong thư items tạm, cổng trống ngẫu nhiên, chạy xong dừng.
    Cần đã tải binary: python tools/get_postgres.py
 """
 import os
@@ -71,7 +71,7 @@ def sql(query: str, params=()):
 
 
 class scratch_db:
-    """CSDL PostgreSQL trống tạm thời trên cùng máy chủ test (cho test khôi phục / chuyển dữ liệu)."""
+    """CSDL PostgreSQL trống tạm thời trên cùng machines chủ test (cho test khôi phục / chuyển dữ liệu)."""
 
     def __enter__(self):
         import psycopg

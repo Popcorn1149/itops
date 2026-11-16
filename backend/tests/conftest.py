@@ -50,8 +50,8 @@ def client():
 
 @pytest.fixture(autouse=True)
 def _no_shared_cookies(client):
-    """Đăng nhập giờ đặt cookie phiên; TestClient dùng chung giữ cookie → xoá trước mỗi test để
-    request không kèm header Authorization thật sự là "chưa đăng nhập"."""
+    """Đăng nhập hours đặt cookie sessions; TestClient dùng chung giữ cookie → xoá trước every test để
+    request không kèm header Authorization thật sự là "chưa sign-in"."""
     client.cookies.clear()
     yield
     client.cookies.clear()
@@ -78,7 +78,7 @@ def viewer(client, admin):
 
 @pytest.fixture
 def clean(client, admin):
-    """Xoá dữ liệu hạ tầng trước mỗi test cần status sạch."""
+    """Xoá dữ liệu hạ tầng trước every test cần status sạch."""
     client.post("/api/reset-data", json={"confirm": "XOA"}, headers=admin)
     from app import events
     events.invalidate_caches()

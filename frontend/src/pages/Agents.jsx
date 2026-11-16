@@ -1,46 +1,43 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as echarts from "echarts";
 import {
-  Laptop, Server, Search, ShieldCheck, ShieldAlert, HardDrive, Wifi, WifiOff, Download, KeyRound, Plus, Copy, Trash2,
-  Ban, AlertTriangle, Package, ListChecks, Settings2, User, MapPin, Lightbulb, Info, Monitor,
+  Laptop, Server, Search, ShieldCheck, ShieldAlert, HardDrive, Wifi, WifiOff, Download, KeyRound, Copy, Trash2,
+  Ban, AlertTriangle, Package, ListChecks, Settings2, User, MapPin, Lightbulb, Info, Monitor, UserCheck, Check, X,
 } from "lucide-react";
 import { useApp } from "../App";
 import { api } from "../api";
 import { useUi, chartColors } from "../theme";
-import {
-  useApi, PageHead, Stat, Table, Tabs, Drawer, Modal, Field, Input, Select, Toggle, Empty, UsageBar, SevBadge, timeAgo, fmtTime,
-  useToast, askConfirm,
-} from "../ui";
+import { useApi, PageHead, Stat, Table, Tabs, Drawer, Field, Input, Select, Toggle, Empty, UsageBar, SevBadge, timeAgo, fmtTime, useToast, askConfirm, CapNote } from "../ui";
 
 const OS_LABEL = { windows: "Windows", linux: "Linux", darwin: "macOS" };
-const STATUS = { online: ["Đang kết nối", "ok"], offline: ["Mất kết nối", "fail"], never: ["Chưa gửi dữ liệu", ""], revoked: ["Đã thu hồi", "warn"] };
-const CAT = { account: "Tài khoản", security: "Bảo mật", system: "Hệ thống", service: "Dịch vụ", disk: "Ổ đĩa" };
+const STATUS = { online: ["Connected", "ok"], offline: ["Disconnected", "fail"], never: ["No data received", ""], revoked: ["Revoked", "warn"] };
+const CAT = { account: "Account", security: "Security", system: "System", service: "Service", disk: "Disk" };
 const lvl = (p, warn = 85, crit = 95) => (p == null ? undefined : p >= crit ? "fail" : p >= warn ? "warn" : "ok");
 const fmtSize = (b) => (b > 1 << 20 ? `${(b / (1 << 20)).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`);
-const uptime = (s) => (s == null ? "—" : s >= 86400 ? `${Math.floor(s / 86400)} ngày ${Math.floor((s % 86400) / 3600)} giờ` : `${Math.floor(s / 3600)} giờ ${Math.floor((s % 3600) / 60)} phút`);
+const uptime = (s) => (s == null ? "—" : s >= 86400 ? `${Math.floor(s / 86400)} days ${Math.floor((s % 86400) / 3600)} hours` : `${Math.floor(s / 3600)} hours ${Math.floor((s % 3600) / 60)} minutes`);
 
 function StatusBadge({ s, last }) {
   const [l, c] = STATUS[s] || [s, ""];
-  return <span className={`badge ${c}`} title={last ? `Lần cuối: ${fmtTime(last)}` : ""}>{l}</span>;
+  return <span className={`badge ${c}`} title={last ? `Last seen: ${fmtTime(last)}` : ""}>{l}</span>;
 }
 
 function DefenderBadge({ d, os }) {
   if (os !== "windows") return <span className="faint small">—</span>;
-  if (!d) return <span className="faint small">chưa có</span>;
-  if (d.other_av) return <span className="badge info" title={`Phần mềm diệt virus khác: ${d.other_av}`}>{d.other_av.split(",")[0]}</span>;
-  if (d.realtime === false) return <span className="badge fail">Defender TẮT</span>;
-  if (d.signature_age_days > 3) return <span className="badge warn">Mẫu cũ {d.signature_age_days} ngày</span>;
-  return <span className="badge ok">Defender bật</span>;
+  if (!d) return <span className="faint small">Not available</span>;
+  if (d.other_av) return <span className="badge info" title={`Other antivirus software: ${d.other_av}`}>{d.other_av.split(",")[0]}</span>;
+  if (d.realtime === false) return <span className="badge fail">Defender Disabled</span>;
+  if (d.signature_age_days > 3) return <span className="badge warn">Outdated definitions {d.signature_age_days} days</span>;
+  return <span className="badge ok">Defender Enabled</span>;
 }
 
-// CPU · RAM · ổ đầy nhất – gọn trong một cột, tô màu khi cao
+// CPU · RAM · most-used disk – compact single-column view, highlighted when usage is high
 function Perf({ a }) {
   const on = a.status === "online";
   const cell = (v, l, name) => (v == null ? <span className="faint">—</span>
     : <span title={name} style={{ color: l === "fail" ? "var(--critical)" : l === "warn" ? "var(--trouble)" : undefined, fontWeight: l === "ok" ? 400 : 600 }}>{Math.round(v)}%</span>);
   return (
     <span className="small mono" style={{ whiteSpace: "nowrap" }}>
-      {cell(on ? a.cpu : null, lvl(a.cpu), "CPU")} · {cell(on ? a.mem : null, lvl(a.mem, 90, 97), "RAM")} · {cell(a.disk, lvl(a.disk, 90, 95), "Ổ đầy nhất")}
+      {cell(on ? a.cpu : null, lvl(a.cpu), "CPU")} · {cell(on ? a.mem : null, lvl(a.mem, 90, 97), "RAM")} · {cell(a.disk, lvl(a.disk, 90, 95), "Highest disk usage")}
     </span>
   );
 }
@@ -50,29 +47,30 @@ function MachineIcon({ a }) {
   return <I size={16} style={{ color: a.status === "online" ? "var(--ok)" : "var(--muted)", flexShrink: 0 }} />;
 }
 
-// ---------------------------------------------------------------- sự kiện dễ đọc
+// ---------------------------------------------------------------- Readable events
 export function EventCard({ e, showHost }) {
   const [raw, setRaw] = useState(false);
+  const { t } = useApp();
   return (
     <div className="card card-pad" style={{ marginBottom: 10, borderLeft: `3px solid var(--${e.severity === "info" ? "border" : e.severity === "attention" ? "attention" : e.severity === "trouble" ? "trouble" : "critical"})` }}>
       <div className="row wrap" style={{ gap: 8, marginBottom: 6 }}>
-        {e.severity !== "info" ? <SevBadge sev={e.severity}>{({ attention: "Cần chú ý", trouble: "Có vấn đề", critical: "Nghiêm trọng" })[e.severity]}</SevBadge> : <span className="badge">Thông tin</span>}
+        {e.severity !== "info" ? <SevBadge sev={e.severity}>{({ attention: "Attention", trouble: "Trouble", critical: "Critical" })[e.severity]}</SevBadge> : <span className="badge">Information</span>}
         <b>{e.title}</b>
-        {e.count > 1 && <span className="badge info" title="Các lần giống nhau trong thời gian ngắn được gộp lại">×{e.count}</span>}
+        {e.count > 1 && <span className="badge info" title="Repeated events within a short period are grouped">×{e.count}</span>}
         {showHost && <span className="chip">{e.hostname}</span>}
-        <span className="small muted" style={{ marginLeft: "auto" }} title={e.count > 1 ? `Lần đầu ${fmtTime(e.ts)} · lần cuối ${fmtTime(e.last_ts)}` : fmtTime(e.ts)}>
+        <span className="small muted" style={{ marginLeft: "auto" }} title={e.count > 1 ? `First seen ${fmtTime(e.ts)} · Last seen ${fmtTime(e.last_ts)}` : fmtTime(e.ts)}>
           {e.count > 1 ? `${fmtTime(e.ts)} → ${fmtTime(e.last_ts)}` : fmtTime(e.ts)}
         </span>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 10px", fontSize: 13.5 }}>
-        <span className="muted row" style={{ gap: 4 }}><User size={13} />Ai</span><span>{e.who || "—"}</span>
-        <span className="muted row" style={{ gap: 4 }}><MapPin size={13} />Từ đâu</span><span>{e.where || "—"}</span>
-        <span className="muted row" style={{ gap: 4 }}><Info size={13} />Chuyện gì</span><span>{e.what}</span>
-        <span className="muted row" style={{ gap: 4 }}><Lightbulb size={13} />Nên làm gì</span><span>{e.advice}</span>
+        <span className="muted row" style={{ gap: 4 }}><User size={13} />{t("agents.who")}</span><span>{e.who || "—"}</span>
+        <span className="muted row" style={{ gap: 4 }}><MapPin size={13} />{t("agents.where")}</span><span>{e.where || "—"}</span>
+        <span className="muted row" style={{ gap: 4 }}><Info size={13} />{t("agents.what")}</span><span>{e.what}</span>
+        <span className="muted row" style={{ gap: 4 }}><Lightbulb size={13} />{t("agents.recommendation")}</span><span>{e.advice}</span>
       </div>
       <div className="row" style={{ marginTop: 6 }}>
-        <span className="small faint">{CAT[e.category] || e.category}{e.event_id ? ` · Event ID ${e.event_id}` : ""}{e.channel ? ` · ${e.channel}` : ""}</span>
-        {(e.message || Object.keys(e.data || {}).length > 0) && <button className="btn ghost sm" style={{ marginLeft: "auto" }} onClick={() => setRaw(!raw)}>{raw ? "Ẩn" : "Xem"} bản gốc</button>}
+        <span className="small faint">{t(`agents.${e.category}`) || e.category}{e.event_id ? ` · Event ID ${e.event_id}` : ""}{e.channel ? ` · ${e.channel}` : ""}</span>
+        {(e.message || Object.keys(e.data || {}).length > 0) && <button className="btn ghost sm" style={{ marginLeft: "auto" }} onClick={() => setRaw(!raw)}>{raw ? t("agents.hideRaw") : t("agents.viewRaw")}</button>}
       </div>
       {raw && <pre className="small mono" style={{ whiteSpace: "pre-wrap", maxHeight: 260, overflow: "auto", background: "var(--subtle)", padding: 8, borderRadius: 8 }}>
         {e.message ? e.message + "\n\n" : ""}{JSON.stringify(e.data, null, 1)}</pre>}
@@ -81,29 +79,32 @@ export function EventCard({ e, showHost }) {
 }
 
 function EventsView({ agentId, hostCol }) {
+  const { lang, t } = useApp();
   const [sev, setSev] = useState("attention,trouble,critical");
   const [cat, setCat] = useState("");
   const [q, setQ] = useState("");
   const [hours, setHours] = useState(72);
-  const qs = new URLSearchParams({ hours, limit: 300, ...(agentId ? { agent_id: agentId } : {}), ...(sev ? { severity: sev } : {}), ...(cat ? { category: cat } : {}), ...(q ? { q } : {}) });
-  const { data } = useApi(`/agent-events?${qs}`, { interval: 30000, deps: [sev, cat, q, hours] });
+  const qs = new URLSearchParams({ hours, limit: 300, locale: lang, ...(agentId ? { agent_id: agentId } : {}), ...(sev ? { severity: sev } : {}), ...(cat ? { category: cat } : {}), ...(q ? { q } : {}) });
+  const { data } = useApi(`/agent-events?${qs}`, { interval: 30000, deps: [sev, cat, q, hours, lang] });
   return (
     <>
       <div className="toolbar wrap">
-        <div className="search" style={{ width: 260 }}><Search size={16} /><input placeholder="Tìm người dùng, máy, nội dung..." value={q} onChange={(e) => setQ(e.target.value)} /></div>
-        <Select value={sev} onChange={setSev} options={[["attention,trouble,critical", "Cần xử lý"], ["critical", "Chỉ nghiêm trọng"], ["", "Tất cả (cả thông tin)"]]} />
-        <Select value={cat} onChange={setCat} placeholder="Mọi nhóm" options={Object.entries(CAT)} />
-        <div className="seg">{[[24, "24 giờ"], [72, "3 ngày"], [168, "7 ngày"], [720, "30 ngày"]].map(([h, l]) => <button key={h} className={hours === h ? "on" : ""} onClick={() => setHours(h)}>{l}</button>)}</div>
+        <div className="search" style={{ width: 260 }}><Search size={16} /><input placeholder="Search users, endpoints, and event details..." value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <Select value={sev} onChange={setSev} options={[["attention,trouble,critical", t("agents.needsAction")], ["critical", t("agents.criticalOnly")], ["", t("agents.allIncludingInfo")]]} />
+        <Select value={cat} onChange={setCat} placeholder={t("agents.allGroups")} options={Object.entries(CAT)} />
+        <div className="seg">{[[24, t("agents.hours24")], [72, t("agents.days3")], [168, t("agents.days7")], [720, t("agents.days30")]].map(([h, l]) => <button key={h} className={hours === h ? "on" : ""} onClick={() => setHours(h)}>{l}</button>)}</div>
       </div>
-      <div className="small muted" style={{ margin: "4px 0 10px" }}>Chỉ gồm sự kiện cần người xử lý – không có đăng nhập/đăng xuất thường ngày. Sự kiện giống nhau trong thời gian ngắn được gộp (×số lần).</div>
-      {data && !data.length && <Empty icon={ShieldCheck} title="Không có sự kiện nào trong khoảng này" />}
+      <div className="small muted" style={{ margin: "4px 0 10px" }}>{t("agents.eventHint")}</div>
+      {data && !data.length && <Empty icon={ShieldCheck} title={t("agents.noEvents")} />}
       {(data || []).map((e) => <EventCard key={e.id} e={e} showHost={hostCol} />)}
+      <CapNote shown={(data || []).length} limit={300} what="events" />
     </>
   );
 }
 
-// ---------------------------------------------------------------- biểu đồ hiệu năng
+// ---------------------------------------------------------------- Performance charts
 function MetricChart({ id }) {
+  const { t } = useApp();
   const { theme } = useUi();
   const [hours, setHours] = useState(24);
   const { data } = useApi(`/agents/${id}/metrics?hours=${hours}`, { deps: [hours], interval: 60000 });
@@ -119,7 +120,7 @@ function MetricChart({ id }) {
       legend: { top: 0, left: 0, itemWidth: 14, itemHeight: 3, textStyle: { color: T.text2, fontSize: 11 } },
       xAxis: { type: "time", min: Date.now() - hours * 3600e3, max: Date.now(), axisLabel: { color: T.muted, fontSize: 10, hideOverlap: true } },
       yAxis: { type: "value", min: 0, max: 100, interval: 25, axisLabel: { color: T.muted, fontSize: 10, formatter: "{value}%" }, splitLine: { lineStyle: { color: T.line } } },
-      series: [["cpu", "CPU"], ["mem", "RAM"], ["disk", "Ổ đầy nhất"]].map(([k, n]) => ({
+      series: [["cpu", "CPU"], ["mem", "RAM"], ["disk", "Highest disk usage"]].map(([k, n]) => ({
         name: n, type: "line", showSymbol: data.length < 30, symbolSize: 4, smooth: 0.2, connectNulls: true,
         lineStyle: { width: 1.8, color: col[k] }, itemStyle: { color: col[k] }, data: data.map((p) => [p.ts, p[k]]),
       })),
@@ -130,15 +131,33 @@ function MetricChart({ id }) {
   return (
     <div>
       <div className="row" style={{ marginBottom: 4 }}>
-        <span className="small muted grow">Hiệu năng</span>
-        <div className="seg">{[[6, "6 giờ"], [24, "24 giờ"], [168, "7 ngày"]].map(([h, l]) => <button key={h} className={hours === h ? "on" : ""} onClick={() => setHours(h)}>{l}</button>)}</div>
+        <span className="small muted grow">Performance</span>
+        <div className="seg">{[[6, "6 hours"], [24, t("agents.hours24")], [168, t("agents.days7")]].map(([h, l]) => <button key={h} className={hours === h ? "on" : ""} onClick={() => setHours(h)}>{l}</button>)}</div>
       </div>
-      {data && !data.length ? <div className="small faint" style={{ padding: 20 }}>Chưa có số liệu</div> : <div ref={el} style={{ height: 200 }} />}
+      {data && !data.length ? <div className="small faint" style={{ padding: 20 }}>No data available</div> : <div ref={el} style={{ height: 200 }} />}
     </div>
   );
 }
 
-// ---------------------------------------------------------------- chi tiết máy
+// ---------------------------------------------------------------- Device details
+const USER_SRC = { console: "Local console", rdp: "Remote Desktop", ssh: "SSH" };
+
+// Data quality (CVE module – part 1): which data is reliable enough for vulnerability matching, what is missing, and why.
+function Quality({ q }) {
+  if (!q) return null;
+  const bad = q.checks.filter((c) => !c.ok);
+  return (
+    <div className="card" style={{ padding: 12, marginBottom: 14 }}>
+      <div className="row" style={{ gap: 8, marginBottom: bad.length ? 8 : 0 }}>
+        <b>Data quality</b>
+        <span className={`badge ${q.score === 100 ? "ok" : q.score >= 70 ? "warn" : "fail"}`}>{q.score}%</span>
+        <span className="small muted">{q.checks.length - bad.length}/{q.checks.length} items have sufficient data for CVE matching{q.software_at && ` · software Updated ${timeAgo(q.software_at)}`}</span>
+      </div>
+      {bad.map((c) => <div key={c.key} className="small" style={{ color: "var(--warn, #b45309)" }}>• {c.label}: {c.hint}</div>)}
+    </div>
+  );
+}
+
 function Overview({ a }) {
   const d = a.defender_detail;
   const p = a.posture || {};
@@ -146,22 +165,25 @@ function Overview({ a }) {
   return (
     <>
       <div className="kv" style={{ marginBottom: 14 }}>
-        <div>Trạng thái</div><div><StatusBadge s={a.status} /> <span className="small muted">{a.last_seen ? `gửi lần cuối ${timeAgo(a.last_seen)}` : ""}</span></div>
-        <div>Người đang dùng</div><div>{a.logged_user || <span className="faint">không có ai đăng nhập</span>}</div>
-        <div>Hệ điều hành</div><div>{a.os_name} <span className="muted small">{a.os_version}</span> · {a.os_kind === "server" ? "máy chủ" : "máy trạm"}</div>
-        <div>Phần cứng</div><div>{[a.manufacturer, a.model].filter(Boolean).join(" ") || "—"}{a.serial && <span className="muted small"> · S/N {a.serial}</span>}</div>
-        <div>CPU · RAM</div><div>{a.cpu_model || "—"} · {a.cpu_cores} luồng · {a.ram_mb ? `${(a.ram_mb / 1024).toFixed(1)} GB` : "—"}</div>
-        <div>Mạng</div><div className="mono small">{(a.ips || []).join(", ") || "—"} <span className="muted">(server thấy {a.ip})</span></div>
-        <div>Chạy liên tục</div><div>{uptime(a.uptime_s)}{a.reboot_pending && <span className="badge warn" style={{ marginLeft: 8 }}>Chờ khởi động lại</span>}</div>
-        <div>Agent</div><div className="small">{a.agent_version} · đăng ký {fmtTime(a.enrolled_at)}{a.site_name && ` · ${a.site_name}`}</div>
+        <div>Status</div><div><StatusBadge s={a.status} /> <span className="small muted">{a.last_seen ? `Last seen ${timeAgo(a.last_seen)}` : ""}</span></div>
+        <div>Current user</div><div>{a.logged_user ? <>{a.logged_user}{a.user_source && <span className="badge" style={{ marginLeft: 6 }}>{USER_SRC[a.user_source] || a.user_source}</span>}</> : <span className="faint">No user currently logged in</span>}
+          {!a.logged_user && a.last_user && <span className="small muted"> · Last logged-in user: <b>{a.last_user}</b>{a.last_user_at && ` (${timeAgo(a.last_user_at)})`}</span>}</div>
+        <div>Operating system</div><div>{a.os_name} <span className="muted small">{a.os_release && !(a.os_name || "").includes(a.os_release) ? `${a.os_release} · ` : ""}{a.os_build && `build ${a.os_build}${a.os_ubr != null ? `.${a.os_ubr}` : ""}`}</span> · {a.os_kind === "server" ? "Server" : "Workstation"}</div>
+        <div>Hardware</div><div>{[a.manufacturer, a.model].filter(Boolean).join(" ") || "—"}{a.serial && <span className="muted small"> · S/N {a.serial}</span>}</div>
+        <div>CPU · RAM</div><div>{a.cpu_model || "—"} · {a.cpu_cores} threads · {a.ram_mb ? `${(a.ram_mb / 1024).toFixed(1)} GB` : "—"}</div>
+        <div>Network</div><div className="mono small">{(a.ips || []).join(", ") || "—"} <span className="muted">(server sees {a.ip})</span></div>
+        <div>MAC</div><div className="mono small">{(a.macs || []).join(", ") || <span className="faint" style={{ fontFamily: "inherit" }}>Not reported (agent older than 1.0.4)</span>}</div>
+        <div>Uptime</div><div>{uptime(a.uptime_s)}{a.reboot_pending && <span className="badge warn" style={{ marginLeft: 8 }}>Reboot pending</span>}</div>
+        <div>Agent</div><div className="small">{a.agent_version} · enrolled {fmtTime(a.enrolled_at)}{a.site_name && ` · ${a.site_name}`}</div>
       </div>
+      <Quality q={a.quality} />
       {a.alerts_open?.length > 0 && (
         <div className="alert-box" style={{ marginBottom: 14 }}>
-          <b>Cảnh báo đang mở</b>
+          <b>Open alerts</b>
           {a.alerts_open.map((x) => <div key={x.id} className="row" style={{ gap: 8, marginTop: 4 }}><SevBadge sev={x.severity} /><span>{x.title}</span>{x.count > 1 && <span className="small muted">×{x.count}</span>}</div>)}
         </div>
       )}
-      <div className="section-title" style={{ marginBottom: 8 }}>Ổ đĩa</div>
+      <div className="section-title" style={{ marginBottom: 8 }}>Disks</div>
       {(a.disks || []).map((x) => (
         <div key={x.mount} className="row" style={{ gap: 10, marginBottom: 6 }}>
           <HardDrive size={15} className="muted" /><b style={{ width: 120 }}>{x.mount}</b>
@@ -172,26 +194,26 @@ function Overview({ a }) {
       {a.os_family === "windows" && (
         <>
           <div className="section-title" style={{ marginBottom: 8 }}>Windows Defender</div>
-          {!d ? <div className="small faint">Chưa có dữ liệu (agent gửi mỗi 15 phút).</div> : (
+          {!d ? <div className="small faint">No data available (agent reports every 15 minutes).</div> : (
             <div className="kv">
-              <div>Bảo vệ thời gian thực</div><div>{d.realtime ? <span className="badge ok">Bật</span> : <span className="badge fail">Tắt</span>}{d.running_mode && <span className="small muted"> · chế độ {d.running_mode}</span>}</div>
-              {d.other_av && <><div>Phần mềm diệt virus khác</div><div>{d.other_av}</div></>}
-              <div>Mẫu nhận diện virus</div><div>{d.signature_version || "—"} · {d.signature_age_days != null ? `${d.signature_age_days} ngày tuổi` : ""}</div>
-              <div>Quét nhanh / toàn bộ</div><div>{d.quick_scan_age_days != null ? `${d.quick_scan_age_days} ngày trước` : "—"} / {d.full_scan_age_days != null && d.full_scan_age_days < 10000 ? `${d.full_scan_age_days} ngày trước` : "chưa quét"}</div>
-              <div>Chống can thiệp (Tamper)</div><div>{d.tamper_protection ? "Bật" : "Tắt"}</div>
+              <div>Real-time protection</div><div>{d.realtime ? <span className="badge ok">Enable</span> : <span className="badge fail">Disable</span>}{d.running_mode && <span className="small muted"> · mode {d.running_mode}</span>}</div>
+              {d.other_av && <><div>Other antivirus software</div><div>{d.other_av}</div></>}
+              <div>Antivirus definitions</div><div>{d.signature_version || "—"} · {d.signature_age_days != null ? `${d.signature_age_days} days old` : ""}</div>
+              <div>Quick / full scan</div><div>{d.quick_scan_age_days != null ? `${d.quick_scan_age_days} days ago` : "—"} / {d.full_scan_age_days != null && d.full_scan_age_days < 10000 ? `${d.full_scan_age_days} days ago` : "Never scanned"}</div>
+              <div>Tamper protection</div><div>{d.tamper_protection ? "Enable" : "Disable"}</div>
             </div>
           )}
         </>
       )}
       {(fw || p.bitlocker || p.filevault !== undefined || a.updates?.last_hotfix) && (
         <>
-          <div className="section-title" style={{ marginTop: 14 }}>Bảo mật khác</div>
+          <div className="section-title" style={{ marginTop: 14 }}>Other security settings</div>
           <div className="kv">
-            {fw && <><div>Tường lửa</div><div>{fw.map((f) => <span key={f.name} className={`badge ${f.enabled ? "ok" : "fail"}`} style={{ marginRight: 4 }}>{f.name}: {f.enabled ? "bật" : "TẮT"}</span>)}</div></>}
-            {p.firewall === true || p.firewall === false ? <><div>Tường lửa</div><div>{p.firewall ? "Bật" : "Tắt"} {p.firewall_tool && <span className="muted small">({p.firewall_tool})</span>}</div></> : null}
-            {p.bitlocker && <><div>BitLocker (ổ hệ thống)</div><div>{p.bitlocker.protection === "On" ? <span className="badge ok">Đã mã hoá</span> : <span className="badge warn">Chưa bật</span>} <span className="small muted">{p.bitlocker.status}</span></div></>}
-            {p.filevault !== undefined && <><div>FileVault</div><div>{p.filevault ? "Bật" : "Tắt"}</div><div>Gatekeeper · SIP</div><div>{p.gatekeeper ? "Bật" : "Tắt"} · {p.sip ? "Bật" : "Tắt"}</div></>}
-            {a.updates?.last_hotfix && <><div>Bản vá gần nhất</div><div>{a.updates.last_hotfix.id} · {a.updates.last_hotfix.installed_on}</div></>}
+            {fw && <><div>Firewall</div><div>{fw.map((f) => <span key={f.name} className={`badge ${f.enabled ? "ok" : "fail"}`} style={{ marginRight: 4 }}>{f.name}: {f.enabled ? "Enabled" : "Disabled"}</span>)}</div></>}
+            {p.firewall === true || p.firewall === false ? <><div>Firewall</div><div>{p.firewall ? "Enable" : "Disable"} {p.firewall_tool && <span className="muted small">({p.firewall_tool})</span>}</div></> : null}
+            {p.bitlocker && <><div>BitLocker (system drive)</div><div>{p.bitlocker.protection === "On" ? <span className="badge ok">Encrypted</span> : <span className="badge warn">Not enabled</span>} <span className="small muted">{p.bitlocker.status}</span></div></>}
+            {p.filevault !== undefined && <><div>FileVault</div><div>{p.filevault ? "Enable" : "Disable"}</div><div>Gatekeeper · SIP</div><div>{p.gatekeeper ? "Enable" : "Disable"} · {p.sip ? "Enable" : "Disable"}</div></>}
+            {a.updates?.last_hotfix && <><div>Latest patch</div><div>{a.updates.last_hotfix.id} · {a.updates.last_hotfix.installed_on}</div></>}
           </div>
         </>
       )}
@@ -208,14 +230,14 @@ function Services({ id }) {
   return (
     <>
       <div className="toolbar">
-        <div className="search" style={{ width: 240 }}><Search size={16} /><input placeholder="Tìm dịch vụ..." value={q} onChange={(e) => setQ(e.target.value)} /></div>
-        <Toggle checked={only} onChange={setOnly} label="Chỉ dịch vụ tự chạy nhưng đang dừng" />
-        <span className="small muted" style={{ marginLeft: "auto" }}>{data?.updated_at ? `cập nhật ${timeAgo(data.updated_at)}` : ""}</span>
+        <div className="search" style={{ width: 240 }}><Search size={16} /><input placeholder="Search services..." value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <Toggle checked={only} onChange={setOnly} label="Only show automatic services that are stopped" />
+        <span className="small muted" style={{ marginLeft: "auto" }}>{data?.updated_at ? `Updated ${timeAgo(data.updated_at)}` : ""}</span>
       </div>
-      <Table rowKey="name" rows={rows} empty={<Empty title="Chưa có danh sách dịch vụ" />} columns={[
-        { key: "display", label: "Dịch vụ", render: (s) => <div><b>{s.display || s.name}</b>{s.display && <div className="small faint mono">{s.name}</div>}</div> },
-        { key: "state", label: "Trạng thái", render: (s) => <span className={`badge ${s.state === "running" ? "ok" : s.state === "failed" ? "fail" : s.start?.startsWith("auto") && s.state !== "exited" ? "warn" : ""}`}>{({ running: "Đang chạy", stopped: "Đã dừng", failed: "Lỗi", exited: "Đã chạy xong" })[s.state] || s.state}</span> },
-        { key: "start", label: "Khởi động", render: (s) => <span className="small">{({ auto: "Tự động", "auto-delayed": "Tự động (trễ)", manual: "Thủ công", disabled: "Tắt", static: "Theo dịch vụ khác", system: "Hệ thống" })[s.start] || s.start || "—"}</span> },
+      <Table rowKey="name" rows={rows} empty={<Empty title="No service inventory available" />} columns={[
+        { key: "display", label: "Service", render: (s) => <div><b>{s.display || s.name}</b>{s.display && <div className="small faint mono">{s.name}</div>}</div> },
+        { key: "state", label: "Status", render: (s) => <span className={`badge ${s.state === "running" ? "ok" : s.state === "failed" ? "fail" : s.start?.startsWith("auto") && s.state !== "exited" ? "warn" : ""}`}>{({ running: "Running", stopped: "Stopped", failed: "Error", exited: "Exited" })[s.state] || s.state}</span> },
+        { key: "start", label: "Startup type", render: (s) => <span className="small">{({ auto: "Automatic", "auto-delayed": "Automatic (delayed)", manual: "Manual", disabled: "Disable", static: "Triggered by another service", system: "System" })[s.start] || s.start || "—"}</span> },
       ]} />
     </>
   );
@@ -227,20 +249,20 @@ function SoftwareOf({ id }) {
   const rows = (data || []).filter((s) => !q || `${s.name} ${s.publisher}`.toLowerCase().includes(q.toLowerCase())).map((s, i) => ({ ...s, id: i }));
   return (
     <>
-      <div className="toolbar"><div className="search" style={{ width: 260 }}><Search size={16} /><input placeholder="Tìm phần mềm, nhà phát hành..." value={q} onChange={(e) => setQ(e.target.value)} /></div>
-        <span className="small muted" style={{ marginLeft: "auto" }}>{data ? `${data.length} phần mềm` : ""}</span></div>
-      <Table rows={rows} empty={<Empty title="Chưa có danh sách phần mềm" />} columns={[
-        { key: "name", label: "Tên", render: (s) => <b>{s.name}</b> },
-        { key: "version", label: "Phiên bản", render: (s) => <span className="small mono">{s.version}</span> },
-        { key: "publisher", label: "Nhà phát hành", render: (s) => <span className="small">{s.publisher}</span> },
-        { key: "installed_on", label: "Ngày cài", render: (s) => <span className="small muted">{s.installed_on}</span> },
+      <div className="toolbar"><div className="search" style={{ width: 260 }}><Search size={16} /><input placeholder="Search software or publisher..." value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <span className="small muted" style={{ marginLeft: "auto" }}>{data ? `${data.length} software` : ""}</span></div>
+      <Table rows={rows} empty={<Empty title="No software inventory available" />} columns={[
+        { key: "name", label: "Name", render: (s) => <b>{s.name}</b> },
+        { key: "version", label: "Version", render: (s) => <span className="small mono">{s.version}</span> },
+        { key: "publisher", label: "Publisher", render: (s) => <span className="small">{s.publisher}</span> },
+        { key: "installed_on", label: "Install date", render: (s) => <span className="small muted">{s.installed_on}</span> },
       ]} />
     </>
   );
 }
 
 function Manage({ a, onChanged, onClose }) {
-  const { isAdmin } = useApp();
+  const { isAdmin, t } = useApp();
   const toast = useToast();
   const { data: sites } = useApi("/sites");
   const [f, setF] = useState({ tags: a.tags, note: a.note, site_id: a.site_id || "", os_kind: a.os_kind, alert_offline: a.alert_offline_auto ? "" : a.alert_offline ? "1" : "0" });
@@ -248,47 +270,48 @@ function Manage({ a, onChanged, onClose }) {
     try {
       await api.patch(`/agents/${a.id}`, { tags: f.tags, note: f.note, site_id: f.site_id || null, os_kind: f.os_kind,
         alert_offline: f.alert_offline === "" ? null : f.alert_offline === "1" });
-      toast("Đã lưu"); onChanged();
+      toast("Saved"); onChanged();
     } catch (e) { toast(e.message, true); }
   };
   const revoke = async () => {
-    if (!(await askConfirm({ title: `Thu hồi khoá agent của ${a.hostname}?`, message: "Máy sẽ không gửi được dữ liệu nữa (dữ liệu cũ giữ nguyên). Muốn dùng lại: xoá máy rồi cài lại agent với token mới.", okText: "Thu hồi", danger: true }))) return;
-    try { await api.post(`/agents/${a.id}/revoke`); toast("Đã thu hồi"); onChanged(); } catch (e) { toast(e.message, true); }
+    if (!(await askConfirm({ title: `Revoke agent key for ${a.hostname}?`, message: "The device will stop sending data (existing data will be retained). To use it again, delete the device and reinstall the agent.", okText: "Revoke", danger: true }))) return;
+    try { await api.post(`/agents/${a.id}/revoke`); toast("Revoked"); onChanged(); } catch (e) { toast(e.message, true); }
   };
   const del = async () => {
-    if (!(await askConfirm({ title: `Xoá máy ${a.hostname}?`, message: "Xoá máy cùng số liệu, sự kiện, danh sách phần mềm của máy. Nếu agent trên máy còn chạy, hãy gỡ agent trước (itops-agent uninstall).", requireText: "XOA", okText: "Xoá", danger: true }))) return;
-    try { await api.del(`/agents/${a.id}`); toast("Đã xoá"); onClose(); } catch (e) { toast(e.message, true); }
+    if (!(await askConfirm({ title: `Delete device ${a.hostname}?`, message: "Delete the device along with its metrics, events, and software inventory. If the agent is still running on the device, uninstall it first (itops-agent uninstall).", requireText: "XOA", okText: "Delete", danger: true }))) return;
+    try { await api.del(`/agents/${a.id}`); toast("Deleted"); onClose(); } catch (e) { toast(e.message, true); }
   };
-  if (!isAdmin) return <div className="small muted">Chỉ admin được thay đổi.</div>;
+  if (!isAdmin) return <div className="small muted">Only administrators can make changes.</div>;
   return (
     <>
       <div className="form-grid">
-        <Field label="Site"><Select value={f.site_id} onChange={(v) => setF({ ...f, site_id: v })} placeholder="(không)" options={(sites || []).map((s) => [s.id, s.name])} /></Field>
-        <Field label="Loại máy" hint="Máy chủ: mặc định cảnh báo khi mất kết nối"><Select value={f.os_kind} onChange={(v) => setF({ ...f, os_kind: v })} options={[["client", "Máy trạm"], ["server", "Máy chủ"]]} /></Field>
-        <Field label="Cảnh báo mất kết nối" hint="Máy trạm tắt buổi tối là bình thường → mặc định không báo"><Select value={f.alert_offline} onChange={(v) => setF({ ...f, alert_offline: v })} options={[["", "Theo loại máy"], ["1", "Luôn báo"], ["0", "Không báo"]]} /></Field>
-        <Field label="Nhãn"><Input value={f.tags} onChange={(v) => setF({ ...f, tags: v })} placeholder="vd. ke-toan, tang-3" /></Field>
-        <Field label="Ghi chú" full><textarea className="input" rows={3} value={f.note || ""} onChange={(e) => setF({ ...f, note: e.target.value })} /></Field>
+        <Field label="Site"><Select value={f.site_id} onChange={(v) => setF({ ...f, site_id: v })} placeholder="(none)" options={(sites || []).map((s) => [s.id, s.name])} /></Field>
+        <Field label="Device type" hint="Server: alerts on disconnection by default"><Select value={f.os_kind} onChange={(v) => setF({ ...f, os_kind: v })} options={[["client", t("agents.workstation")], ["server", t("agents.server")]]} /></Field>
+        <Field label="Offline alert" hint="Workstations being offline overnight is normal, so alerts are disabled by default"><Select value={f.alert_offline} onChange={(v) => setF({ ...f, alert_offline: v })} options={[["", "Use device type default"], ["1", "Always alert"], ["0", "Never alert"]]} /></Field>
+        <Field label="Tags"><Input value={f.tags} onChange={(v) => setF({ ...f, tags: v })} placeholder="e.g. accounting, floor-3" /></Field>
+        <Field label="Notes" full><textarea className="input" rows={3} value={f.note || ""} onChange={(e) => setF({ ...f, note: e.target.value })} /></Field>
       </div>
-      <div className="row" style={{ marginTop: 10 }}><button className="btn primary" onClick={patch}>Lưu</button></div>
-      <div className="section-title" style={{ marginTop: 24 }}>Nguy hiểm</div>
+      <div className="row" style={{ marginTop: 10 }}><button className="btn primary" onClick={patch}>Save</button></div>
+      <div className="section-title" style={{ marginTop: 24 }}>Danger zone</div>
       <div className="row wrap" style={{ gap: 8 }}>
-        {!a.revoked_at && <button className="btn" onClick={revoke}><Ban size={15} />Thu hồi khoá agent</button>}
-        <button className="btn danger" onClick={del}><Trash2 size={15} />Xoá máy</button>
+        {!a.revoked_at && <button className="btn" onClick={revoke}><Ban size={15} />Revoke agent key</button>}
+        <button className="btn danger" onClick={del}><Trash2 size={15} />Delete device</button>
       </div>
     </>
   );
 }
 
 function AgentDrawer({ id, onClose, onChanged }) {
+  const { t } = useApp();
   const { data: a, reload } = useApi(`/agents/${id}`, { interval: 30000 });
   const [tab, setTab] = useState("overview");
-  if (!a) return <Drawer title="Đang tải..." onClose={onClose} wide><div className="small muted">Đang tải…</div></Drawer>;
+  if (!a) return <Drawer title="Loading..." onClose={onClose} wide><div className="small muted">Loading…</div></Drawer>;
   return (
     <Drawer wide onClose={onClose} title={<><MachineIcon a={a} />{a.hostname}<span className="small muted">{a.domain}</span></>}>
       <Tabs value={tab} onChange={setTab} tabs={[
-        { key: "overview", label: "Tổng quan", icon: Info }, { key: "events", label: "Sự kiện", icon: AlertTriangle },
-        { key: "services", label: "Dịch vụ", icon: ListChecks }, { key: "software", label: "Phần mềm", icon: Package, count: a.software_count ?? undefined },
-        { key: "manage", label: "Quản lý", icon: Settings2 }]} />
+        { key: "overview", label: "Overview", icon: Info }, { key: "events", label: t("agents.events"), icon: AlertTriangle },
+        { key: "services", label: "Service", icon: ListChecks }, { key: "software", label: t("agents.software"), icon: Package, count: a.software_count ?? undefined },
+        { key: "manage", label: "Management", icon: Settings2 }]} />
       <div style={{ marginTop: 14 }}>
         {tab === "overview" && <Overview a={a} />}
         {tab === "events" && <EventsView agentId={a.id} />}
@@ -300,41 +323,49 @@ function AgentDrawer({ id, onClose, onChanged }) {
   );
 }
 
-// ---------------------------------------------------------------- danh sách máy
+// ---------------------------------------------------------------- device inventory
 function MachineList({ open }) {
+  const { t } = useApp();
   const { data, reload } = useApi("/agents", { interval: 30000 });
   const [q, setQ] = useState("");
   const [st, setSt] = useState("");
   const [os, setOs] = useState("");
   const [sel, setSel] = useState(null);
-  const rows = (data || []).filter((a) => (!q || `${a.hostname} ${a.logged_user} ${a.ip} ${(a.ips || []).join(" ")} ${a.os_name} ${a.tags} ${a.model} ${a.serial}`.toLowerCase().includes(q.toLowerCase()))
+  const rows = (data || []).filter((a) => (!q || `${a.hostname} ${a.logged_user} ${a.ip} ${(a.ips || []).join(" ")} ${(a.macs || []).join(" ")} ${a.os_name} ${a.tags} ${a.model} ${a.serial}`.toLowerCase().includes(q.toLowerCase()))
     && (!st || (st === "problem" ? a.alerts > 0 || a.defender?.realtime === false || (a.disk || 0) >= 90 : a.status === st)) && (!os || a.os_family === os));
   useEffect(() => { if (open) setSel(open); }, [open]);
   return (
     <>
       <div className="toolbar wrap">
-        <div className="search" style={{ width: 300 }}><Search size={16} /><input placeholder="Tìm tên máy, người dùng, IP, model, S/N..." value={q} onChange={(e) => setQ(e.target.value)} /></div>
-        <Select value={st} onChange={setSt} placeholder="Mọi trạng thái" options={[["online", "Đang kết nối"], ["offline", "Mất kết nối"], ["problem", "Có vấn đề"], ["revoked", "Đã thu hồi"]]} />
-        <Select value={os} onChange={setOs} placeholder="Mọi hệ điều hành" options={Object.entries(OS_LABEL)} />
-        <span className="small muted" style={{ marginLeft: "auto" }}>{rows.length} / {data?.length ?? 0} máy</span>
+        <div className="search" style={{ width: 300 }}><Search size={16} /><input placeholder={t("agents.machineSearch")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <Select value={st} onChange={setSt} placeholder={t("agents.allStatuses")} options={[["online", "Connected"], ["offline", "Disconnected"], ["problem", "Issues"], ["revoked", "Revoked"]]} />
+        <Select value={os} onChange={setOs} placeholder={t("agents.allOperatingSystems")} options={Object.entries(OS_LABEL)} />
+        <span className="small muted" style={{ marginLeft: "auto" }}>{rows.length} / {data?.length ?? 0} devices</span>
       </div>
-      <Table rows={rows} onRow={(a) => setSel(a.id)} empty={<Empty icon={Monitor} title="Chưa có máy nào">Vào tab <b>Cài đặt agent</b> để tạo token và cài agent lên máy.</Empty>} columns={[
-        { key: "hostname", label: "Máy", render: (a) => <div className="row" style={{ gap: 8, whiteSpace: "nowrap" }}><MachineIcon a={a} /><div><b>{a.hostname}</b><div className="small faint">{a.os_name || OS_LABEL[a.os_family]}</div></div></div> },
-        { key: "logged_user", label: "Người dùng · IP", render: (a) => <div style={{ whiteSpace: "nowrap" }}><span className="small">{a.logged_user || <span className="faint">không ai đăng nhập</span>}</span><div className="small mono faint">{(a.ips || [])[0] || a.ip}</div></div> },
-        { key: "disk", label: "CPU · RAM · Ổ", sort: (a) => Math.max(a.cpu || 0, a.mem || 0, a.disk || 0), render: (a) => <Perf a={a} /> },
-        { key: "defender", label: "Diệt virus", sort: (a) => (a.defender?.realtime === false ? 0 : 1), render: (a) => <DefenderBadge d={a.defender} os={a.os_family} /> },
-        { key: "alerts", label: "Cảnh báo", sort: (a) => a.alerts * 1000 + a.events_24h, render: (a) => (
-          <span title={`${a.alerts} cảnh báo đang mở · ${a.events_24h} sự kiện cần chú ý trong 24 giờ`}>
-            {a.alerts > 0 ? <span className="badge fail">{a.alerts}</span> : a.events_24h > 0 ? <span className="badge warn">{a.events_24h} sự kiện</span> : <span className="faint small">—</span>}
+      <Table rows={rows} onRow={(a) => setSel(a.id)} empty={<Empty icon={Monitor} title="No devices yet">Go to <b>Agent Settings</b> for the install command, then run it on the device.</Empty>} columns={[
+        { key: "hostname", label: "Device", render: (a) => <div className="row" style={{ gap: 8, whiteSpace: "nowrap" }}><MachineIcon a={a} /><div><b>{a.hostname}</b>{a.duplicates?.length > 0 && <span className="badge warn" style={{ marginLeft: 6 }} title="Same hostname and machine ID/serial as another device – often caused by reinstalling an older agent. Remove records for devices that no longer report.">Duplicate?</span>}<div className="small faint">{a.os_name || OS_LABEL[a.os_family]}</div></div></div> },
+        { key: "logged_user", label: "User", sort: (a) => (a.logged_user || a.last_user || "").toLowerCase(), render: (a) => <span className="small" style={{ whiteSpace: "nowrap" }}>{a.logged_user || (a.last_user ? <span className="muted" title="Most recent user — nobody is currently logged in">{a.last_user} (most recent)</span> : <span className="faint">No user logged in</span>)}</span> },
+        { key: "ip", label: "IP", sort: (a) => (a.ips || [])[0] || a.ip || "", render: (a) => {
+          const ips = (a.ips || []).length ? a.ips : [a.ip].filter(Boolean);
+          return <span className="small mono" style={{ whiteSpace: "nowrap" }} title={[...ips, a.ip && `server sees ${a.ip}`].filter(Boolean).join("\n")}>{ips[0] || "—"}{ips.length > 1 && <span className="faint"> +{ips.length - 1}</span>}</span>;
+        } },
+        { key: "mac", label: "MAC", sort: (a) => (a.macs || [])[0] || "", render: (a) => (a.macs || []).length
+          ? <span className="small mono" style={{ whiteSpace: "nowrap" }} title={a.macs.join("\n")}>{a.macs[0]}{a.macs.length > 1 && <span className="faint"> +{a.macs.length - 1}</span>}</span>
+          : <span className="faint small" title="Agent older than 1.0.4 does not report MAC">—</span> },
+        { key: "disk", label: "CPU · RAM · Disk", sort: (a) => Math.max(a.cpu || 0, a.mem || 0, a.disk || 0), render: (a) => <Perf a={a} /> },
+        { key: "defender", label: "Antivirus", sort: (a) => (a.defender?.realtime === false ? 0 : 1), render: (a) => <DefenderBadge d={a.defender} os={a.os_family} /> },
+        { key: "alerts", label: "Warning", sort: (a) => a.alerts * 1000 + a.events_24h, render: (a) => (
+          <span title={`${a.alerts} open alerts · ${a.events_24h} events requiring attention in the last 24 hours`}>
+            {a.alerts > 0 ? <span className="badge fail">{a.alerts}</span> : a.events_24h > 0 ? <span className="badge warn">{a.events_24h} events</span> : <span className="faint small">—</span>}
           </span>) },
-        { key: "status", label: "Trạng thái", sort: (a) => a.last_seen || "", render: (a) => <div style={{ whiteSpace: "nowrap" }}><StatusBadge s={a.status} last={a.last_seen} /><div className="small faint">{a.last_seen ? timeAgo(a.last_seen) : ""}</div></div> },
+        { key: "status", label: "Status", sort: (a) => a.last_seen || "", render: (a) => <div style={{ whiteSpace: "nowrap" }}><StatusBadge s={a.status} last={a.last_seen} /><div className="small faint">{a.last_seen ? timeAgo(a.last_seen) : ""}</div></div> },
       ]} />
       {sel && <AgentDrawer id={sel} onClose={() => setSel(null)} onChanged={reload} />}
     </>
   );
 }
 
-// ---------------------------------------------------------------- phần mềm toàn bộ máy
+// ---------------------------------------------------------------- Software inventory across all devices
 function SoftwareFleet() {
   const [q, setQ] = useState("");
   const [term, setTerm] = useState("");
@@ -345,18 +376,19 @@ function SoftwareFleet() {
   return (
     <>
       <div className="toolbar"><div className="search" style={{ width: 340 }}><Search size={16} /><input placeholder="vd. AnyDesk, TeamViewer, Chrome, Office, 7-Zip..." value={q} onChange={(e) => setQ(e.target.value)} /></div>
-        <span className="small muted">Dùng để tìm phần mềm cấm/không bản quyền, kiểm tra phiên bản lỗi bảo mật.</span></div>
-      <Table rows={rows} onRow={(r) => setOpen(open === r.id ? null : r.id)} empty={<Empty icon={Package} title={term ? "Không máy nào có phần mềm này" : "Chưa có dữ liệu phần mềm"} />} columns={[
-        { key: "name", label: "Phần mềm", render: (r) => <div><b>{r.name}</b>{open === r.id && <div className="small" style={{ marginTop: 6 }}>{r.hosts.map((h) => <span key={h} className="chip" style={{ margin: 2 }}>{h}</span>)}</div>}</div> },
-        { key: "version", label: "Phiên bản", render: (r) => <span className="small mono">{r.version}</span> },
-        { key: "publisher", label: "Nhà phát hành", render: (r) => <span className="small">{r.publisher}</span> },
-        { key: "machines", label: "Số máy", render: (r) => <b>{r.machines}</b> },
+        <span className="small muted">Use this to find prohibited or unlicensed software and identify vulnerable versions.</span></div>
+      <Table rows={rows} onRow={(r) => setOpen(open === r.id ? null : r.id)} empty={<Empty icon={Package} title={term ? "No devices have this software" : "No software data available"} />} columns={[
+        { key: "name", label: "Software", render: (r) => <div><b>{r.name}</b>{open === r.id && <div className="small" style={{ marginTop: 6 }}>{r.hosts.map((h) => <span key={h} className="chip" style={{ margin: 2 }}>{h}</span>)}</div>}</div> },
+        { key: "version", label: "Version", render: (r) => <span className="small mono">{r.version}</span> },
+        { key: "publisher", label: "Publisher", render: (r) => <span className="small">{r.publisher}</span> },
+        { key: "machines", label: "Device count", render: (r) => <b>{r.machines}</b> },
       ]} />
+      <CapNote shown={rows.length} limit={500} what="software entries (most installed first)" hint="Search by name to find the rest." />
     </>
   );
 }
 
-// ---------------------------------------------------------------- cài đặt agent: tải về, token, chính sách
+// ---------------------------------------------------------------- Agent setup: downloads, install commands, and policy
 function CopyBox({ text, label }) {
   const toast = useToast();
   return (
@@ -364,51 +396,41 @@ function CopyBox({ text, label }) {
       {label && <div className="small muted" style={{ marginBottom: 4 }}>{label}</div>}
       <div className="row" style={{ gap: 6, alignItems: "stretch" }}>
         <pre className="mono small grow" style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-all", background: "var(--subtle)", padding: "8px 10px", borderRadius: 8 }}>{text}</pre>
-        <button className="btn sm" title="Chép" onClick={() => { navigator.clipboard?.writeText(text); toast("Đã chép"); }}><Copy size={14} /></button>
+        <button className="btn sm" title="Copy" onClick={() => { navigator.clipboard?.writeText(text); toast("Copied"); }}><Copy size={14} /></button>
       </div>
     </div>
   );
 }
 
-function NewToken({ onClose, onDone, dl }) {
-  const toast = useToast();
+function InstallCommands({ dl }) {
   const { data: sites } = useApi("/sites");
-  const [f, setF] = useState({ name: "", days: 7, max_uses: 250, site_id: "", tags: "" });
-  const [tok, setTok] = useState(null);
-  const create = async () => {
-    try { const r = await api.post("/agent-tokens", { ...f, site_id: f.site_id || null }); setTok(r.token); onDone(); } catch (e) { toast(e.message, true); }
-  };
+  const [siteName, setSiteName] = useState("");
   const server = window.location.origin;
   const pin = server.startsWith("https") && dl?.ca_pin ? dl.ca_pin : "";
   const http = server.startsWith("http:");
+  const opt = (flag) => (siteName ? ` ${flag} "${siteName}"` : "");
   return (
-    <Modal title={tok ? "Token đăng ký đã tạo" : "Tạo token đăng ký"} onClose={onClose} width={720}
-      footer={tok ? <button className="btn primary" onClick={onClose}>Đã lưu, đóng</button> : <><button className="btn" onClick={onClose}>Huỷ</button><button className="btn primary" onClick={create}>Tạo</button></>}>
-      {!tok ? (
-        <div className="form-grid">
-          <Field label="Tên" full hint="Để biết token dùng cho đợt cài nào"><Input value={f.name} onChange={(v) => setF({ ...f, name: v })} placeholder="vd. GPO toàn công ty tháng 11" /></Field>
-          <Field label="Hiệu lực (ngày)"><Input type="number" value={f.days} onChange={(v) => setF({ ...f, days: v })} /></Field>
-          <Field label="Tối đa số máy" hint="0 = không giới hạn"><Input type="number" value={f.max_uses} onChange={(v) => setF({ ...f, max_uses: v })} /></Field>
-          <Field label="Gán vào site"><Select value={f.site_id} onChange={(v) => setF({ ...f, site_id: v })} placeholder="(không)" options={(sites || []).map((s) => [s.id, s.name])} /></Field>
-          <Field label="Nhãn cho máy"><Input value={f.tags} onChange={(v) => setF({ ...f, tags: v })} /></Field>
-        </div>
-      ) : (
-        <>
-          <div className="alert-box" style={{ marginBottom: 12 }}><b>Token chỉ hiện MỘT lần.</b> Chép vào script cài/GPO ngay. Token chỉ dùng để đăng ký – mỗi máy nhận khoá riêng, hết hạn token không ảnh hưởng máy đã cài.</div>
-          <CopyBox label="Token" text={tok} />
-          {http && <div className="alert-box" style={{ marginBottom: 10 }}>Server đang chạy <b>http://</b> – chỉ dùng để demo (khoá máy đi dạng rõ trên mạng). Chạy thật: dùng HTTPS (cấu hình VS Code "HTTPS" hoặc Docker).</div>}
-          <CopyBox label="Windows – chạy PowerShell bằng quyền Administrator, trong thư mục có file agent" text={`.\\itops-agent-windows-amd64.exe install --server ${server} --token ${tok}${pin ? ` --ca-pin ${pin}` : ""}${http ? " --allow-http" : ""}`} />
-          <CopyBox label="Windows qua GPO (Startup Script, chạy mỗi lần bật máy, đã cài thì bỏ qua)" text={`install-windows.ps1 -Server ${server} -Token ${tok}${pin ? ` -CaPin ${pin}` : ""}${http ? " -AllowHttp" : ""} -Source \\\\FILESERVER\\itops$\\itops-agent-windows-amd64.exe`} />
-          <CopyBox label="Linux (root)" text={`sudo ./install-linux.sh ${server} ${tok}${pin ? ` ${pin}` : ""}`} />
-          <CopyBox label="macOS (sudo)" text={`sudo ./install-macos.sh ${server} ${tok}${pin ? ` ${pin}` : ""}`} />
-          <CopyBox label="Chạy thử: GIẢ LẬP 3 máy Windows + 2 máy macOS gửi dữ liệu lên (không cần quyền admin, không cài gì – Ctrl+C để dừng). Token cần ≥ 5 lượt."
-            text={`.\\itops-agent-windows-amd64.exe simulate --server ${server} --token ${tok} --windows 3 --macos 2${pin ? ` --ca-pin ${pin}` : ""}${http ? " --allow-http" : ""}`} />
-        </>
-      )}
-    </Modal>
+    <>
+      <div className="small muted" style={{ marginBottom: 10, lineHeight: 1.5 }}>
+        Enrollment is open, like Wazuh: the install command only needs the server address — no registration token. Each device
+        receives its own key on enrollment. A device that matches an existing one (same hostname and machine ID or serial)
+        waits in <b>Pending approvals</b> below until IT approves it, so a real device cannot be taken over silently.
+      </div>
+      <div className="row" style={{ marginBottom: 10, gap: 8 }}>
+        <span className="small">Assign new devices to site</span>
+        <Select value={siteName} onChange={setSiteName} placeholder="(none — assign later)"
+          options={(sites || []).map((x) => [x.name, x.name])} />
+      </div>
+      {http && <div className="alert-box" style={{ marginBottom: 10 }}>Server is running <b>http://</b> — for demonstration only (device keys are transmitted in cleartext). For production, use HTTPS (configure HTTPS in your deployment or Docker).</div>}
+      <CopyBox label="Windows — run PowerShell as Administrator from the directory containing the agent file" text={`.\\itops-agent-windows-amd64.exe install --server ${server}${opt("--site")}${pin ? ` --ca-pin ${pin}` : ""}${http ? " --allow-http" : ""}`} />
+      <CopyBox label="Windows via GPO (Startup Script, runs at startup and skips devices where the agent is already installed)" text={`install-windows.ps1 -Server ${server}${siteName ? ` -Site "${siteName}"` : ""}${pin ? ` -CaPin ${pin}` : ""}${http ? " -AllowHttp" : ""} -Source \\\\FILESERVER\\itops$\\itops-agent-windows-amd64.exe`} />
+      <CopyBox label="Linux (root)" text={`sudo ./install-linux.sh ${server}${pin ? ` ${pin}` : " \"\""}${siteName ? ` "${siteName}"` : ""}`} />
+      <CopyBox label="macOS (sudo)" text={`sudo ./install-macos.sh ${server}${pin ? ` ${pin}` : " \"\""}${siteName ? ` "${siteName}"` : ""}`} />
+      <CopyBox label="Test run: simulate 3 Windows devices and 2 macOS devices reporting data (no admin rights or installation required; press Ctrl+C to stop)"
+        text={`.\\itops-agent-windows-amd64.exe simulate --server ${server} --windows 3 --macos 2${pin ? ` --ca-pin ${pin}` : ""}${http ? " --allow-http" : ""}`} />
+    </>
   );
 }
-
 function Policy() {
   const { isAdmin } = useApp();
   const toast = useToast();
@@ -419,115 +441,195 @@ function Policy() {
   const set = (k) => (v) => setP({ ...p, [k]: v });
   const dis = new Set(p.disabled_keys);
   const save = async () => {
-    try { await api.put("/agent-policy", p); toast("Đã lưu – agent nhận cấu hình mới ở lần gửi kế tiếp"); reload(); } catch (e) { toast(e.message, true); }
+    try { await api.put("/agent-policy", p); toast("Saved — the agent will receive the updated configuration on its next report"); reload(); } catch (e) { toast(e.message, true); }
   };
   const num = (k, label, hint) => <Field label={label} hint={hint}><Input type="number" value={p[k]} onChange={set(k)} disabled={!isAdmin} /></Field>;
   return (
     <div className="card card-pad" style={{ marginTop: 16 }}>
-      <div className="card-head" style={{ padding: 0, marginBottom: 12 }}><b>Chính sách thu thập</b></div>
+      <div className="card-head" style={{ padding: 0, marginBottom: 12 }}><b>Collection policy</b></div>
       <div className="form-grid">
-        {num("report_seconds", "Gửi hiệu năng + sự kiện mỗi (giây)", "30–3600")}
-        {num("services_minutes", "Danh sách dịch vụ mỗi (phút)")}
-        {num("software_hours", "Danh sách phần mềm mỗi (giờ)")}
-        {num("defender_minutes", "Defender / bảo mật mỗi (phút)")}
-        {num("disk_warn", "Cảnh báo ổ đầy từ (%)")}
-        {num("disk_crit", "Nghiêm trọng từ (%)")}
-        {num("av_signature_days", "Mẫu virus cũ hơn (ngày) → cảnh báo")}
-        {num("offline_minutes", "Mất kết nối sau (phút)", "Chỉ máy bật cảnh báo mất kết nối")}
-        {num("group_minutes", "Gộp sự kiện giống nhau trong (phút)")}
-        {num("backfill_hours", "Lần đầu lấy sự kiện của (giờ) trước")}
+        {num("report_seconds", "Send performance data and events every (seconds)", "30–3600")}
+        {num("services_minutes", "Service inventory interval (minutes)")}
+        {num("software_hours", "Software inventory interval (hours)")}
+        {num("defender_minutes", "Defender/security status interval (minutes)")}
+        {num("disk_warn", "Warn when disk usage reaches (%)")}
+        {num("disk_crit", "Critical when disk usage reaches (%)")}
+        {num("av_signature_days", "Alert when antivirus definitions are older than (days)")}
+        {num("offline_minutes", "Mark offline after (minutes)", "Only enabled devices trigger alerts when disconnected")}
+        {num("group_minutes", "Group identical events within (minutes)")}
+        {num("backfill_hours", "First-seen event lookback (hours)")}
       </div>
-      <div className="section-title" style={{ marginTop: 16 }}>Sự kiện được thu thập</div>
-      <div className="small muted" style={{ marginBottom: 8 }}>Không thu đăng nhập/đăng xuất thành công, đăng nhập của dịch vụ, tiến trình… (chiếm phần lớn khối lượng, gần như luôn bình thường). Bỏ chọn để tắt thêm loại không cần.</div>
+      <div className="section-title" style={{ marginTop: 16 }}>Collected events</div>
+      <div className="small muted" style={{ marginBottom: 8 }}>Successful logons/logoffs, service logons, process events, and similar high-volume events are not collected by default because they are usually benign. Select additional event types to disable collection.</div>
       <Table rowKey="key" rows={data.catalog} columns={[
         { key: "on", label: "Thu", render: (c) => <input type="checkbox" disabled={!isAdmin} checked={!dis.has(c.key)} onChange={(e) => setP({ ...p, disabled_keys: e.target.checked ? p.disabled_keys.filter((k) => k !== c.key) : [...p.disabled_keys, c.key] })} /> },
-        { key: "title", label: "Sự kiện", render: (c) => <div><b>{c.title}</b><div className="small faint">{c.os} · {c.ids.length ? `Event ID ${c.ids.join(", ")}` : c.channel} {c.os === "windows" && `· ${c.channel}`}</div></div> },
-        { key: "category", label: "Nhóm", render: (c) => <span className="small">{CAT[c.category]}</span> },
-        { key: "alert", label: "Cảnh báo", render: (c) => (c.alert ? <span className="small">{c.alert}{c.threshold > 1 ? ` (≥${c.threshold} lần / 10 phút)` : ""}</span> : <span className="faint small">chỉ ghi nhận</span>) },
+        { key: "title", label: "Event", render: (c) => <div><b>{c.title}</b><div className="small faint">{c.os} · {c.ids.length ? `Event ID ${c.ids.join(", ")}` : c.channel} {c.os === "windows" && `· ${c.channel}`}</div></div> },
+        { key: "category", label: "Category", render: (c) => <span className="small">{CAT[c.category]}</span> },
+        { key: "alert", label: "Warning", render: (c) => (c.alert ? <span className="small">{c.alert}{c.threshold > 1 ? ` (≥${c.threshold} times / 10 minutes)` : ""}</span> : <span className="faint small">Record only</span>) },
       ]} />
-      <div className="section-title" style={{ marginTop: 16 }}>Tự cập nhật agent</div>
-      <Toggle checked={p.update?.enabled} onChange={(v) => setP({ ...p, update: { ...p.update, enabled: v } })} label="Cho agent tự cài bản mới (bản cập nhật phải được ký bằng khoá của bạn – xem README agent)" />
-      <div className="small muted">{data.update_manifest ? `Bản phát hành trên server: ${data.update_manifest.version} (${data.update_manifest.platforms.join(", ")})` : "Chưa có bản phát hành nào trong <DATA_DIR>/agent-updates."}</div>
-      {isAdmin && <div className="row" style={{ marginTop: 14 }}><button className="btn primary" onClick={save}>Lưu chính sách</button></div>}
+      <div className="section-title" style={{ marginTop: 16 }}>Automatic agent updates</div>
+      <Toggle checked={p.update?.enabled} onChange={(v) => setP({ ...p, update: { ...p.update, enabled: v } })} label="Allow agents to install updates automatically (updates must be signed with your key; see the agent README)" />
+      <div className="small muted">{data.update_manifest ? `Server release: ${data.update_manifest.version} (${data.update_manifest.platforms.join(", ")})` : "No releases found in <DATA_DIR>/agent-updates."}</div>
+      {isAdmin && <div className="row" style={{ marginTop: 14 }}><button className="btn primary" onClick={save}>Save policy</button></div>}
     </div>
   );
 }
 
 function Setup() {
   const { isAdmin } = useApp();
-  const toast = useToast();
   const { data: dl } = useApi("/agent-downloads");
-  const { data: tokens, reload } = useApi(isAdmin ? "/agent-tokens" : null);
-  const [creating, setCreating] = useState(false);
-  const revoke = async (t) => {
-    if (!(await askConfirm({ title: `Thu hồi token "${t.name}"?`, message: "Không đăng ký thêm máy mới bằng token này được nữa. Máy đã cài vẫn chạy bình thường.", okText: "Thu hồi", danger: true }))) return;
-    try { await api.post(`/agent-tokens/${t.id}/revoke`); toast("Đã thu hồi"); reload(); } catch (e) { toast(e.message, true); }
-  };
-  const TSTATE = { active: ["Còn hiệu lực", "ok"], expired: ["Hết hạn", ""], used_up: ["Hết lượt", ""], revoked: ["Đã thu hồi", "warn"] };
   return (
     <>
       <div className="grid2">
         <div className="card card-pad">
-          <div className="row" style={{ marginBottom: 8 }}><Download size={16} /><b>Tải agent</b><span className="small muted" style={{ marginLeft: "auto" }}>{dl?.version && `phiên bản ${dl.version}`}</span></div>
-          {!dl?.files?.length ? <div className="small muted">Chưa có file agent trong backend/agent_dist (build bằng agent/scripts/build.sh).</div> : dl.files.map((f) => (
+          <div className="row" style={{ marginBottom: 8 }}><Download size={16} /><b>Download agent</b><span className="small muted" style={{ marginLeft: "auto" }}>{dl?.version && `version ${dl.version}`}</span></div>
+          {!dl?.files?.length ? <div className="small muted">No agent files found in backend/agent_dist (build with agent/scripts/build.sh).</div> : dl.files.map((f) => (
             <div key={f.name} className="row" style={{ gap: 8, padding: "5px 0", borderBottom: "1px solid var(--line)" }}>
               <a className="grow" href={`/api/agent-downloads/${f.name}`} download>{f.name}</a>
               <span className="small faint">{fmtSize(f.size)}</span>
               {f.sha256 && <span className="small mono faint" title={`SHA-256: ${f.sha256}`}>{f.sha256.slice(0, 10)}…</span>}
             </div>
           ))}
-          <div className="small muted" style={{ marginTop: 8 }}>File chưa ký số (chưa có chứng chỉ code signing) → Windows SmartScreen có thể cảnh báo khi chạy tay; cài qua GPO thì không. Đối chiếu SHA-256 trước khi đưa lên thư mục chia sẻ.</div>
+          <div className="small muted" style={{ marginTop: 8 }}>The file is unsigned (no code-signing certificate), so Windows SmartScreen may display a warning when run manually; GPO deployment does not trigger this warning. Verify the SHA-256 checksum before placing it in a shared folder.</div>
         </div>
         <div className="card card-pad">
-          <div className="row" style={{ marginBottom: 8 }}><ShieldCheck size={16} /><b>Agent làm gì / không làm gì</b></div>
+          <div className="row" style={{ marginBottom: 8 }}><ShieldCheck size={16} /><b>What the agent does and does not do</b></div>
           <div className="small" style={{ lineHeight: 1.6 }}>
-            ✔ Đọc hiệu năng, ổ đĩa, dịch vụ, phần mềm đã cài, trạng thái Defender/BitLocker/tường lửa, người đang dùng máy.<br />
-            ✔ Đọc sự kiện cần xử lý: đăng nhập sai, khoá tài khoản, thêm quyền admin, xoá nhật ký, mã độc, tắt máy đột ngột, dịch vụ/ổ đĩa lỗi.<br />
-            ✘ Không chạy lệnh từ xa, không cài/gỡ phần mềm, không đọc file người dùng, không chụp màn hình, không ghi lại thao tác bàn phím.<br />
-            ✘ Không thu đăng nhập/đăng xuất thường ngày.
+            ✔ Collects performance, disk, service, and installed-software inventory; Defender/BitLocker/firewall status; and the currently logged-in user.<br />
+            ✔ Collects actionable events: failed logons, account lockouts, admin privilege changes, log clearing, malware detections, unexpected device shutdowns, and service/disk errors.<br />
+            ✘ Does not execute remote commands, install or remove software, read user files, capture screenshots, or record keystrokes.<br />
+            ✘ Does not collect routine logon/logoff events.
           </div>
-          {dl?.ca_pin && <div style={{ marginTop: 10 }}><CopyBox label="ca_pin của chứng chỉ HTTPS server này (tự điền vào lệnh cài)" text={dl.ca_pin} /></div>}
+          {dl?.ca_pin && <div style={{ marginTop: 10 }}><CopyBox label="CA pin for this HTTPS server certificate (automatically included in the install command)" text={dl.ca_pin} /></div>}
         </div>
       </div>
       {isAdmin && (
         <div className="card card-pad" style={{ marginTop: 16 }}>
-          <div className="row" style={{ marginBottom: 10 }}><KeyRound size={16} /><b>Token đăng ký</b>
-            <button className="btn primary sm" style={{ marginLeft: "auto" }} onClick={() => setCreating(true)}><Plus size={14} />Tạo token</button></div>
-          <Table rows={tokens || []} empty={<Empty icon={KeyRound} title="Chưa có token">Tạo token để cài agent lên máy.</Empty>} columns={[
-            { key: "name", label: "Tên", render: (t) => <div><b>{t.name}</b><div className="small faint mono">{t.prefix}…</div></div> },
-            { key: "state", label: "Trạng thái", render: (t) => { const [l, c] = TSTATE[t.state]; return <span className={`badge ${c}`}>{l}</span>; } },
-            { key: "uses", label: "Đã dùng", render: (t) => <span className="small">{t.uses}{t.max_uses ? ` / ${t.max_uses}` : ""} máy</span> },
-            { key: "expires_at", label: "Hết hạn", render: (t) => <span className="small">{fmtTime(t.expires_at)}</span> },
-            { key: "created_by", label: "Tạo bởi", render: (t) => <span className="small">{t.created_by} · {timeAgo(t.created_at)}</span> },
-            { key: "act", label: "", render: (t) => t.state === "active" && <button className="btn sm" onClick={(e) => { e.stopPropagation(); revoke(t); }}>Thu hồi</button> },
-          ]} />
+          <div className="row" style={{ marginBottom: 10 }}><KeyRound size={16} /><b>Install the agent</b></div>
+          <InstallCommands dl={dl} />
         </div>
       )}
       <Policy />
-      {creating && <NewToken dl={dl} onClose={() => setCreating(false)} onDone={reload} />}
     </>
+  );
+}
+// ---------------------------------------------------------------- re-enrolment over an existing device: IT approval
+const MATCH = { machine_id: "same hostname + machine ID", serial: "same hostname + serial number" };
+const REQ_STATE = { pending: ["Waiting", "warn"], approved: ["Approved – waiting for the agent", "ok"], completed: ["Completed", "ok"],
+  rejected: ["Rejected", "fail"], expired: ["Expired", ""] };
+
+function Cmp({ label, cur, nxt, mono }) {
+  const show = (v) => (Array.isArray(v) ? v.join(", ") : v) || "—";
+  const diff = show(cur) !== show(nxt);
+  return (
+    <tr>
+      <td className="small muted" style={{ whiteSpace: "nowrap", padding: "3px 12px 3px 0" }}>{label}</td>
+      <td className={`small ${mono ? "mono" : ""}`} style={{ padding: "3px 12px 3px 0" }}>{show(cur)}</td>
+      <td className={`small ${mono ? "mono" : ""}`} style={{ padding: "3px 0", ...(diff ? { color: "var(--warn)", fontWeight: 600 } : {}) }}>{show(nxt)}</td>
+    </tr>
+  );
+}
+
+function EnrollRequests({ onChanged }) {
+  const toast = useToast();
+  const [all, setAll] = useState(false);
+  const { data, reload } = useApi(`/agent-enroll-requests${all ? "?all=1" : ""}`, { interval: 30000, deps: [all] });
+  const rows = data || [];
+  const pending = rows.filter((r) => r.status === "pending");
+  if (!all && pending.length === 0) return null;
+  const decide = async (r, verb) => {
+    const approve = verb === "approve";
+    const name = r.current?.hostname || r.hostname;
+    const ok = await askConfirm({
+      title: approve ? `Approve the new agent for ${name}?` : `Reject the request for ${name}?`,
+      message: approve
+        ? `The new agent (from ${r.ip}) takes over this device record and its history. The agent currently reporting for ${name} stops working as soon as the new agent picks up its key (within about 5 minutes). Approve only if you know this device was reinstalled.`
+        : "The new agent is refused and stops trying. The current agent keeps working normally.",
+      okText: approve ? "Approve" : "Reject", danger: true });
+    if (!ok) return;
+    try { await api.post(`/agent-enroll-requests/${r.id}/${verb}`, {}); toast(approve ? "Approved" : "Rejected"); reload(); onChanged?.(); }
+    catch (e) { toast(e.message, true); }
+  };
+  return (
+    <div className="card card-pad" style={{ marginBottom: 16, ...(pending.length ? { borderColor: "var(--warn)" } : {}) }} data-testid="enroll-requests">
+      <div className="row" style={{ marginBottom: 6 }}>
+        <UserCheck size={16} /><b>Pending approvals{pending.length ? ` (${pending.length})` : ""}</b>
+        <label className="small muted row" style={{ marginLeft: "auto", gap: 6, cursor: "pointer" }}>
+          <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} />Show decided (30 days)</label>
+      </div>
+      <div className="small muted" style={{ marginBottom: 10, lineHeight: 1.5 }}>
+        A new agent is trying to enroll as a device that already exists (same hostname and machine ID or serial). This is normal after
+        reinstalling the agent or Windows, but because enrollment is open, anyone who knows the hostname and serial could also try to impersonate a real device.
+        The current agent keeps working until you approve. Compare the details below — differences are highlighted.
+      </div>
+      {rows.length === 0 && <div className="small faint">No requests in the last 30 days.</div>}
+      <div className="stack" style={{ gap: 12 }}>
+        {rows.map((r) => {
+          const c = r.current || {};
+          const n = r.new || {};
+          const [sl, sc] = REQ_STATE[r.status] || [r.status, ""];
+          return (
+            <div key={r.id} className="card" style={{ padding: 12 }} data-testid={`enroll-request-${r.id}`}>
+              <div className="row wrap" style={{ gap: 8, marginBottom: 8 }}>
+                <b>{c.hostname || r.hostname}</b><span className={`badge ${sc}`}>{sl}</span>
+                <span className="small muted">#{r.id} · matched by {MATCH[r.matched_by] || r.matched_by} ·
+                  first seen {timeAgo(r.created_at)}{r.attempts > 1 && ` · ${r.attempts} attempts, last ${timeAgo(r.last_attempt_at)}`}
+                  {r.decided_by && ` · ${r.status === "rejected" ? "rejected" : "approved"} by ${r.decided_by} ${timeAgo(r.decided_at)}`}
+                  {r.reason && ` · reason: ${r.reason}`}</span>
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr><th />
+                    <th className="small" style={{ textAlign: "left", paddingBottom: 4 }}>Current device{c.status && <> · <StatusBadge s={c.status} /> <span className="faint">{c.last_seen ? timeAgo(c.last_seen) : ""}</span></>}</th>
+                    <th className="small" style={{ textAlign: "left", paddingBottom: 4 }}>New agent asking to replace it</th></tr></thead>
+                  <tbody>
+                    <Cmp label="Source IP" cur={c.ip} nxt={r.ip} mono />
+                    <Cmp label="MAC" cur={c.macs} nxt={n.macs} mono />
+                    <Cmp label="Network IPs" cur={c.ips} nxt={n.ips} mono />
+                    <Cmp label="Serial" cur={c.serial} nxt={n.serial} mono />
+                    <Cmp label="Machine ID" cur={c.machine_id} nxt={n.machine_id} mono />
+                    <Cmp label="Hardware" cur={[c.manufacturer, c.model].filter(Boolean).join(" ")} nxt={[n.manufacturer, n.model].filter(Boolean).join(" ")} />
+                    <Cmp label="OS" cur={c.os_name} nxt={n.os_name} />
+                    <Cmp label="User" cur={c.logged_user} nxt={n.logged_user} />
+                    <Cmp label="Agent version" cur={c.agent_version} nxt={r.agent_version} />
+                  </tbody>
+                </table>
+              </div>
+              {r.status === "pending" && (
+                <div className="row" style={{ gap: 8, marginTop: 10, justifyContent: "flex-end" }}>
+                  <button className="btn sm" onClick={() => decide(r, "reject")}><X size={14} />Reject</button>
+                  <button className="btn primary sm" onClick={() => decide(r, "approve")}><Check size={14} />Approve</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
 // ---------------------------------------------------------------- trang
 export default function Agents() {
-  const { route, nav } = useApp();
+  const { route, nav, t, isAdmin } = useApp();
   const tab = route.params?.tab || "machines";
-  const { data: s } = useApi("/agent-summary", { interval: 30000 });
+  const { data: s, reload: reloadSummary } = useApi("/agent-summary", { interval: 30000 });
   const setTab = (t) => nav("agents", null, t === "machines" ? undefined : { tab: t });
   return (
     <>
-      <PageHead crumb="Vận hành › Máy trạm" title="Máy trạm"
-        desc="Thông tin do agent trên từng máy gửi lên: hiệu năng, ổ đĩa, Defender, dịch vụ, phần mềm và các sự kiện cần xử lý. Agent chỉ đọc, không nhận lệnh từ xa." />
+      <PageHead crumb={t("agents.breadcrumb")} title={t("agents.title")}
+        desc={t("agents.description")} />
       <div className="stats">
-        <Stat icon={Monitor} label="Tổng số máy" value={s?.total} sub={s ? Object.entries(s.by_os || {}).map(([k, v]) => `${v} ${OS_LABEL[k] || k}`).join(" · ") : ""} />
-        <Stat icon={s?.offline ? WifiOff : Wifi} label="Đang kết nối" value={s ? `${s.online}/${s.total}` : null} sub={s?.offline ? `${s.offline} máy tắt / mất mạng / agent dừng` : "tất cả đang gửi dữ liệu"} />
-        <Stat icon={ShieldAlert} label="Defender tắt" value={s?.defender_off} tone={s?.defender_off ? "fail" : ""} />
-        <Stat icon={HardDrive} label="Ổ sắp đầy" value={s?.disk_full} tone={s?.disk_full ? "warn" : ""} />
+        <Stat icon={Monitor} label={t("agents.totalMachines")} value={s?.total} sub={s ? Object.entries(s.by_os || {}).map(([k, v]) => `${v} ${OS_LABEL[k] || k}`).join(" · ") : ""} />
+        <Stat icon={s?.offline ? WifiOff : Wifi} label={t("agents.connected")} value={s ? `${s.online}/${s.total}` : null} sub={s?.offline ? `${s.offline} devices disabled, disconnected, or with stopped agents` : "All devices are reporting"} />
+        <Stat icon={ShieldAlert} label={t("agents.defenderOff")} value={s?.defender_off} tone={s?.defender_off ? "fail" : ""} />
+        <Stat icon={HardDrive} label={t("agents.diskNearlyFull")} value={s?.disk_full} tone={s?.disk_full ? "warn" : ""} />
       </div>
+      {isAdmin && <EnrollRequests onChanged={reloadSummary} />}
+      {!isAdmin && s?.pending_enroll > 0 && <div className="alert-box warn" style={{ marginBottom: 16 }}>{s.pending_enroll} re-enrolment request(s) are waiting for an administrator to approve.</div>}
       <Tabs value={tab} onChange={setTab} tabs={[
-        { key: "machines", label: "Danh sách máy", icon: Monitor }, { key: "events", label: "Sự kiện", icon: AlertTriangle },
-        { key: "software", label: "Phần mềm", icon: Package }, { key: "setup", label: "Cài đặt agent", icon: Settings2 }]} />
+        { key: "machines", label: t("agents.machineList"), icon: Monitor }, { key: "events", label: t("agents.events"), icon: AlertTriangle },
+        { key: "software", label: t("agents.software"), icon: Package }, { key: "setup", label: t("agents.agentSetup"), icon: Settings2 }]} />
       <div style={{ marginTop: 14 }}>
         {tab === "machines" && <div className="card"><MachineList open={route.id ? Number(route.id) : null} /></div>}
         {tab === "events" && <EventsView hostCol />}

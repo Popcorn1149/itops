@@ -5,6 +5,7 @@ package collect
 // log show của macOS) rồi đi qua CÙNG hàm đọc mà agent thật dùng (ParseEventXML, macLaunchctl, macApps, macLogLine).
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"math/rand/v2"
 	"strings"
@@ -51,13 +52,13 @@ func (s *Sim) System() protocol.SystemInfo {
 			name, kind, ver = "Windows Server 2022 Standard", "server", "21H2 (build 20348.2849)"
 		}
 		return protocol.SystemInfo{Hostname: s.Host, Domain: "cty.local", OSName: name, OSVersion: ver, OSKind: kind, Arch: "amd64",
-			Manufacturer: "Dell Inc.", Model: "OptiPlex 7010 (giả lập)", Serial: "SIM" + s.Host, CPUModel: "Intel(R) Core(TM) i5-13500",
-			CPUCores: 14, RAMMB: 16384, BootTime: &boot, IPs: []string{s.IP}, LoggedUser: s.User}
+			Manufacturer: "Dell Inc.", Model: "OptiPlex 7010 (simulated)", Serial: "SIM" + s.Host, CPUModel: "Intel(R) Core(TM) i5-13500",
+			CPUCores: 14, RAMMB: 16384, BootTime: &boot, IPs: []string{s.IP}, MACs: []string{simMAC(s.Host)}, LoggedUser: s.User, UserSource: "console", MachineID: "sim-" + s.Host}
 	}
 	return protocol.SystemInfo{Hostname: s.Host, OSName: "macOS 15.1", OSVersion: "24B83", OSKind: "client", Arch: "arm64",
-		Manufacturer: "Apple", Model: "Mac14,9 (giả lập)", Serial: macSerial(`"IOPlatformSerialNumber" = "SIMC02` + s.Host[len(s.Host)-2:] + `"`),
+		Manufacturer: "Apple", Model: "Mac14,9 (simulated)", Serial: macSerial(`"IOPlatformSerialNumber" = "SIMC02` + s.Host[len(s.Host)-2:] + `"`),
 		CPUModel: "Apple M2 Pro", CPUCores: 10, RAMMB: 16384, BootTime: macBoot(fmt.Sprintf("{ sec = %d, usec = 0 }", boot.Unix())),
-		IPs: []string{s.IP}, LoggedUser: s.User}
+		IPs: []string{s.IP}, MACs: []string{simMAC(s.Host)}, LoggedUser: s.User, UserSource: "console", MachineID: "sim-" + s.Host}
 }
 
 func jit(v, d float64) float64 { return max(0.5, min(99, v+(rand.Float64()*2-1)*d)) }
@@ -225,4 +226,10 @@ func (s *Sim) winPhase(ph int, add func(string, string, int, int, string, time.T
 	case 5: // các ID KHÔNG nằm trong chính sách – agent thật không lấy, gửi lên để thấy server cũng bỏ
 		add("Security", sec, 4624, 0, dataXML("TargetUserName", "nv.gialap"), now)
 	}
+}
+
+// simMAC: MAC giả cố định theo tên máy (dải 02:… = "locally administered", không trùng card thật).
+func simMAC(host string) string {
+	h := sha256.Sum256([]byte(host))
+	return fmt.Sprintf("02:1A:%02X:%02X:%02X:%02X", h[0], h[1], h[2], h[3])
 }

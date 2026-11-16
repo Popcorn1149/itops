@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from fastapi import FastAPI, Depends, HTTPException, Body, Query, BackgroundTasks, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import inspect as sa_inspect, func
+from sqlalchemy import inspect as sa_inspect, func, or_
 from sqlalchemy.orm import Session
 
 from .db import engine, get_db, SessionLocal, run_migrations
@@ -24,22 +24,23 @@ from .notify import notify, CHANNELS
 from .topology import build_topology, build_risks, critical_view
 from . import events as ev_mod, receivers, secmon, virt
 from . import agents as agents_mod
+from . import flows as flows_mod
 from .security import open_config
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("itops")
-VERSION = "1.0.0"
+VERSION = "2.11.0"
 
 
 def init_db():
     m = run_migrations()
     if m["from"] != m["to"]:
-        log.warning("Đã nâng cấp CSDL: %s → %s", m["from"] or "(trống)", m["to"])
+        log.warning("Database upgraded: %s → %s", m["from"] or "(empty)", m["to"])
     db = SessionLocal()
     try:
         n = sec.reencrypt_all(db)
         if n:
-            log.warning("Đã mã hoá lại %d cấu hình sang AES-256-GCM (khoá riêng .enc_key)", n)
+            log.warning("Re-encrypted %d settings to AES-256-GCM (separate .enc_key)", n)
         ev_mod.seed_rules(db)
         if not db.query(models.User).first():
             u = os.environ.get("ADMIN_USER", "admin")
@@ -47,19 +48,20 @@ def init_db():
             if not p:
                 import secrets as _s
                 p = _s.token_urlsafe(9)
-                log.warning("ADMIN_PASSWORD chưa đặt → đã sinh mật khẩu ngẫu nhiên cho '%s': %s", u, p)
-            db.add(models.User(username=u, full_name="Quản trị viên", password_hash=hash_password(p), role="admin"))
+                log.warning("ADMIN_PASSWORD is not set; generated a random password for '%s': %s", u, p)
+            db.add(models.User(username=u, full_name="Administrator", password_hash=hash_password(p), role="admin"))
             db.commit()
-            log.warning("Đã tạo tài khoản %s – hãy đổi mật khẩu sau khi đăng nhập!", u)
+            log.warning("Created account %s – change the password after signing in!", u)
         if os.environ.get("DEMO_DATA", "false").lower() in ("1", "true", "yes") and not db.query(models.Site).first():
             from .seed import seed_demo
             seed_demo(db)
             from . import demo_logs
             if demo_logs.enabled():
-                demo_logs.seed_history()          # 24 giờ log/trap "như thật" cho dữ liệu mẫu
+                demo_logs.seed_history()          # 24 hours of realistic logs/traps for demo data
         from . import demo_agents
         if demo_agents.enabled():
-            demo_agents.seed()                    # máy trạm mẫu (bỏ qua nếu đã có)
+            demo_agents.seed()                    # machines trạm mẫu (bỏ qua nếu đã có)
+            vuln_mod.seed_demo()                  # demo only: simulated Wazuh with 5 agents and sample vulnerabilities
     finally:
         db.close()
 
@@ -83,34 +85,54 @@ def _receiver_cfg(raw: bool = False) -> dict:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    with SessionLocal() as _db:
+        vuln_mod.ensure_builtin(_db)                                # CVE part 3: built-in CPE-matching source
     tasks = []
     if os.environ.get("DISABLE_SCHEDULER", "").lower() not in ("1", "true"):
         tasks.append(asyncio.create_task(scheduler.loop()))
         from .automation import engine as auto_engine
-        tasks.append(asyncio.create_task(auto_engine.loop()))      # tự động hoá chạy cùng bộ lập lịch
-        tasks.append(asyncio.create_task(secmon.loop()))           # SLA, log source im lặng, archive + hash, cảnh báo audit
-        tasks.append(asyncio.create_task(agents_mod.loop()))       # agent máy trạm: mất kết nối, dọn số liệu cũ
+        tasks.append(asyncio.create_task(auto_engine.loop()))      # automation runs alongside the scheduler
+        tasks.append(asyncio.create_task(secmon.loop()))           # SLA, silent log-source detection, archive + hash, audit alerts
+        tasks.append(asyncio.create_task(agents_mod.loop()))       # endpoint agents: disconnect detection and stale-data cleanup
+        tasks.append(asyncio.create_task(cve_mod.loop()))          # CVE catalogue: daily NVD / CISA KEV / EPSS sync
+        tasks.append(asyncio.create_task(vuln_mod.loop()))         # CVE part 3: vulnerability sources (Wazuh, CPE matching)
+        tasks.append(asyncio.create_task(vuln_policy_mod.loop()))  # CVE parts 4–5: priority / SLA refresh, alerts, morning digest
+        tasks.append(asyncio.create_task(flows_mod.loop()))        # 2.10: network traffic – GoFlow2 child process, per-minute totals
     tasks += [asyncio.create_task(ev_mod.consumer()), asyncio.create_task(ev_mod.housekeeping())]
     if os.environ.get("DISABLE_SCHEDULER", "").lower() not in ("1", "true"):
         from .admin_tools import backup_loop
-        tasks.append(asyncio.create_task(backup_loop()))            # sao lưu CSDL + khoá mỗi ngày
+        tasks.append(asyncio.create_task(backup_loop()))            # daily database and key backup
         from . import demo_logs
         if demo_logs.enabled():
-            tasks.append(asyncio.create_task(demo_logs.live_loop()))   # dữ liệu mẫu: log trực tiếp + sự cố định kỳ
+            tasks.append(asyncio.create_task(demo_logs.live_loop()))   # demo data: live logs and periodic incidents
         from . import demo_agents
         if demo_agents.enabled():
-            tasks.append(asyncio.create_task(demo_agents.live_loop()))  # máy trạm mẫu gửi hiệu năng mỗi phút
+            tasks.append(asyncio.create_task(demo_agents.live_loop()))  # demo endpoints send performance data every minute
     ev_mod.set_allowed(_receiver_cfg()["allowed_sources"])
     if os.environ.get("DISABLE_RECEIVERS", "").lower() not in ("1", "true"):
         await receivers.start_all(_receiver_cfg())
     yield
     await receivers.stop_all()
+    await asyncio.to_thread(flows_mod.shutdown)                    # stop GoFlow2 and write the last minute of traffic
     for t in tasks:
         t.cancel()
 
 
 app = FastAPI(title="IT Ops Workspace", version=VERSION, lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+app.include_router(flows_mod.router)       # /api/traffic/* – network traffic (NetFlow / IPFIX)
 app.include_router(agents_mod.router)      # /api/agent/v1/* (agent gửi lên) + /api/agents* (giao diện)
+from . import cve as cve_mod  # noqa: E402
+app.include_router(cve_mod.router)        # /api/cves* – CVE catalogue (NVD, CISA KEV, EPSS)
+from . import vuln as vuln_mod  # noqa: E402
+app.include_router(vuln_mod.router)       # /api/vuln/* – findings per machine from replaceable sources
+from . import vuln_policy as vuln_policy_mod  # noqa: E402
+app.include_router(vuln_policy_mod.router)  # /api/vuln/overview|by-machine|by-cve|policy|export.csv – parts 4–5
+from . import reports as reports_mod  # noqa: E402
+app.include_router(reports_mod.router)
+from . import vuln_groups  # noqa: E402
+app.include_router(vuln_groups.router)     # /api/vuln/by-software, /api/vuln/attack-types     # /api/reports/monitoring – uptime report 1 / 7 / 14 / 30 days
+from . import remediation as remediation_mod  # noqa: E402
+app.include_router(remediation_mod.router)    # /api/vuln/findings/{id}/remediation, /api/remediation/* – Remediation Mapping
 
 
 @app.middleware("http")
@@ -152,13 +174,12 @@ def _audit_safe(v):
 
 
 def audit(db: Session, user: str, action: str, entity: str, entity_id=None, detail: str = "", changes: dict | None = None):
-    """Ghi nhật ký 5W1H: Ai (user) · Cái gì (action/entity/detail) · Khi nào (ts) · Ở đâu (ip, user_agent)
-    · Như thế nào (changes: trước → sau, bí mật được che) · Tại sao (reason – header X-Audit-Reason)."""
+    """5W1H audit logging: Who (user) · What (action/entity/detail) · When (ts) · Where (ip, user_agent) · How (changes: before → after, secrets masked) · Why (reason – X-Audit-Reason header)."""
     ctx = REQ_CTX.get() or {}
     db.add(models.AuditLog(user=user, action=action, entity=entity, entity_id=entity_id, detail=detail[:2000],
                            ip=ctx.get("ip", ""), user_agent=ctx.get("ua", ""), reason=ctx.get("reason", ""),
                            changes=_audit_safe(changes) if changes else None))
-    secmon.on_audit(db, user, action, entity, entity_id, detail)   # UC-14: thao tác nhạy cảm → cảnh báo người nhận riêng
+    secmon.on_audit(db, user, action, entity, entity_id, detail)   # UC-14: thao tác nhạy cảm → alerts người nhận riêng
 
 
 EDITABLE = {
@@ -173,7 +194,7 @@ EDITABLE = {
                     "auto_resolve_min", "sort", "group_by", "key_filter"],
 }
 MODEL = {"sites": models.Site, "assets": models.Asset, "critical": models.CriticalSystem, "checks": models.Check, "event-rules": models.EventRule}
-LABEL = {"sites": "site", "assets": "tài sản", "critical": "hệ thống trọng yếu", "checks": "check giám sát", "event-rules": "rule log"}
+LABEL = {"sites": "site", "assets": "assets", "critical": "critical systems", "checks": "monitoring check", "event-rules": "log rule"}
 
 
 def _validate_rule(body: dict):
@@ -183,11 +204,11 @@ def _validate_rule(body: dict):
             try:
                 _re.compile(body[f])
             except _re.error as e:
-                raise HTTPException(400, f"Biểu thức {f} không hợp lệ: {e}") from None
+                raise HTTPException(400, f"Invalid expression for {f}: {e}") from None
     if body.get("action", "alert") not in ("alert", "drop") or body.get("kind", "any") not in ("any", "syslog", "trap"):
-        raise HTTPException(400, "action/kind không hợp lệ")
+        raise HTTPException(400, "Invalid action/kind")
     if body.get("group_by", "") not in ("", "src_ip"):
-        raise HTTPException(400, "group_by không hợp lệ")
+        raise HTTPException(400, "Invalid group_by")
 
 
 def apply(obj, data: dict, fields: list[str]):
@@ -216,14 +237,14 @@ def serialize(kind: str, obj) -> dict:
 
 
 # ---------------------------------------------------------------- auth
-_FAILED: dict[str, list[float]] = {}        # khoá theo IP + tài khoản
-_FAILED_IP: dict[str, list[float]] = {}     # khoá theo IP (chặn dò nhiều tài khoản từ 1 máy)
+_FAILED: dict[str, list[float]] = {}        # khoá theo IP + account
+_FAILED_IP: dict[str, list[float]] = {}     # khoá theo IP (chặn dò nhiều account from 1 machines)
 MAX_FAILS, LOCK_SECONDS = int(os.environ.get("LOGIN_MAX_FAILS", "5")), int(os.environ.get("LOGIN_LOCK_SECONDS", "300"))
 MAX_FAILS_IP = int(os.environ.get("LOGIN_MAX_FAILS_PER_IP", "20"))
 
 
 def _lock_msg(fails, limit, what):
-    return f"{what} sai quá {limit} lần. Thử lại sau {int((LOCK_SECONDS - (time.time() - fails[0])) // 60) + 1} phút."
+    return f"{what} failed more than {limit} times. Try again in {int((LOCK_SECONDS - (time.time() - fails[0])) // 60) + 1} minutes."
 
 
 def _user_out(u: models.User) -> dict:
@@ -235,36 +256,72 @@ def _user_out(u: models.User) -> dict:
 
 @app.post("/api/auth/login")
 def login(request: Request, body: dict = Body(...), db: Session = Depends(get_db)):
-    username = str(body.get("username", "")).strip()
+    """2 cách đăng nhập khi tài khoản bật 2FA:
+    1) Giao diện web: bước 1 gửi username + password → 401 {need_otp, mfa_ticket, expires_in}.
+       Bước 2 gửi mfa_ticket + otp (KHÔNG gửi lại mật khẩu). Vé hết hạn sau MFA_STEP_SECONDS (mặc định 3 phút)
+       → 401 {mfa_expired: true}, phải nhập lại mật khẩu.
+    2) Script/API: gửi username + password + otp trong 1 request (không qua vé)."""
     ip = client_ip(request)
+    ticket = str(body.get("mfa_ticket", "") or "").strip()
+    tp = None
+    if ticket:
+        try:
+            tp = sec.read_mfa_ticket(ticket, ip)
+        except sec.MfaTicketError as e:
+            try:
+                who = str(sec.jwt.get_unverified_claims(ticket).get("sub", "?"))[:64]
+            except Exception:  # noqa: BLE001 – vé rác
+                who = "?"
+            audit(db, who, "login_failed", "user", None,
+                  f"2FA step expired after {sec.mfa_step_label()} from {ip}" if e.expired else f"Invalid 2FA ticket from {ip}")
+            db.commit()
+            msg = (f"The 2FA step expired ({sec.mfa_step_label()}). Please sign in with your password again."
+                   if e.expired else "Your 2FA sign-in step is no longer valid. Please sign in with your password again.")
+            raise HTTPException(401, {"msg": msg, "mfa_expired": True}) from None
+        username = tp["sub"]
+    else:
+        username = str(body.get("username", "")).strip()
     key = f"{ip}|{username.lower()}"
     t = time.time()
     fails = [x for x in _FAILED.get(key, []) if t - x < LOCK_SECONDS]
     ip_fails = [x for x in _FAILED_IP.get(ip, []) if t - x < LOCK_SECONDS]
     if len(fails) >= MAX_FAILS:
-        raise HTTPException(429, _lock_msg(fails, MAX_FAILS, "Đăng nhập"))
+        raise HTTPException(429, _lock_msg(fails, MAX_FAILS, "Sign-in"))
     if len(ip_fails) >= MAX_FAILS_IP:
-        raise HTTPException(429, _lock_msg(ip_fails, MAX_FAILS_IP, f"Máy {ip} đăng nhập"))
+        raise HTTPException(429, _lock_msg(ip_fails, MAX_FAILS_IP, f"Sign-in from host {ip}"))
 
     def fail(why: str, msg: str, extra: dict | None = None):
         _FAILED[key] = fails + [t]
         _FAILED_IP[ip] = ip_fails + [t]
-        audit(db, username or "?", "login_failed", "user", None, f"{why} từ {ip}")
+        audit(db, username or "?", "login_failed", "user", None, f"{why} from {ip}")
         db.commit()
         raise HTTPException(401, {"msg": msg, **(extra or {})} if extra else msg)
 
     u = db.query(models.User).filter_by(username=username).first()
-    if not u or not verify_password(str(body.get("password", "")), u.password_hash):
-        fail("Đăng nhập sai", "Sai tài khoản hoặc mật khẩu")
+    if tp is not None:                       # bước 2 bằng vé: mật khẩu đã đúng ở bước 1
+        try:
+            sec.check_mfa_ticket_user(tp, u)
+        except sec.MfaTicketError:
+            fail("Invalid 2FA ticket", "Your 2FA sign-in step is no longer valid. Please sign in with your password again.",
+                 {"mfa_expired": True})
+    elif not u or not verify_password(str(body.get("password", "")), u.password_hash):
+        fail("Sign-in sai", "Incorrect username or password")
     mfa = False
     if u.totp_enabled:
         otp = str(body.get("otp", "")).strip()
-        if not otp:   # mật khẩu đúng, chưa nhập mã → yêu cầu bước 2 (không tính là sai)
-            raise HTTPException(401, {"msg": "Nhập mã 6 số từ ứng dụng xác thực", "need_otp": True})
+        if not otp:
+            if tp is not None:
+                raise HTTPException(401, {"msg": "Enter the 6-digit code from your authenticator app", "need_otp": True})
+            # password đúng, chưa nhập mã → cấp vé bước 2 có hạn (không tính là sai)
+            tk, ttl = sec.create_mfa_ticket(u, ip)
+            raise HTTPException(401, {"msg": "Enter the 6-digit code from your authenticator app", "need_otp": True,
+                                      "mfa_ticket": tk, "expires_in": ttl})
         step = sec.totp_match(sec.decrypt(u.totp_secret or ""), otp, u.totp_last_step)
         if step is None:
-            fail("Sai mã 2FA", "Mã xác thực không đúng hoặc đã dùng", {"need_otp": True})
+            fail("Incorrect 2FA code", "Invalid or already-used verification code", {"need_otp": True})
         u.totp_last_step, mfa = step, True
+        if tp is not None:
+            sec.burn_mfa_ticket(tp)          # vé chỉ đăng nhập thành công được 1 lần
     _FAILED.pop(key, None)
     u.last_login = now()
     token, sess = sec.create_session(db, u, request, mfa)
@@ -312,20 +369,20 @@ def list_sessions(request: Request, all: bool = False, user=Depends(current_user
 def revoke_session(sid: str, request: Request, user=Depends(current_user), db: Session = Depends(get_db)):
     s = db.get(models.LoginSession, sid)
     if not s or (s.username != user.username and user.role != "admin"):
-        raise HTTPException(404, "Không tìm thấy phiên")
+        raise HTTPException(404, "Session not found")
     if s.revoked_at is None:
         s.revoked_at, s.revoked_by = now(), user.username
-        audit(db, user.username, "revoke", "session", None, f"Thu hồi phiên của {s.username} ({s.ip})")
+        audit(db, user.username, "revoke", "session", None, f"Revoke sessions for {s.username} ({s.ip})")
         db.commit()
     return {"ok": True, "current": s.id == request.state.session.id}
 
 
 @app.post("/api/auth/2fa/setup")
 def totp_setup(user=Depends(current_user), db: Session = Depends(get_db)):
-    """Bước 1: sinh bí mật mới (chưa có hiệu lực) → trả mã QR để quét bằng Google Authenticator / Microsoft Authenticator…"""
+    """Step 1: generate a new secret (not yet active) and return a QR code for Google Authenticator / Microsoft Authenticator."""
     u = db.get(models.User, user.id)
     if u.totp_enabled:
-        raise HTTPException(400, "2FA đã bật. Muốn đổi điện thoại: tắt rồi bật lại (hoặc nhờ admin đặt lại).")
+        raise HTTPException(400, "2FA is already enabled. To change phones, disable and re-enable it, or ask an administrator to reset it.")
     secret = sec.new_totp_secret()
     u.totp_pending = sec.encrypt(secret)
     db.commit()
@@ -335,18 +392,18 @@ def totp_setup(user=Depends(current_user), db: Session = Depends(get_db)):
 
 @app.post("/api/auth/2fa/enable")
 def totp_enable(request: Request, body: dict = Body(...), user=Depends(current_user), db: Session = Depends(get_db)):
-    """Bước 2: nhập mã đang hiện trên điện thoại để xác nhận → 2FA có hiệu lực."""
+    """Step 2: enter the code shown on your phone to confirm and activate 2FA."""
     u = db.get(models.User, user.id)
     secret = sec.decrypt(u.totp_pending or "")
     if not secret:
-        raise HTTPException(400, "Chưa tạo mã QR – bấm Bật 2FA lại")
+        raise HTTPException(400, "QR code has not been generated. Click Enable 2FA again.")
     step = sec.totp_match(secret, body.get("code", ""))
     if step is None:
-        raise HTTPException(400, "Mã không đúng. Kiểm tra giờ trên điện thoại và nhập mã mới nhất.")
+        raise HTTPException(400, "Invalid code. Check your phone clock and enter the latest code.")
     u.totp_secret, u.totp_pending, u.totp_enabled, u.totp_last_step = u.totp_pending, None, True, step
     request.state.session.mfa = True
     n = sec.revoke_sessions(db, u.username, "2fa-enabled", keep=request.state.session.id)
-    audit(db, u.username, "enable_2fa", "user", u.id, "Bật xác thực 2 lớp" + (f", thu hồi {n} phiên khác" if n else ""))
+    audit(db, u.username, "enable_2fa", "user", u.id, "Enable two-factor authentication" + (f", revoked {n} other sessions" if n else ""))
     db.commit()
     return _user_out(u)
 
@@ -357,28 +414,28 @@ def totp_disable(body: dict = Body(...), user=Depends(current_user), db: Session
     if not u.totp_enabled:
         return _user_out(u)
     if sec.REQUIRE_2FA_ADMIN and u.role == "admin":
-        raise HTTPException(400, "Tài khoản admin bắt buộc dùng 2FA – không thể tắt. Đổi điện thoại: nhờ admin khác đặt lại 2FA.")
+        raise HTTPException(400, "Administrator accounts must use 2FA and cannot disable it. To change phones, ask another administrator to reset 2FA.")
     if not verify_password(str(body.get("password", "")), u.password_hash):
-        raise HTTPException(400, "Mật khẩu không đúng")
+        raise HTTPException(400, "Incorrect password")
     if sec.totp_match(sec.decrypt(u.totp_secret or ""), body.get("code", ""), u.totp_last_step) is None:
-        raise HTTPException(400, "Mã xác thực không đúng")
+        raise HTTPException(400, "Invalid verification code")
     u.totp_enabled, u.totp_secret, u.totp_pending, u.totp_last_step = False, None, None, 0
-    audit(db, u.username, "disable_2fa", "user", u.id, "Tắt xác thực 2 lớp")
+    audit(db, u.username, "disable_2fa", "user", u.id, "Disable two-factor authentication")
     db.commit()
     return _user_out(u)
 
 
 @app.post("/api/users/{uid}/reset-2fa")
 def reset_user_2fa(uid: int, user=Depends(admin_user), db: Session = Depends(get_db)):
-    """Admin đặt lại 2FA cho người khác (mất điện thoại). Người đó phải bật lại ở lần đăng nhập sau."""
+    """An administrator reset another user’s 2FA (for example, after a lost phone). The user must enable it again at the next sign-in."""
     u = db.get(models.User, uid)
     if not u:
-        raise HTTPException(404, "Không tìm thấy người dùng")
+        raise HTTPException(404, "User not found")
     if u.id == user.id:
-        raise HTTPException(400, "Không tự đặt lại 2FA của chính mình – nhờ admin khác, hoặc dùng lệnh admin_tools trên máy chủ")
+        raise HTTPException(400, "You cannot reset your own 2FA. Ask another administrator or use the admin_tools command on the server.")
     u.totp_enabled, u.totp_secret, u.totp_pending, u.totp_last_step = False, None, None, 0
     n = sec.revoke_sessions(db, u.username, user.username)
-    audit(db, user.username, "reset_2fa", "user", uid, f"Đặt lại 2FA của {u.username}, thu hồi {n} phiên")
+    audit(db, user.username, "reset_2fa", "user", uid, f"Reset 2FA for {u.username}, revoked {n} sessions")
     db.commit()
     return _user_out(u)
 
@@ -387,12 +444,12 @@ def reset_user_2fa(uid: int, user=Depends(admin_user), db: Session = Depends(get
 def change_password(request: Request, body: dict = Body(...), user=Depends(current_user), db: Session = Depends(get_db)):
     u = db.get(models.User, user.id)
     if not verify_password(body.get("old_password", ""), u.password_hash):
-        raise HTTPException(400, "Mật khẩu cũ không đúng")
+        raise HTTPException(400, "Current password is incorrect")
     if len(body.get("new_password", "")) < 8:
-        raise HTTPException(400, "Mật khẩu mới tối thiểu 8 ký tự")
+        raise HTTPException(400, "New password must be at least 8 characters long")
     u.password_hash = hash_password(body["new_password"])
     n = sec.revoke_sessions(db, u.username, u.username, keep=request.state.session.id)
-    audit(db, u.username, "update", "user", u.id, "Đổi mật khẩu" + (f", thu hồi {n} phiên khác" if n else ""))
+    audit(db, u.username, "update", "user", u.id, "Change password" + (f", revoked {n} other sessions" if n else ""))
     db.commit()
     return {"ok": True}
 
@@ -405,9 +462,9 @@ def list_users(user=Depends(admin_user), db: Session = Depends(get_db)):
 @app.post("/api/users")
 def create_user(body: dict = Body(...), user=Depends(admin_user), db: Session = Depends(get_db)):
     if not body.get("username") or len(body.get("password", "")) < 8:
-        raise HTTPException(400, "Cần username và mật khẩu ≥ 8 ký tự")
+        raise HTTPException(400, "Username and a password of at least 8 characters are required")
     if db.query(models.User).filter_by(username=body["username"]).first():
-        raise HTTPException(400, "Username đã tồn tại")
+        raise HTTPException(400, "Username already exists")
     u = models.User(username=body["username"], full_name=body.get("full_name", ""), role=body.get("role", "viewer"),
                     password_hash=hash_password(body["password"]))
     db.add(u)
@@ -420,24 +477,24 @@ def create_user(body: dict = Body(...), user=Depends(admin_user), db: Session = 
 def update_user(uid: int, body: dict = Body(...), user=Depends(admin_user), db: Session = Depends(get_db)):
     u = db.get(models.User, uid)
     if not u:
-        raise HTTPException(404, "Không tìm thấy người dùng")
+        raise HTTPException(404, "User not found")
     if "full_name" in body:
         u.full_name = body["full_name"]
     role_note, revoke = "", False
     if body.get("role") in ("admin", "viewer"):
         if u.id == user.id and body["role"] != "admin":
-            raise HTTPException(400, "Không tự hạ quyền chính mình")
+            raise HTTPException(400, "You cannot downgrade your own privileges")
         if u.role != body["role"]:
-            role_note, revoke = f" role={body['role']} (trước: {u.role})", True
+            role_note, revoke = f" role={body['role']} (previous: {u.role})", True
         u.role = body["role"]
     if body.get("password"):
         if len(body["password"]) < 8:
-            raise HTTPException(400, "Mật khẩu tối thiểu 8 ký tự")
+            raise HTTPException(400, "Password must be at least 8 characters long")
         u.password_hash = hash_password(body["password"])
-        role_note, revoke = role_note + " (đặt lại mật khẩu)", True
+        role_note, revoke = role_note + " (password reset)", True
     if revoke and u.id != user.id:
         n = sec.revoke_sessions(db, u.username, user.username)
-        role_note += f", thu hồi {n} phiên" if n else ""
+        role_note += f", revoked {n} sessions" if n else ""
     audit(db, user.username, "update", "user", uid, u.username + role_note)
     db.commit()
     return _user_out(u)
@@ -446,7 +503,7 @@ def update_user(uid: int, body: dict = Body(...), user=Depends(admin_user), db: 
 @app.delete("/api/users/{uid}")
 def delete_user(uid: int, user=Depends(admin_user), db: Session = Depends(get_db)):
     if uid == user.id:
-        raise HTTPException(400, "Không thể xoá chính mình")
+        raise HTTPException(400, "You cannot delete your own account")
     u = db.get(models.User, uid)
     if u:
         sec.revoke_sessions(db, u.username, user.username)
@@ -459,8 +516,8 @@ def delete_user(uid: int, user=Depends(admin_user), db: Session = Depends(get_db
 def _guard_ssh_command(ctype, cfg):
     from .collectors.ssh import custom_command_allowed
     if ctype == "ssh" and str((cfg or {}).get("command") or "").strip() and not custom_command_allowed():
-        raise HTTPException(400, "Lệnh SSH tuỳ chỉnh đang bị khoá (nguyên tắc: tài khoản thiết bị chỉ để đọc). "
-                                 "Bỏ trống ô lệnh để dùng bộ đo mặc định, hoặc bật ALLOW_SSH_COMMAND=1 nếu thật sự cần.")
+        raise HTTPException(400, "Custom SSH commands are disabled (policy: device accounts are read-only). "
+                                 "Leave the command field empty to use the default metrics, or set ALLOW_SSH_COMMAND=1 if absolutely necessary.")
 
 
 # ---------------------------------------------------------------- generic CRUD
@@ -495,7 +552,7 @@ def list_sites(user=Depends(current_user), db: Session = Depends(get_db)):
         d["last_sync"] = last.isoformat() + "Z" if last else None
         on = [c for c in sc if c.enabled]
         d["internet"] = lines.get(s.id, [])
-        # status site: chưa giám sát (không có check nào bật) / lỗi / cảnh báo / chưa chạy / hoạt động
+        # status site: not monitored (không có check nào enabled) / error / alerts / chưa chạy / hoạt động
         bad = [c.status for c in on]
         if not on:
             health = "unmonitored"
@@ -547,7 +604,7 @@ def list_assets(type: str | None = None, site_id: int | None = None, q: str | No
 
 @app.post("/api/assets/{aid}/esxi-credentials")
 async def set_esxi_credentials(aid: int, body: dict = Body(...), user=Depends(admin_user)):
-    """Lưu tài khoản ESXi chỉ đọc vào check SNMP của host rồi chạy lại ngay → có CPU/RAM/Disk từng VM."""
+    """Save a read-only ESXi account in the host SNMP check and rerun it to collect per-VM CPU/RAM/Disk metrics."""
     from .security import seal_config, SECRET_FIELDS, MASK
     with SessionLocal() as db:
         a = db.get(models.Asset, aid)
@@ -555,7 +612,7 @@ async def set_esxi_credentials(aid: int, body: dict = Body(...), user=Depends(ad
             raise HTTPException(404)
         src = virt.perf_source(db, a)
         if not src:
-            raise HTTPException(400, "Host này không có check SNMP đọc máy ảo ESXi")
+            raise HTTPException(400, "This host does not have an SNMP check for reading ESXi virtual machines")
         chk = db.get(models.Check, src["check_id"])
         u, pw = str(body.get("user", "")).strip(), str(body.get("password", ""))
         old_cfg = dict(chk.config or {})
@@ -564,16 +621,16 @@ async def set_esxi_credentials(aid: int, body: dict = Body(...), user=Depends(ad
             cfg.pop("esxi_user", None); cfg.pop("esxi_password", None)
         else:
             if not pw and not cfg.get("esxi_password"):
-                raise HTTPException(400, "Cần mật khẩu")
+                raise HTTPException(400, "Password is required")
             cfg["esxi_user"] = u
             if pw:
                 cfg["esxi_password"] = pw
         chk.config = seal_config(cfg, old_cfg)
-        audit(db, user.username, "update", "checks", chk.id, f"Sửa check giám sát {chk.name}: tài khoản ESXi đọc hiệu năng VM" + ("" if u else " (xoá)"))
+        audit(db, user.username, "update", "checks", chk.id, f"Updated monitoring check {chk.name}: ESXi account reads VM performance" + ("" if u else " (removed)"))
         db.commit()
         cid = chk.id
     res = None
-    for _ in range(90):   # nếu check đang chạy theo lịch (cấu hình cũ) → chờ xong rồi chạy lại với tài khoản mới
+    for _ in range(90):   # nếu check running theo lịch (cấu hình cũ) → chờ xong rồi chạy lại với account mới
         res = await run_check(cid)
         if res is not None:
             break
@@ -585,7 +642,7 @@ async def set_esxi_credentials(aid: int, body: dict = Body(...), user=Depends(ad
 
 @app.get("/api/assets/{aid}/guests")
 def asset_guests(aid: int, user=Depends(current_user), db: Session = Depends(get_db)):
-    """Máy ảo / container trên host ảo hoá: số lượng, cấp phát (vCPU, RAM so với host), hiệu năng từng máy."""
+    """Virtual machines / containers on a virtualization host: count, allocated resources (vCPU, RAM versus host), and per-machine performance."""
     a = db.get(models.Asset, aid)
     if not a:
         raise HTTPException(404)
@@ -595,7 +652,7 @@ def asset_guests(aid: int, user=Depends(current_user), db: Session = Depends(get
 @app.get("/api/checks")
 def list_checks(user=Depends(current_user), db: Session = Depends(get_db)):
     since = now() - timedelta(hours=24)
-    # uptime = tỷ lệ lần chạy KHÔNG bị DOWN (mất kết nối). Vượt threshold CPU/RAM/Disk hay lỗi dịch vụ không trừ uptime.
+    # uptime = tỷ lệ lần chạy KHÔNG bị DOWN (mất kết nối). Vượt threshold CPU/RAM/Disk hay error service không trừ uptime.
     CR = models.CheckResult
     rows = db.query(CR.check_id, CR.down, CR.status, CR.metrics.is_(None), func.count()).filter(CR.ts >= since).group_by(
         CR.check_id, CR.down, CR.status, CR.metrics.is_(None)).all()
@@ -603,7 +660,7 @@ def list_checks(user=Depends(current_user), db: Session = Depends(get_db)):
     for cid, down, st, no_metrics, n in rows:
         t = up.setdefault(cid, [0, 0])
         t[1] += n
-        if down is None:          # bản ghi trước khi có cột "down": chỉ coi là DOWN nếu lỗi mà không đo được gì
+        if down is None:          # bản ghi trước khi có cột "down": chỉ coi là DOWN nếu error mà không đo được gì
             down = st == "fail" and no_metrics
         if not down:
             t[0] += n
@@ -626,7 +683,7 @@ def get_one(kind: str, oid: int, user=Depends(current_user), db: Session = Depen
         raise HTTPException(404)
     obj = db.get(MODEL[kind], oid)
     if not obj:
-        raise HTTPException(404, "Không tìm thấy")
+        raise HTTPException(404, "Not found")
     d = serialize(kind, obj)
     if kind == "assets":
         d["children"] = [to_dict(a) for a in db.query(models.Asset).filter_by(parent_id=oid).order_by(models.Asset.type, models.Asset.name)]
@@ -649,13 +706,13 @@ def create(kind: str, background: BackgroundTasks, body: dict = Body(...), user=
     if kind not in MODEL:
         raise HTTPException(404)
     if not str(body.get("name", "")).strip():
-        raise HTTPException(400, "Thiếu tên")
+        raise HTTPException(400, "Name is required")
     obj = MODEL[kind]()
     if kind == "event-rules":
         _validate_rule(body)
     if kind == "checks":
         if body.get("type") not in COLLECTORS:
-            raise HTTPException(400, "Loại check không hợp lệ")
+            raise HTTPException(400, "Invalid check type")
         _guard_ssh_command(body.get("type"), body.get("config"))
         body = {**body, "config": seal_config(body.get("config") or {})}
         if not body.get("site_id") and body.get("asset_id"):
@@ -664,7 +721,7 @@ def create(kind: str, background: BackgroundTasks, body: dict = Body(...), user=
     apply(obj, body, EDITABLE[kind])
     db.add(obj)
     db.flush()
-    audit(db, user.username, "create", kind, obj.id, f"Tạo {LABEL[kind]} {obj.name}")
+    audit(db, user.username, "create", kind, obj.id, f"Created {LABEL[kind]} {obj.name}")
     db.commit()
     ev_mod.invalidate_caches()
     if kind == "checks" and obj.enabled:
@@ -687,7 +744,7 @@ def update(kind: str, oid: int, background: BackgroundTasks, body: dict = Body(.
         p, seen = int(body["parent_id"]), set()
         while p and p not in seen:
             if p == oid:
-                raise HTTPException(400, "Không thể đặt cha: tạo vòng lặp (tài sản nằm dưới chính nó)")
+                raise HTTPException(400, "Cannot assign parent: this would create a cycle (the asset would become its own descendant)")
             seen.add(p)
             pa = db.get(models.Asset, p)
             p = pa.parent_id if pa else None
@@ -703,19 +760,19 @@ def update(kind: str, oid: int, background: BackgroundTasks, body: dict = Body(.
         before["config"], after["config"] = {k: bc.get(k) for k in keys}, {k: ac.get(k) for k in keys}
     changes = {"before": before, "after": after} if diff_fields else None
     if kind == "checks" and old_type and obj.type != old_type:
-        # Đổi loại check: giữ lịch sử kết quả, đóng cảnh báo của loại cũ, đặt lại status để đo lại từ đầu
+        # Changed check type: giữ lịch sử kết quả, đóng alerts of loại cũ, đặt lại status để đo lại from đầu
         if obj.type not in COLLECTORS:
-            raise HTTPException(400, f"Loại check không hợp lệ: {obj.type}")
-        _close_alerts(db, oid, f"Đổi loại check {old_type} → {obj.type}")
+            raise HTTPException(400, f"Invalid check type: {obj.type}")
+        _close_alerts(db, oid, f"Changed check type {old_type} → {obj.type}")
         obj.status, obj.severity, obj.fail_count = "unknown", None, 0
-        obj.last_data, obj.last_message, obj.last_latency = {}, f"Đã đổi loại từ {old_type} sang {obj.type} – chờ lần chạy đầu", None
-        changed = [c if c != "type" else f"loại {old_type} → {obj.type}" for c in changed]
+        obj.last_data, obj.last_message, obj.last_latency = {}, f"Type changed from {old_type} to {obj.type} – waiting for the first run", None
+        changed = [c if c != "type" else f"type {old_type} → {obj.type}" for c in changed]
     if kind == "checks" and body.get("enabled") is False:
-        _close_alerts(db, oid, "Check đã tắt")
+        _close_alerts(db, oid, "Disabled checks")
     if kind in ("checks", "event-rules") and body.get("enabled") is False and "enabled" in changed:
         audit(db, user.username, "disable", kind, oid, f"{LABEL[kind]} {obj.name}", changes)
     else:
-        audit(db, user.username, "update", kind, oid, f"Sửa {LABEL[kind]} {obj.name}" + (f": {', '.join(changed)}" if changed else ""), changes)
+        audit(db, user.username, "update", kind, oid, f"Updated {LABEL[kind]} {obj.name}" + (f": {', '.join(changed)}" if changed else ""), changes)
     db.commit()
     ev_mod.invalidate_caches()
     if kind == "checks" and old_type and obj.type != old_type and obj.enabled:
@@ -730,13 +787,13 @@ def delete(kind: str, oid: int, user=Depends(admin_user), db: Session = Depends(
     if obj:
         name = obj.name
         if kind == "checks":
-            _close_alerts(db, oid, "Check đã bị xoá")
+            _close_alerts(db, oid, "Check deleted")
             db.query(models.CheckResult).filter_by(check_id=oid).delete()
-            # tài sản do check này phát hiện → bỏ nguồn để giữ lại như tài sản thủ công
+            # assets do check này phát hiện → bỏ nguồn để giữ lại như assets thủ công
             for a in db.query(models.Asset).filter_by(source=f"check:{oid}"):
                 a.source = "manual"
         db.delete(obj)
-        audit(db, user.username, "delete", kind, oid, f"Xoá {LABEL[kind]} {name}")
+        audit(db, user.username, "delete", kind, oid, f"Deleted {LABEL[kind]} {name}")
         db.commit()
         ev_mod.invalidate_caches()
     return {"ok": True}
@@ -747,16 +804,16 @@ def delete(kind: str, oid: int, user=Depends(admin_user), db: Session = Depends(
 async def run_now(cid: int, user=Depends(current_user)):
     res = await run_check(cid)
     if res is None:
-        raise HTTPException(409, "Check đang chạy, thử lại sau vài giây")
+        raise HTTPException(409, "Check is already running. Try again in a few seconds.")
     return res
 
 
 @app.post("/api/checks-test")
 async def test_check(body: dict = Body(...), user=Depends(admin_user), db: Session = Depends(get_db)):
-    """Chạy thử cấu hình check mà không lưu (dùng trong form)."""
+    """Test the check configuration without saving it (used by the form)."""
     fn = COLLECTORS.get(body.get("type"))
     if not fn:
-        raise HTTPException(400, "Loại check không hợp lệ")
+        raise HTTPException(400, "Invalid check type")
     _guard_ssh_command(body.get("type"), body.get("config"))
     cfg = dict(body.get("config") or {})
     if body.get("id"):
@@ -828,7 +885,7 @@ def resources_view(db: Session) -> dict:
         elif a.type in RES_TYPES and not (a.type == "vm" and a.status != "up"):
             uncovered.append({"id": a.id, "name": a.name, "type": a.type, "ip": a.ip, "os": a.os, "site_id": a.site_id,
                               "site_name": sites.get(a.site_id, "")})
-    # check có số liệu nhưng không gắn tài sản
+    # check có số liệu nhưng không gắn assets
     for c in checks.values():
         r = (c.last_data or {}).get("res")
         if c.enabled and r and ("chk", c.id) not in covered:
@@ -852,7 +909,7 @@ def resources_history(check_id: int, hours: int = 24, user=Depends(current_user)
     rows = db.query(models.CheckResult).filter(models.CheckResult.check_id == check_id, models.CheckResult.ts >= since,
                                                models.CheckResult.metrics.isnot(None)).order_by(models.CheckResult.ts).all()
     pts = [{"ts": r.ts.isoformat() + "Z", **(r.metrics or {})} for r in rows]
-    # gom điểm khi khoảng dài (tối đa ~300 điểm cho biểu đồ)
+    # gom điểm khi in approximately dài (tối đa ~300 điểm cho biểu đồ)
     if len(pts) > 300:
         step = len(pts) / 300
         pts = [pts[int(i * step)] for i in range(300)]
@@ -893,7 +950,7 @@ def alert_action(aid: int, action: str, user=Depends(current_user), db: Session 
     if not a:
         raise HTTPException(404)
     if a.source == "audit" and a.actor and a.actor == user.username and action in ("ack", "resolve"):
-        raise HTTPException(403, "Không tự xử lý cảnh báo về thao tác của chính mình – người khác phải xem xét (tách nhiệm vụ)")
+        raise HTTPException(403, "You cannot review an alert about your own action. Another user must review it (separation of duties).")
     if action == "ack":
         a.status, a.acked_by, a.acked_at = "acknowledged", user.username, now()
     elif action == "resolve":
@@ -917,8 +974,8 @@ def _auto_dict(a: models.Automation) -> dict:
     d["template_name"], d["group"] = t.get("name", a.code), t.get("group", "CUSTOM")
     trg = spec.get("trigger") or {}
     d["when"] = describe_cron(trg.get("cron", "")) if trg.get("type") == "schedule" else (
-        f"mỗi {trg.get('minutes')} phút" if trg.get("type") == "interval" else
-        "khi có cảnh báo" if trg.get("type") == "hook" else "khi: " + ", ".join(trg.get("on") or []))
+        f"every {trg.get('minutes')} minutes" if trg.get("type") == "interval" else
+        "when an alert occurs" if trg.get("type") == "hook" else "when: " + ", ".join(trg.get("on") or []))
     nr = None
     if trg.get("type") == "schedule" and a.enabled:
         try:
@@ -950,7 +1007,7 @@ def _auto_body(body: dict, code: str) -> dict:
         try:
             spec = yaml.safe_load(body["yaml"]) or {}
         except yaml.YAMLError as e:
-            raise HTTPException(400, f"YAML lỗi: {str(e).splitlines()[0]}") from None
+            raise HTTPException(400, f"YAML error: {str(e).splitlines()[0]}") from None
         if isinstance(spec, dict):            # cho phép dán cả khối có id/name/enabled như mẫu trong tài liệu
             body = {**body, **{k: spec.pop(k) for k in ("name", "enabled") if k in spec}}
             spec.pop("id", None)
@@ -967,9 +1024,9 @@ def automations_create(body: dict, user=Depends(admin_user), db: Session = Depen
     from .automation.templates import TEMPLATES
     code = body.get("code") or "CUSTOM"
     if code not in TEMPLATES:
-        raise HTTPException(400, "Template không tồn tại")
+        raise HTTPException(400, "Template does not exist")
     if code != "CUSTOM" and db.query(models.Automation).filter(models.Automation.code == code).first():
-        raise HTTPException(400, f"{code} đã được thêm – sửa kịch bản có sẵn")
+        raise HTTPException(400, f"{code} has already been added. Edit the existing workflow instead.")
     v = _auto_body(body, code)
     a = models.Automation(code=code, name=(v["name"] or TEMPLATES[code]["name"])[:128], enabled=bool(v["enabled"]),
                           spec=v["spec"], created_by=user.username)
@@ -997,9 +1054,9 @@ def automations_update(aid: int, body: dict, user=Depends(admin_user), db: Sessi
     if "enabled" in body and "yaml" not in body:
         a.enabled = bool(body["enabled"])
     if was_on and not a.enabled:
-        audit(db, user.username, "disable", "automation", aid, f"kịch bản {a.code} {a.name}")
+        audit(db, user.username, "disable", "automation", aid, f"workflow {a.code} {a.name}")
     else:
-        audit(db, user.username, "update", "automation", aid, f"{a.code} {a.name} · {'bật' if a.enabled else 'tắt'}")
+        audit(db, user.username, "update", "automation", aid, f"{a.code} {a.name} · {'enabled' if a.enabled else 'disabled'}")
     db.commit()
     return _auto_dict(a)
 
@@ -1028,7 +1085,7 @@ def automations_yaml(aid: int, user=Depends(current_user), db: Session = Depends
 
 @app.post("/api/automations/{aid}/run")
 async def automations_run(aid: int, dry: bool = True, user=Depends(admin_user)):
-    """dry=true: Chạy thử – xem trước tin/báo cáo, không gửi. dry=false: chạy thật ngay."""
+    """dry=true: preview the notification/report without sending. dry=false: execute immediately."""
     from .automation.engine import run_automation
     try:
         return await run_automation(aid, "test" if dry else "manual", dry_run=dry)
@@ -1038,11 +1095,11 @@ async def automations_run(aid: int, dry: bool = True, user=Depends(admin_user)):
 
 @app.post("/api/automations/preview")
 async def automations_preview(body: dict, user=Depends(admin_user), db: Session = Depends(get_db)):
-    """Xem trước một kịch bản chưa lưu (form/YAML đang sửa)."""
+    """Preview an unsaved automation (the form/YAML currently being edited)."""
     from .automation.engine import run_automation
     code = body.get("code") or "CUSTOM"
     v = _auto_body(body, code)
-    tmp = models.Automation(code=code, name=v["name"] or "Xem trước", enabled=False, spec=v["spec"], created_by=user.username)
+    tmp = models.Automation(code=code, name=v["name"] or "Preview", enabled=False, spec=v["spec"], created_by=user.username)
     db.add(tmp)
     db.commit()
     try:
@@ -1054,7 +1111,7 @@ async def automations_preview(body: dict, user=Depends(admin_user), db: Session 
 
 @app.post("/api/automation/to-yaml")
 def automation_to_yaml(body: dict, user=Depends(current_user)):
-    """Form → YAML (kịch bản chưa lưu)."""
+    """Form → YAML (unsaved automation)."""
     import yaml
     from .automation.engine import validate_spec
     code = body.get("code") or "CUSTOM"
@@ -1068,7 +1125,7 @@ def automation_to_yaml(body: dict, user=Depends(current_user)):
 
 @app.post("/api/automation/from-yaml")
 def automation_from_yaml(body: dict, user=Depends(current_user)):
-    """YAML → form: trả spec đã kiểm tra + name/enabled."""
+    """YAML → form: return the validated spec plus name/enabled."""
     v = _auto_body({"yaml": body.get("yaml", "")}, body.get("code") or "CUSTOM")
     return v
 
@@ -1146,15 +1203,21 @@ def search(q: str = Query(..., min_length=1), user=Depends(current_user), db: Se
     for s in db.query(models.Site).filter(models.Site.name.ilike(like)).limit(5):
         res.append({"kind": "site", "id": s.id, "title": s.name, "sub": s.kind})
     for c in db.query(models.CriticalSystem).filter(models.CriticalSystem.name.ilike(like)).limit(5):
-        res.append({"kind": "critical", "id": c.id, "title": c.name, "sub": f"Trọng yếu · {c.level}"})
+        res.append({"kind": "critical", "id": c.id, "title": c.name, "sub": f"Critical · {c.level}"})
     for c in db.query(models.Check).filter((models.Check.name.ilike(like)) | (models.Check.target.ilike(like))).limit(8):
         res.append({"kind": "check", "id": c.id, "title": c.name, "sub": f"{c.type} · {c.target}", "status": c.status})
     return res
 
 
 @app.get("/api/audit")
-def audit_log(limit: int = 300, user=Depends(current_user), db: Session = Depends(get_db)):
-    return [to_dict(a) for a in db.query(models.AuditLog).order_by(models.AuditLog.id.desc()).limit(min(limit, 2000))]
+def audit_log(limit: int = 300, q: str = "", user=Depends(current_user), db: Session = Depends(get_db)):
+    """Newest first. q searches ALL entries (user, details, entity, IP, reason), not just the newest page."""
+    qry = db.query(models.AuditLog)
+    if q.strip():
+        t = f"%{q.strip()}%"
+        qry = qry.filter(or_(models.AuditLog.user.ilike(t), models.AuditLog.detail.ilike(t), models.AuditLog.entity.ilike(t),
+                             models.AuditLog.ip.ilike(t), models.AuditLog.reason.ilike(t), models.AuditLog.action.ilike(t)))
+    return [to_dict(a) for a in qry.order_by(models.AuditLog.id.desc()).limit(min(max(1, limit), 2000))]
 
 
 # ---------------------------------------------------------------- settings
@@ -1171,20 +1234,20 @@ def put_notify(body: dict = Body(...), user=Depends(admin_user), db: Session = D
     old = s.value or {}
     s.value = {ch: seal_config(body.get(ch, {}), old.get(ch, {})) for ch in CHANNELS}
     db.merge(s)
-    audit(db, user.username, "update", "settings", None, "Cấu hình kênh cảnh báo")
+    audit(db, user.username, "update", "settings", None, "Configure alert channels")
     db.commit()
     return {ch: mask_config(s.value.get(ch, {})) for ch in CHANNELS}
 
 
 @app.post("/api/settings/notify/test/{channel}")
 async def test_notify(channel: str, user=Depends(admin_user)):
-    r = await notify("Tin nhắn thử từ IT Ops Workspace", f"Gửi bởi {user.username} lúc {datetime.now():%H:%M %d/%m/%Y}", "info", only=channel)
+    r = await notify("Test message from IT Ops Workspace", f"Sent by {user.username} at {datetime.now():%H:%M %d/%m/%Y}", "info", only=channel)
     return r
 
 
 @app.get("/api/export")
 def export(user=Depends(admin_user), db: Session = Depends(get_db)):
-    """Xuất cấu hình (không gồm lịch sử). Mật khẩu trong check được giữ ở dạng mã hoá."""
+    """Export configuration (history is excluded). Passwords in checks remain encrypted."""
     data = {"version": VERSION, "exported_at": now().isoformat()}
     for kind, M in [("sites", models.Site), ("assets", models.Asset), ("critical", models.CriticalSystem), ("checks", models.Check)]:
         data[kind] = [to_dict(o) for o in db.query(M).order_by(M.id)]
@@ -1193,7 +1256,7 @@ def export(user=Depends(admin_user), db: Session = Depends(get_db)):
 
 @app.post("/api/import")
 def import_data(body: dict = Body(...), user=Depends(admin_user), db: Session = Depends(get_db)):
-    """Nhập lại file export (ghi đè theo id)."""
+    """Import the exported file (overwrite by ID)."""
     count = 0
     for kind, M in [("sites", models.Site), ("assets", models.Asset), ("critical", models.CriticalSystem), ("checks", models.Check)]:
         for row in body.get(kind, []):
@@ -1206,33 +1269,33 @@ def import_data(body: dict = Body(...), user=Depends(admin_user), db: Session = 
             db.merge(obj)
             count += 1
         db.flush()
-    audit(db, user.username, "import", "data", None, f"Nhập {count} bản ghi")
+    audit(db, user.username, "import", "data", None, f"Imported {count} records")
     db.commit()
     return {"imported": count}
 
 
 @app.post("/api/reset-data")
 def reset_data(body: dict = Body(...), user=Depends(admin_user), db: Session = Depends(get_db)):
-    """Xoá toàn bộ site/tài sản/check/cảnh báo (vd. xoá dữ liệu mẫu). Cần gửi confirm='XOA'."""
+    """Delete all sites/assets/checks/alerts (e.g. demo data). Requires confirm='XOA'."""
     if secmon.PRODUCTION:   # C10: khoá khi chạy thật (ITOPS_ENV=production); vẫn ghi audit lần thử
-        audit(db, user.username, "reset_blocked", "data", None, "Thử xoá toàn bộ dữ liệu khi ITOPS_ENV=production")
+        audit(db, user.username, "reset_blocked", "data", None, "Attempted to delete all data while ITOPS_ENV=production")
         db.commit()
-        raise HTTPException(403, "Chức năng xoá dữ liệu bị khoá khi chạy thật (ITOPS_ENV=production)")
+        raise HTTPException(403, "Data deletion is disabled in production (ITOPS_ENV=production)")
     if body.get("confirm") != "XOA":
-        raise HTTPException(400, "Cần xác nhận")
+        raise HTTPException(400, "Confirmation is required")
     for M in (models.CheckResult, models.DailyUptime, models.Alert, models.CriticalSystem, models.Check, models.Event):
         db.query(M).delete()
     db.query(models.Asset).update({models.Asset.parent_id: None})
     db.query(models.Asset).delete()
     db.query(models.Site).delete()
-    audit(db, user.username, "delete", "data", None, "Xoá toàn bộ dữ liệu hạ tầng")
+    audit(db, user.username, "delete", "data", None, "Delete all infrastructure data")
     db.commit()
     return {"ok": True}
 
 
 @app.get("/api/health")
 def health():
-    """Công khai (trang đăng nhập dùng). Chỉ trả status chung, không lộ dữ liệu."""
+    """Public endpoint (used by the sign-in page). Returns status only; does not expose data."""
     from sqlalchemy import text
     db_ok = True
     try:
@@ -1265,8 +1328,8 @@ def secmon_put(body: dict = Body(...), user=Depends(admin_user), db: Session = D
     try:
         v = secmon.save_settings(db, body)
     except (ValueError, TypeError) as e:
-        raise HTTPException(400, f"Giá trị không hợp lệ: {e}") from None
-    audit(db, user.username, "update", "secmon", None, "Cấu hình Giám sát an ninh")
+        raise HTTPException(400, f"Invalid value: {e}") from None
+    audit(db, user.username, "update", "secmon", None, "Configure Security Monitoring")
     db.commit()
     return v
 
@@ -1285,14 +1348,14 @@ async def secmon_archive_run(day: str = "", user=Depends(admin_user)):
     try:
         d = _date.fromisoformat(day) if day else None
     except ValueError:
-        raise HTTPException(400, "Ngày dạng YYYY-MM-DD") from None
+        raise HTTPException(400, "Date must use YYYY-MM-DD format") from None
     made = await secmon.run_archive(d)
     return {"made": made}
 
 
 @app.get("/api/receivers/sources")
 def receiver_sources(user=Depends(current_user), db: Session = Depends(get_db)):
-    """D: nguồn nào đang gửi log/trap tới IT Ops (kể cả bị chặn) – kiểm tra log của thiết bị có tới không."""
+    """D: identify which sources are sending logs/traps to IT Ops (including blocked sources) and verify whether device logs are arriving."""
     by_ip = {a.ip: a.name for a in db.query(models.Asset).filter(models.Asset.ip != "").all() if a.ip}
     out = []
     for ip, r in ev_mod.STATS["sources"].items():
@@ -1371,11 +1434,11 @@ def events_stats(hours: int = 24, user=Depends(current_user), db: Session = Depe
 
 @app.post("/api/events/send-test")
 async def events_send_test(body: dict = Body(...), user=Depends(admin_user)):
-    """Tự gửi 1 syslog/trap mẫu vào chính bộ nhận để kiểm tra đường ống."""
+    """Send a sample syslog/trap to the receiver to test the pipeline."""
     import socket as _s
     kind = body.get("kind", "syslog")
     if kind == "syslog":
-        msg = f"<12>{datetime.now():%b %d %H:%M:%S} itops-selftest test: Tin thử syslog từ {user.username}".encode()
+        msg = f"<12>{datetime.now():%b %d %H:%M:%S} itops-selftest test: Syslog test message from {user.username}".encode()
         sock = _s.socket(_s.AF_INET, _s.SOCK_DGRAM)
         sock.sendto(msg, ("127.0.0.1", receivers.SYSLOG_UDP_PORT))
         sock.close()
@@ -1412,7 +1475,7 @@ def list_rules(user=Depends(current_user), db: Session = Depends(get_db)):
 
 @app.post("/api/event-rules/test")
 def test_rule(body: dict = Body(...), user=Depends(current_user), db: Session = Depends(get_db)):
-    """Thử rule: với 1 dòng log mẫu và/hoặc với log 24h gần nhất."""
+    """Test a rule against one sample log line and/or logs from the last 24 hours."""
     _validate_rule(body)
     r = models.EventRule(**{k: body.get(k) for k in EDITABLE["event-rules"] if k in body})
     for k, v in {"kind": "any", "max_severity": 7, "threshold": 1, "window_min": 5, "auto_resolve_min": 0, "action": "alert"}.items():
@@ -1468,19 +1531,19 @@ async def put_receivers(body: dict = Body(...), user=Depends(admin_user), db: Se
         try:
             allowed_src.append(str(ipaddress.ip_network(c, strict=False)))
         except ValueError:
-            raise HTTPException(400, f"IP/subnet không hợp lệ: {c}") from None
+            raise HTTPException(400, f"Invalid IP/subnet: {c}") from None
     st = db.get(models.Setting, "receivers") or models.Setting(key="receivers", value={})
     st.value = {"communities": comms or [seal_config({"community": "public"})["community"]], "v3_users": users, "allowed_sources": allowed_src}
     db.merge(st)
-    audit(db, user.username, "update", "settings", None, "Cấu hình nhận SNMP trap")
+    audit(db, user.username, "update", "settings", None, "Configure SNMP trap receiver")
     db.commit()
     ev_mod.set_allowed(allowed_src)
-    # chạy trên event loop chính (async endpoint) – pysnmp cần loop để mở lại socket
+    # runs on event loop chính (async endpoint) – pysnmp cần loop để mở lại socket
     if receivers._state["trap"] is not None or receivers.STATS["listeners"].get("snmp_trap"):
         receivers.restart_trap(_receiver_cfg())
         await asyncio.sleep(0.2)
     if not receivers.STATS["listeners"].get("snmp_trap", {}).get("ok", True):
-        raise HTTPException(500, "Lưu được nhưng không khởi động lại bộ nhận trap: " + receivers.STATS["listeners"]["snmp_trap"].get("error", ""))
+        raise HTTPException(500, "Saved, but the trap receiver could not be restarted: " + receivers.STATS["listeners"]["snmp_trap"].get("error", ""))
     return get_receivers(user)
 
 
@@ -1503,7 +1566,7 @@ if os.path.isdir(STATIC):
         if path.startswith("api/"):
             raise HTTPException(404)
         f = os.path.realpath(os.path.join(STATIC_REAL, path))
-        # chặn path traversal: file phải nằm trong thư mục static
+        # chặn path traversal: file phải nằm trong thư items static
         if path and f.startswith(STATIC_REAL + os.sep) and os.path.isfile(f):
             return FileResponse(f)
         return FileResponse(os.path.join(STATIC_REAL, "index.html"))

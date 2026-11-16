@@ -22,32 +22,32 @@ export function AssetForm({ asset, preset, onClose, onSaved }) {
     delete body.checks; delete body.critical; delete body.children; delete body.alerts; delete body.path;
     try {
       const r = asset?.id ? await api.put(`/assets/${asset.id}`, body) : await api.post("/assets", body);
-      toast("Đã lưu tài sản"); onSaved(r);
+      toast("Asset saved"); onSaved(r);
     } catch (e) { toast(e.message, true); }
   };
   const parents = (assets.data || []).filter((a) => a.id !== asset?.id && !["container"].includes(a.type));
   return (
-    <Modal title={asset?.id ? `Sửa ${asset.name}` : "Thêm tài sản"} onClose={onClose} width={760}
-      footer={<><button className="btn" onClick={onClose}>Huỷ</button><button className="btn primary" onClick={save}>Lưu</button></>}>
+    <Modal title={asset?.id ? `Edit ${asset.name}` : "Add Asset"} onClose={onClose} width={760}
+      footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={save}>Save</button></>}>
       <div className="form-grid">
-        <Field label="Tên *"><Input value={f.name} onChange={set("name")} placeholder="VD: SW-CORE, DC01" /></Field>
-        <Field label="Loại"><Select value={f.type} onChange={set("type")} options={TYPE_OPTIONS} /></Field>
-        <Field label="Site"><Select value={f.site_id} onChange={set("site_id")} placeholder="— Chưa gán —" options={(sites.data || []).map((s) => [s.id, s.name])} /></Field>
-        <Field label="Nằm sau / chạy trên" hint="VM → host; host → switch; switch → firewall. Dùng để vẽ bản đồ.">
-          <Select value={f.parent_id} onChange={set("parent_id")} placeholder="— Không —" options={parents.map((a) => [a.id, `${a.name} (${typeMeta(a.type).label})`])} />
+        <Field label="Name *"><Input value={f.name} onChange={set("name")} placeholder="VD: SW-CORE, DC01" /></Field>
+        <Field label="Type"><Select value={f.type} onChange={set("type")} options={TYPE_OPTIONS} /></Field>
+        <Field label="Site"><Select value={f.site_id} onChange={set("site_id")} placeholder="— Unassigned —" options={(sites.data || []).map((s) => [s.id, s.name])} /></Field>
+        <Field label="Depends on / Hosted on" hint="VM → host; host → switch; switch → firewall. Used to build the topology map.">
+          <Select value={f.parent_id} onChange={set("parent_id")} placeholder="— None —" options={parents.map((a) => [a.id, `${a.name} (${typeMeta(a.type).label})`])} />
         </Field>
         <Field label="IP / hostname"><Input value={f.ip} onChange={set("ip")} placeholder="10.0.0.1" /></Field>
-        <Field label="Status thủ công" hint="Tự cập nhật nếu có check gắn vào"><Select value={f.status} onChange={set("status")} options={[["unknown", "Chưa rõ"], ["up", "Hoạt động"], ["warning", "Cảnh báo"], ["down", "Lỗi"], ["off", "Đã tắt"]]} /></Field>
-        <Field label="Hãng"><Input value={f.vendor} onChange={set("vendor")} /></Field>
+        <Field label="Manual Status" hint="Automatically updated when a checks is linked"><Select value={f.status} onChange={set("status")} options={[["unknown", "Unknown"], ["up", "Operational"], ["warning", "Warning"], ["down", "Error"], ["off", "Disabled"]]} /></Field>
+        <Field label="Vendor"><Input value={f.vendor} onChange={set("vendor")} /></Field>
         <Field label="Model"><Input value={f.model} onChange={set("model")} /></Field>
-        <Field label="Hệ điều hành / firmware"><Input value={f.os} onChange={set("os")} /></Field>
+        <Field label="Operating System / Firmware"><Input value={f.os} onChange={set("os")} /></Field>
         <Field label="Serial / Service tag"><Input value={f.serial} onChange={set("serial")} /></Field>
-        <Field label="Người phụ trách"><Input value={f.owner} onChange={set("owner")} /></Field>
-        <Field label="Vị trí (rack, phòng...)"><Input value={f.location} onChange={set("location")} /></Field>
+        <Field label="Owner"><Input value={f.owner} onChange={set("owner")} /></Field>
+        <Field label="Location (rack, room, etc.)"><Input value={f.location} onChange={set("location")} /></Field>
         <div className="section-title">Backup</div>
-        <Field><Toggle checked={f.backup} onChange={set("backup")} label="Đã có backup" /></Field>
-        <Field><Input value={f.backup_note} onChange={set("backup_note")} placeholder="Veeam job hằng đêm, Active Backup..." /></Field>
-        <Field label="Ghi chú" full><textarea className="input" value={f.notes || ""} onChange={(e) => set("notes")(e.target.value)} /></Field>
+        <Field><Toggle checked={f.backup} onChange={set("backup")} label="Backup available" /></Field>
+        <Field><Input value={f.backup_note} onChange={set("backup_note")} placeholder="e.g. Nightly Veeam job, Active Backup..." /></Field>
+        <Field label="Notes" full><textarea className="input" value={f.notes || ""} onChange={(e) => set("notes")(e.target.value)} /></Field>
       </div>
     </Modal>
   );
@@ -60,10 +60,10 @@ function LiveMetrics({ a }) {
     ["CPU", m.cpu_pct ?? m.cpu], ["RAM", m.mem_pct ?? m.mem], ["Disk", m.disk],
   ].filter((r) => r[1] != null);
   const info = [
-    ["Uptime", m.uptime], ["Phiên bản", m.version], ["vCPU", m.vcpu], ["RAM cấp", m.mem_mb ? `${m.mem_mb} MB` : null],
-    ["Cores", m.cores], ["RAM", m.mem_gb ? `${m.mem_gb} GB` : null], ["VMware Tools", m.tools], ["Snapshot", m.snapshots ? `${m.snapshots} (cũ nhất ${m.oldest_snapshot_days} ngày)` : null],
-    ["Cổng", m.ports_total ? `${m.ports_up}/${m.ports_total} up` : null], ["Nhiệt độ", m.temp ? `${m.temp}°C` : null],
-    ["Mô tả SNMP", m.sys_descr], ["MAC", m.mac], ["Ghi chú VM", m.annotation],
+    ["Uptime", m.uptime], ["Version", m.version], ["vCPU", m.vcpu], ["Allocated RAM", m.mem_mb ? `${m.mem_mb} MB` : null],
+    ["Cores", m.cores], ["RAM", m.mem_gb ? `${m.mem_gb} GB` : null], ["VMware Tools", m.tools], ["Snapshot", m.snapshots ? `${m.snapshots} (oldest ${m.oldest_snapshot_days} days)` : null],
+    ["Port", m.ports_total ? `${m.ports_up}/${m.ports_total} up` : null], ["Temperature", m.temp ? `${m.temp}°C` : null],
+    ["Description SNMP", m.sys_descr], ["MAC", m.mac], ["Notes VM", m.annotation],
   ].filter((r) => r[1] != null && r[1] !== "");
   if (!rows.length && !info.length && !res) return null;
   return (
@@ -74,7 +74,7 @@ function LiveMetrics({ a }) {
       </div>}
       {rows.length > 0 && <div className="row wrap" style={{ gap: 22, marginBottom: info.length ? 10 : 0 }}>{rows.map(([k, v]) => <div key={k}><div className="small muted">{k}</div><UsageBar pct={v} /></div>)}</div>}
       {info.length > 0 && <div className="kv">{info.map(([k, v]) => <React.Fragment key={k}><div>{k}</div><div>{String(v)}</div></React.Fragment>)}</div>}
-      {m.missing && <div className="alert-box warn" style={{ marginTop: 10 }}>Không còn thấy tài sản này ở nguồn đồng bộ — có thể đã bị xoá hoặc di chuyển.</div>}
+      {m.missing && <div className="alert-box warn" style={{ marginTop: 10 }}>This asset is no longer present in the sync source — it may have been deleted or moved.</div>}
     </div>
   );
 }
@@ -86,21 +86,21 @@ export function AssetDrawer({ id, onClose }) {
   const [childId, setChildId] = useState(null);
   const toast = useToast();
   if (childId) return <AssetDrawer id={childId} onClose={() => setChildId(null)} />;
-  if (!a) return <Drawer title="Đang tải..." onClose={onClose} />;
+  if (!a) return <Drawer title="Loading..." onClose={onClose} />;
   const guestKids = a.children.filter((c) => ["vm", "container"].includes(c.type));
   const otherKids = a.children.filter((c) => !["vm", "container"].includes(c.type));
   const remove = async () => {
     if (!(await confirmDelete(a.name))) return;
-    await api.del(`/assets/${a.id}`); toast("Đã xoá"); refresh(); onClose();
+    await api.del(`/assets/${a.id}`); toast("Deleted"); refresh(); onClose();
   };
   return (
     <Drawer wide={guestKids.length > 0} onClose={onClose} title={<><TypeIcon type={a.type} size={18} />{a.name}</>}
-      actions={isAdmin && <><button className="btn sm" onClick={() => setEdit(true)}><Pencil size={14} />Sửa</button><button className="btn sm danger" onClick={remove}><Trash2 size={14} /></button></>}>
+      actions={isAdmin && <><button className="btn sm" onClick={() => setEdit(true)}><Pencil size={14} />Edit</button><button className="btn sm danger" onClick={remove}><Trash2 size={14} /></button></>}>
       <div className="row wrap" style={{ marginBottom: 14 }}>
         <StatusBadge status={a.status} />
         <span className="badge outline">{typeMeta(a.type).label}</span>
-        {a.backup ? <span className="badge ok"><Archive size={12} />Có backup</span> : ["vm", "host", "server", "nas"].includes(a.type) && <span className="badge warn"><Archive size={12} />Chưa backup</span>}
-        {a.source !== "manual" && <span className="badge info">Tự đồng bộ</span>}
+        {a.backup ? <span className="badge ok"><Archive size={12} />Backup available</span> : ["vm", "host", "server", "nas"].includes(a.type) && <span className="badge warn"><Archive size={12} />No backup</span>}
+        {a.source !== "manual" && <span className="badge info">Synced automatically</span>}
       </div>
       {a.path?.length > 0 && (
         <div className="row wrap small muted" style={{ marginBottom: 14, gap: 4 }}>
@@ -111,30 +111,30 @@ export function AssetDrawer({ id, onClose }) {
       <LiveMetrics a={a} />
       <div className="kv" style={{ marginBottom: 18 }}>
         <div>IP</div><div className="mono">{a.ip || "—"}</div>
-        <div>Hãng / Model</div><div>{[a.vendor, a.model].filter(Boolean).join(" ") || "—"}</div>
-        <div>HĐH / firmware</div><div>{a.os || "—"}</div>
+        <div>Vendor / Model</div><div>{[a.vendor, a.model].filter(Boolean).join(" ") || "—"}</div>
+        <div>OS / firmware</div><div>{a.os || "—"}</div>
         {a.serial && <><div>Serial</div><div className="mono">{a.serial}</div></>}
-        {a.owner && <><div>Phụ trách</div><div>{a.owner}</div></>}
-        {a.location && <><div>Vị trí</div><div>{a.location}</div></>}
+        {a.owner && <><div>Owner</div><div>{a.owner}</div></>}
+        {a.location && <><div>Location</div><div>{a.location}</div></>}
         {a.backup_note && <><div>Backup</div><div>{a.backup_note}</div></>}
-        <div>Thấy lần cuối</div><div>{a.last_seen ? timeAgo(a.last_seen) : "—"}</div>
+        <div>Last seen</div><div>{a.last_seen ? timeAgo(a.last_seen) : "—"}</div>
       </div>
       {a.notes && <div className="alert-box info" style={{ marginBottom: 18, whiteSpace: "pre-wrap" }}>{a.notes}</div>}
 
       {a.critical.length > 0 && <>
-        <h4>Hệ thống trọng yếu chạy ở đây</h4>
+        <h4>Critical systems hosted here</h4>
         <div className="chips" style={{ marginBottom: 18 }}>{a.critical.map((c) => <span key={c.id} className="chip"><LevelBadge level={c.level} />{c.name}</span>)}</div>
       </>}
 
-      <div className="row"><h4 className="grow">Giám sát ({a.checks.length})</h4>
-        {isAdmin && <button className="btn sm" onClick={() => newCheck({ asset_id: a.id, site_id: a.site_id, target: a.ip, name: a.name, type: a.type === "firewall" ? "pfsense" : a.type === "host" ? (a.meta?.platform === "proxmox" ? "proxmox" : "esxi") : ["switch", "router", "ap", "ups", "nas"].includes(a.type) ? "snmp" : "ping" })}><Plus size={14} />Thêm check</button>}
+      <div className="row"><h4 className="grow">Monitoring ({a.checks.length})</h4>
+        {isAdmin && <button className="btn sm" onClick={() => newCheck({ asset_id: a.id, site_id: a.site_id, target: a.ip, name: a.name, type: a.type === "firewall" ? "pfsense" : a.type === "host" ? (a.meta?.platform === "proxmox" ? "proxmox" : "esxi") : ["switch", "router", "ap", "ups", "nas"].includes(a.type) ? "snmp" : "ping" })}><Plus size={14} />Add checks</button>}
       </div>
-      {a.checks.length === 0 ? <div className="muted small" style={{ marginBottom: 18 }}>Chưa có check nào. Thêm Ping/SNMP/SSH để tự cập nhật status.</div> : (
+      {a.checks.length === 0 ? <div className="muted small" style={{ marginBottom: 18 }}>No checks configured. Add Ping/SNMP/SSH checks to update the status automatically.</div> : (
         <div className="card" style={{ marginBottom: 18 }}>
           {a.checks.map((c) => (
             <div key={c.id} className="risk-item" onClick={() => openCheck(c.id)}>
               <Dot status={c.status} pulse />
-              <div className="grow"><b>{c.name}</b> <span className="faint small">{c.type}</span><div className="small muted">{c.last_message || "Chưa chạy"}</div></div>
+              <div className="grow"><b>{c.name}</b> <span className="faint small">{c.type}</span><div className="small muted">{c.last_message || "Not running"}</div></div>
               <span className="small faint">{timeAgo(c.last_checked)}</span>
             </div>
           ))}
@@ -144,13 +144,13 @@ export function AssetDrawer({ id, onClose }) {
       {guestKids.length > 0 && <GuestsPanel hostId={a.id} tick={tick} onOpen={setChildId} canEdit={isAdmin} />}
 
       {otherKids.length > 0 && <>
-        <h4>Bên dưới ({otherKids.length})</h4>
+        <h4>Child devices ({otherKids.length})</h4>
         <div className="card" style={{ marginBottom: 18 }}>
           {otherKids.map((c) => (
             <div key={c.id} className="risk-item" onClick={() => setChildId(c.id)}>
               <TypeIcon type={c.type} />
               <div className="grow"><b>{c.name}</b><div className="small muted">{[c.ip, c.os].filter(Boolean).join(" · ")}</div></div>
-              {!c.backup && c.type === "vm" && <span className="badge warn small">chưa backup</span>}
+              {!c.backup && c.type === "vm" && <span className="badge warn small">Never backup</span>}
               <Dot status={c.status} />
             </div>
           ))}
@@ -158,7 +158,7 @@ export function AssetDrawer({ id, onClose }) {
       </>}
 
       {a.events?.length > 0 && <>
-        <div className="row"><h4 className="grow">Log gần đây</h4><button className="btn sm" onClick={() => { onClose(); go(`logs?asset_id=${a.id}`); }}>Xem tất cả</button></div>
+        <div className="row"><h4 className="grow">Recent logs</h4><button className="btn sm" onClick={() => { onClose(); go(`logs?asset_id=${a.id}`); }}>View all</button></div>
         <div className="card" style={{ marginBottom: 18 }}>
           {a.events.map((e) => (
             <div key={e.id} className="risk-item" style={{ cursor: "default" }}>
@@ -170,10 +170,10 @@ export function AssetDrawer({ id, onClose }) {
       </>}
 
       {a.alerts.length > 0 && <>
-        <h4>Cảnh báo gần đây</h4>
+        <h4>Recent alerts</h4>
         {a.alerts.map((al) => (
           <div key={al.id} className="row small" style={{ padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
-            {al.status === "resolved" ? <span className="badge ok">Đã xử lý</span> : <SevBadge sev={al.severity} />}
+            {al.status === "resolved" ? <span className="badge ok">Resolved</span> : <SevBadge sev={al.severity} />}
             <span className="grow">{al.title}</span><span className="faint">{fmtTime(al.opened_at)}</span>
           </div>
         ))}
@@ -205,41 +205,41 @@ export default function Assets() {
     return true;
   }), [all, tab, q, siteF]);
   const types = type.split(",").filter(Boolean);
-  const title = types.length === 1 ? typeMeta(types[0]).label : { "switch,router,ap": "Thiết bị mạng", "host,server": "Host vật lý", "vm,container": "Máy ảo & container" }[type] || (type ? "Thiết bị khác" : "Tất cả tài sản");
+  const title = types.length === 1 ? typeMeta(types[0]).label : { "switch,router,ap": "Network devices", "host,server": "Physical Hosts", "vm,container": "Virtual machines & containers" }[type] || (type ? "Other Devices" : "All assets");
 
   return (
     <>
-      <PageHead crumb={`Hạ tầng › ${title}`} title={title} desc={types.includes("host") ? "Host vật lý và host ảo hoá (ESXi, Proxmox, Hyper-V, Docker). Thêm check ESXi / Proxmox / SSH để máy ảo tự hiện; bấm vào host để xem số lượng, cấp phát và hiệu năng từng máy ảo." : "Danh sách tài sản. Thêm thủ công hoặc để check ESXi / Proxmox / pfSense tự đồng bộ. Bấm vào một dòng để xem chi tiết."}>
-        {isAdmin && <button className="btn primary" onClick={() => setAdding(true)}><Plus size={15} />Thêm tài sản</button>}
+      <PageHead crumb={`Infrastructure › ${title}`} title={title} desc={types.includes("host") ? "Physical hosts and virtualisation hosts (ESXi, Proxmox, Hyper-V, Docker). Add ESXi / Proxmox / SSH checks to discover virtual devices; select a host to view the count, resource allocation and performance for each virtual machine." : "Asset inventory. Add assets manually or let ESXi / Proxmox / pfSense checks sync them automatically. Select a row to view its details."}>
+        {isAdmin && <button className="btn primary" onClick={() => setAdding(true)}><Plus size={15} />Add Asset</button>}
       </PageHead>
       <Tabs value={tab} onChange={setTab} tabs={[
-        { key: "all", label: "Tất cả", count: all.length },
-        { key: "down", label: "Đang lỗi", count: all.filter((a) => a.status === "down").length },
-        { key: "warn", label: "Cảnh báo", count: all.filter((a) => a.status === "warning").length },
-        { key: "nobackup", label: "Chưa backup", count: all.filter((a) => !a.backup && ["vm", "host", "server", "nas"].includes(a.type)).length },
-        { key: "nocheck", label: "Chưa giám sát", count: all.filter((a) => !a.checks.length).length },
+        { key: "all", label: "All", count: all.length },
+        { key: "down", label: "Failing", count: all.filter((a) => a.status === "down").length },
+        { key: "warn", label: "Warning", count: all.filter((a) => a.status === "warning").length },
+        { key: "nobackup", label: "No backup", count: all.filter((a) => !a.backup && ["vm", "host", "server", "nas"].includes(a.type)).length },
+        { key: "nocheck", label: "Not monitored", count: all.filter((a) => !a.checks.length).length },
       ]} />
       <div className="card">
         <div className="toolbar">
-          <div className="search" style={{ width: 300 }}><Search size={16} /><input placeholder="Tìm tên, IP, model..." value={q} onChange={(e) => setQ(e.target.value)} /></div>
-          <div style={{ width: 220 }}><Select value={siteF} onChange={setSiteF} placeholder="Tất cả site" options={(sites.data || []).map((s) => [String(s.id), s.name])} /></div>
-          <span className="muted small" style={{ marginLeft: "auto" }}>{rows.length} mục</span>
+          <div className="search" style={{ width: 300 }}><Search size={16} /><input placeholder="Search name, IP, model..." value={q} onChange={(e) => setQ(e.target.value)} /></div>
+          <div style={{ width: 220 }}><Select value={siteF} onChange={setSiteF} placeholder="All site" options={(sites.data || []).map((s) => [String(s.id), s.name])} /></div>
+          <span className="muted small" style={{ marginLeft: "auto" }}>{rows.length} items</span>
         </div>
-        <Table rows={rows} onRow={(a) => openAsset(a.id)} empty={<Empty title="Không có tài sản nào" />} columns={[
+        <Table rows={rows} onRow={(a) => openAsset(a.id)} empty={<Empty title="No assets found" />} columns={[
           { key: "idx", label: "STT", width: 50, sortable: false, render: (_, i) => <span className="muted">{i + 1}</span> },
-          { key: "name", label: "Tên", render: (a) => <div><div className="cell-title"><TypeIcon type={a.type} />{a.name}{a.critical.length > 0 && <span className="badge fail" style={{ fontSize: 11 }}>★ {a.critical[0].level}</span>}</div><div className="cell-sub">{typeMeta(a.type).label}{a.source !== "manual" ? " · tự đồng bộ" : ""}</div></div> },
+          { key: "name", label: "Name", render: (a) => <div><div className="cell-title"><TypeIcon type={a.type} />{a.name}{a.critical.length > 0 && <span className="badge fail" style={{ fontSize: 11 }}>★ {a.critical[0].level}</span>}</div><div className="cell-sub">{typeMeta(a.type).label}{a.source !== "manual" ? " · Auto-synced" : ""}</div></div> },
           { key: "site_id", label: "Site", sort: (a) => siteName[a.site_id] || "", render: (a) => siteName[a.site_id] || <span className="faint">—</span> },
           { key: "ip", label: "IP", render: (a) => <span className="mono">{a.ip || "—"}</span> },
-          { key: "model", label: "Model / HĐH", render: (a) => <div className="small">{[a.vendor, a.model].filter(Boolean).join(" ")}<div className="muted">{a.os}</div></div> },
-          { key: "parent_id", label: "Chạy trên", sort: (a) => byId[a.parent_id]?.name || a.parent_name || "", render: (a) => a.parent_id ? <span className="small">{byId[a.parent_id]?.name || a.parent_name || `#${a.parent_id}`}</span> : <span className="faint">—</span> },
-          ...(types.some((t) => ["host", "server", "vm"].includes(t)) || !type ? [{ key: "guests", label: "Máy ảo / container", sort: (a) => a.guests?.total || 0,
-            render: (a) => a.guests ? <span className="small"><b>{a.guests.running}</b>/{a.guests.total} <span className="muted">đang chạy</span></span>
+          { key: "model", label: "Model / OS", render: (a) => <div className="small">{[a.vendor, a.model].filter(Boolean).join(" ")}<div className="muted">{a.os}</div></div> },
+          { key: "parent_id", label: "Hosted on", sort: (a) => byId[a.parent_id]?.name || a.parent_name || "", render: (a) => a.parent_id ? <span className="small">{byId[a.parent_id]?.name || a.parent_name || `#${a.parent_id}`}</span> : <span className="faint">—</span> },
+          ...(types.some((t) => ["host", "server", "vm"].includes(t)) || !type ? [{ key: "guests", label: "Virtual machines / containers", sort: (a) => a.guests?.total || 0,
+            render: (a) => a.guests ? <span className="small"><b>{a.guests.running}</b>/{a.guests.total} <span className="muted">running</span></span>
               : ["host", "server"].includes(a.type) && !a.checks.some((c) => ["esxi", "proxmox"].includes(c.type) || (c.type === "ssh"))
-                ? <span className="small faint" title="Thêm check ESXi / Proxmox (hoặc SSH + Hyper-V / Docker) để thấy máy ảo">chưa đọc máy ảo</span>
+                ? <span className="small faint" title="Add ESXi / Proxmox checks (or SSH + Hyper-V / Docker) to discover virtual devices">No virtual devices discovered</span>
                 : <span className="faint">—</span> }] : []),
           { key: "status", label: "Status", render: (a) => <StatusBadge status={a.status} /> },
-          { key: "backup", label: "Backup", render: (a) => a.backup ? <span className="badge ok">Có</span> : ["vm", "host", "server", "nas"].includes(a.type) ? <span className="badge warn">Chưa</span> : <span className="faint">—</span> },
-          { key: "checks", label: "Check", sort: (a) => a.checks.length, render: (a) => a.checks.length ? <span className="row" style={{ gap: 4 }}>{a.checks.map((c) => <Dot key={c.id} status={c.status} />)}</span> : <span className="faint small">chưa canh</span> },
+          { key: "backup", label: "Backup", render: (a) => a.backup ? <span className="badge ok">Yes</span> : ["vm", "host", "server", "nas"].includes(a.type) ? <span className="badge warn">No</span> : <span className="faint">—</span> },
+          { key: "checks", label: "Check", sort: (a) => a.checks.length, render: (a) => a.checks.length ? <span className="row" style={{ gap: 4 }}>{a.checks.map((c) => <Dot key={c.id} status={c.status} />)}</span> : <span className="faint small">Never canh</span> },
         ]} />
       </div>
       {adding && <AssetForm preset={types.length === 1 ? { type: types[0] } : {}} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); reload(); }} />}

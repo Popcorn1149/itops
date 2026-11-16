@@ -58,6 +58,31 @@
       "serverReadyAction": { "pattern": "Uvicorn running on https?://\\S+:(\\d+)", "uriFormat": "http://127.0.0.1:%s", "action": "openExternally" }
     },
     {
+      "name": "▶ Song song với v1 (không nhận log 514/162, không gửi cảnh báo)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--host", "0.0.0.0", "--port", "8100"],
+      "cwd": "${workspaceFolder}/backend",
+      "envFile": "${workspaceFolder}/.env.local",
+      "python": "${workspaceFolder}/backend/.venv/Scripts/python.exe",
+      "env": {
+        "DATA_DIR": "${workspaceFolder}/backend/data-v2-local",
+        "PG_LOCAL": "1",
+        "PG_LOCAL_PORT": "5434",
+        "DEMO_DATA": "false",
+        "ADMIN_USER": "admin",
+        "APP_NAME": "IT Ops Workspace v2 (song song v1)",
+        "DISABLE_RECEIVERS": "1",
+        "DISABLE_FLOW": "1",
+        "DISABLE_NOTIFY": "1",
+        "PYTHONUTF8": "1"
+      },
+      "justMyCode": true,
+      "console": "integratedTerminal",
+      "serverReadyAction": { "pattern": "Uvicorn running on https?://\\S+:(\\d+)", "uriFormat": "http://127.0.0.1:%s", "action": "openExternally" }
+    },
+    {
       "name": "▶ Chạy IT Ops (HTTPS, dữ liệu mẫu)",
       // Cần chạy task "8. Tạo chứng chỉ HTTPS (tự ký)" một lần trước. Trình duyệt sẽ cảnh báo chứng chỉ tự ký → Advanced → Proceed.
       "type": "debugpy",

@@ -23,7 +23,7 @@ async function req(method, path, body, opts = {}) {
     });
   } catch {
     // "Failed to fetch": server không chạy / đã dừng / lỗi khi khởi động
-    throw new Error("Không kết nối được máy chủ IT Ops. Kiểm tra app còn chạy không (VS Code → cửa sổ Terminal / Debug Console xem lỗi khởi động), rồi tải lại trang.");
+    throw new Error("Cannot reach the IT Ops server. Check that the app is still running (VS Code → Terminal / Debug Console shows start-up errors), then reload the page.");
   }
   const text = await res.text();
   let data;
@@ -40,7 +40,7 @@ async function req(method, path, body, opts = {}) {
     window.dispatchEvent(new Event("itops:need2fa"));
   }
   if (!res.ok) {
-    const msg = detail ? (typeof detail === "string" ? detail : detail.msg || JSON.stringify(detail)) : `Lỗi ${res.status}`;
+    const msg = detail ? (typeof detail === "string" ? detail : detail.msg || JSON.stringify(detail)) : `Error ${res.status}`;
     const e = new Error(msg);
     e.status = res.status;
     e.detail = detail;

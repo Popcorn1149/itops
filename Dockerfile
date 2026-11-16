@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # ---------- build giao diện ----------
 FROM node:22-alpine AS web
 WORKDIR /web
@@ -12,6 +13,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DATA_DIR=/data STATIC_DIR=/app/
 RUN apt-get update && apt-get install -y --no-install-recommends iputils-ping tzdata ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
+# GoFlow2 (NetFlow / IPFIX / sFlow collector, BSD-3) for "Network traffic" – IT Ops starts it itself when enabled.
+# Pinned version + SHA-256 of the official release file (checked by Docker at build time).
+ADD --chmod=755 --checksum=sha256:63d3bb6c4e458f56ae3268eac74979da1fee0cea5342362295e7d587784af14b \
+    https://github.com/netsampler/goflow2/releases/download/v2.2.7/goflow2-2.2.7-linux-amd64 /usr/local/bin/goflow2
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/app ./app

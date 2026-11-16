@@ -3,14 +3,15 @@
 
   GPO: Computer Configuration → Policies → Windows Settings → Scripts → Startup → PowerShell Scripts
        Script: \\FILESERVER\itops$\install-windows.ps1
-       Tham số: -Server https://itops.cty.local:8443 -Token itk_xxx -CaPin <sha256> -Source \\FILESERVER\itops$\itops-agent-windows-amd64.exe
+       Tham số: -Server https://itops.cty.local:8443 [-Site HCMC] [-CaPin <sha256>] -Source \\FILESERVER\itops$\itops-agent-windows-amd64.exe
 
   Thư mục chia sẻ \\FILESERVER\itops$: Domain Computers chỉ ĐỌC, chỉ admin được ghi (ai ghi được file .exe ở đây = chạy code
   bằng SYSTEM trên mọi máy). Script kiểm SHA-256 với SHA256SUMS.txt cùng thư mục trước khi cài.
 #>
 param(
   [Parameter(Mandatory = $true)][string]$Server,
-  [Parameter(Mandatory = $true)][string]$Token,
+  [string]$Site = "",
+  [string]$Tags = "",
   [string]$CaPin = "",
   [string]$UpdatePubKey = "",
   [string]$Source = "$PSScriptRoot\itops-agent-windows-amd64.exe",
@@ -42,7 +43,9 @@ try {
 
   $tmp = Join-Path $env:WINDIR "Temp\itops-agent-setup.exe"
   Copy-Item $Source $tmp -Force
-  $agentArgs = @("install", "--server", $Server, "--token", $Token)
+  $agentArgs = @("install", "--server", $Server)
+  if ($Site) { $agentArgs += @("--site", $Site) }
+  if ($Tags) { $agentArgs += @("--tags", $Tags) }
   if ($CaPin) { $agentArgs += @("--ca-pin", $CaPin) }
   if ($UpdatePubKey) { $agentArgs += @("--update-pubkey", $UpdatePubKey) }
   if ($AllowHttp) { $agentArgs += "--allow-http" }

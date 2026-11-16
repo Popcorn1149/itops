@@ -1,0 +1,51 @@
+{
+  "DocumentTitle": {"Value": "October 2026 Security Updates"},
+  "ProductTree": {
+    "Branch": [],
+    "FullProductName": [
+      {"ProductID": "11568", "Value": "Windows 10 Version 1809 for x64-based Systems"},
+      {"ProductID": "11929", "Value": "Windows 10 Version 22H2 for x64-based Systems"},
+      {"ProductID": "11930", "Value": "Windows 10 Version 22H2 for 32-bit Systems"},
+      {"ProductID": "12243", "Value": "Windows 11 Version 23H2 for x64-based Systems"},
+      {"ProductID": "12244", "Value": "Windows 11 Version 23H2 for ARM64-based Systems"},
+      {"ProductID": "11923", "Value": "Windows Server 2022"},
+      {"ProductID": "11924", "Value": "Windows Server 2022 (Server Core installation)"},
+      {"ProductID": "11572", "Value": "Windows Server 2019"},
+      {"ProductID": "11762", "Value": "Microsoft Office LTSC 2021 for 64-bit editions"}
+    ]
+  },
+  "Vulnerability": [
+    {
+      "Title": {"Value": "Windows TCP/IP Remote Code Execution Vulnerability"},
+      "CVE": "CVE-2026-90001",
+      "Notes": [{"Title": "Description", "Type": 2, "Value": "<p>Remote code execution in TCP/IP.</p>"}],
+      "Threats": [
+        {"Description": {"Value": "Important"}, "ProductID": ["11929"], "Type": 3},
+        {"Description": {"Value": "Publicly Disclosed:No;Exploited:Yes;Latest Software Release:Exploitation Detected"}, "ProductID": [], "Type": 1}
+      ],
+      "Remediations": [
+        {"Description": {"Value": "5048888"}, "URL": "https://catalog.update.microsoft.com/v7/site/Search.aspx?q=KB5048888",
+         "Supercedence": "5047777", "ProductID": ["11929", "11930"], "Type": 2, "SubType": "Security Update",
+         "RestartRequired": {"Value": "Yes"}, "FixedBuild": "10.0.19045.5011"},
+        {"Description": {"Value": "5048899"}, "URL": "https://catalog.update.microsoft.com/v7/site/Search.aspx?q=KB5048899",
+         "ProductID": ["12243", "12244"], "Type": 2, "SubType": "Security Update", "RestartRequired": {"Value": "Yes"},
+         "FixedBuild": "10.0.22631.4317"},
+        {"Description": {"Value": "5048800"}, "URL": "https://catalog.update.microsoft.com/v7/site/Search.aspx?q=KB5048800",
+         "ProductID": ["11923", "11924"], "Type": 2, "SubType": "Security Update", "RestartRequired": {"Value": "Yes"},
+         "FixedBuild": "10.0.20348.2762"},
+        {"Description": {"Value": "<p>Disable IPv6 on the affected interface: <b>netsh int ipv6 set state disabled</b></p>"},
+         "URL": "", "ProductID": ["11929", "12243", "11923"], "Type": 0}
+      ]
+    },
+    {
+      "Title": {"Value": "Microsoft Office Remote Code Execution Vulnerability"},
+      "CVE": "CVE-2026-90002",
+      "Threats": [{"Description": {"Value": "Publicly Disclosed:No;Exploited:No;Latest Software Release:Exploitation Less Likely"}, "Type": 1}],
+      "Remediations": [
+        {"Description": {"Value": "Click to Run"}, "URL": "https://aka.ms/OfficeSecurityReleases", "ProductID": ["11762"],
+         "Type": 2, "SubType": "Security Update", "RestartRequired": {"Value": "No"}, "FixedBuild": "16.0.14332.20800"}
+      ]
+    },
+    {"Title": {"Value": "Not wanted"}, "CVE": "CVE-2026-90009", "Remediations": []}
+  ]
+}

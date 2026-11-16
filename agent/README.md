@@ -22,9 +22,9 @@ The raw data is built in exactly the format each OS produces:
 
 That data then goes through **the same parsing functions and the same send path** as the real agent: registration, on-disk queue, HTTPS/`ca_pin`.
 ```
-itops-agent-windows-amd64.exe simulate --server http://127.0.0.1:8100 --allow-http --token itk_xxx --windows 3 --macos 2
+itops-agent-windows-amd64.exe simulate --server http://127.0.0.1:8100 --allow-http --windows 3 --macos 2
 ```
-The token needs at least 5 uses. Machine names: SIM-SRV01, SIM-WIN02, SIM-WIN03, SIM-MAC01…
+Machine names: SIM-SRV01, SIM-WIN02, SIM-WIN03, SIM-MAC01…
 
 Built-in scenarios:
 - RDP password guessing against SIM-SRV01, followed by an account lockout;
@@ -41,26 +41,31 @@ VS Code: task **17**.
 
 ### Already verified on Wine (Windows 10 emulation on Linux, running the actual `itops-agent-windows-amd64.exe`)
 - `install`: copies into Program Files, registers, creates the `ITOpsAgent` service and **runs as a service**. `net stop`/`net start` and `uninstall --purge` work.
-- Reinstalling with a **wrong token** on a working machine keeps the old configuration, and the machine keeps running.
+- Re-running `install --re-enroll` against a server that refuses keeps the old configuration, and the machine keeps running.
 - Reads Windows version, CPU, RAM, drives, logged-in user, the 17 services, and software from the registry (64-bit, 32-bit, per user; Windows updates and hidden components filtered out).
 - **Self-update** while running as a service: 1.0.0 → 1.0.1. The service manager restarts the new version, and the server sees 1.0.1.
 - Bugs found and fixed on Wine:
   - service creation failed on systems without delayed start;
   - the agent didn't recognise it was running as a service;
-  - a wrong token wiped the key of a working machine;
+  - a failed re-enrolment wiped the key of a working machine;
   - CPU sampling could loop forever.
 - **Not tested on Wine:** the Event Log (Wine doesn't implement `EvtQuery`) and Defender/BitLocker (Wine has no PowerShell). These two parts get their first real run on a real Windows machine.
 
 ## Install
 
-Every file is at **Máy trạm → Cài đặt agent** (download, SHA-256 hash, and ready-made commands with the token and `ca_pin` filled in).
+Every file is at **Endpoints → Install agent** (download, SHA-256 hash, and ready-made commands with `ca_pin` filled in).
 
-1. Create a **registration token** (Máy trạm → Cài đặt agent → Tạo token). The token is shown once. It is only used to register: each machine then gets its own key, so an expired token does not affect machines that are already installed.
-2. Install:
+Enrollment is **open**, like Wazuh: the install command only needs the server address — no registration token.
+On enrollment each machine receives its own key. A machine that matches an existing one (same hostname + machine ID/serial)
+waits under **Endpoints → Pending approvals** until IT approves it; the server also limits how many NEW machines one IP can
+register per 10 minutes (`AGENT_ENROLL_NEW_PER_IP`, default 60). Optional: `--site "<site name>"` assigns the machine to an
+existing site, `--tags a,b` adds tags, `--re-enroll` re-registers an installed machine (e.g. after the server moved).
+
+Install:
 
 **Windows, single machine** (PowerShell *Run as administrator*):
 ```
-.\itops-agent-windows-amd64.exe install --server https://itops.cty.local:8443 --token itk_xxx --ca-pin <sha256>
+.\itops-agent-windows-amd64.exe install --server https://itops.cty.local:8443 --ca-pin <sha256> [--site "HCMC"]
 ```
 
 **Windows, 50–200 machines via GPO:**
@@ -68,16 +73,23 @@ Every file is at **Máy trạm → Cài đặt agent** (download, SHA-256 hash, 
 2. Copy into it: `itops-agent-windows-amd64.exe`, `install-windows.ps1`, `SHA256SUMS.txt`.
 3. GPO → Computer Configuration → Policies → Windows Settings → Scripts → **Startup** → PowerShell Scripts:
    - Script: `\\FILESERVER\itops$\install-windows.ps1`
-   - Parameters: `-Server https://itops.cty.local:8443 -Token itk_xxx -CaPin <sha256> -Source \\FILESERVER\itops$\itops-agent-windows-amd64.exe`
+   - Parameters: `-Server https://itops.cty.local:8443 -CaPin <sha256> [-Site "HCMC"] -Source \\FILESERVER\itops$\itops-agent-windows-amd64.exe`
 4. The script runs at every boot:
    - Already installed at the right version → it skips.
    - New version on the share → it upgrades.
    - It checks the SHA-256 before installing.
    - Log: `C:\Windows\Temp\itops-agent-install.log`.
 
-**Linux:** `sudo ./install-linux.sh https://itops.cty.local:8443 itk_xxx <ca_pin>`
+**Linux:** `sudo ./install-linux.sh https://itops.cty.local:8443 <ca_pin> [SITE]`
 
-**macOS:** `sudo ./install-macos.sh https://itops.cty.local:8443 itk_xxx <ca_pin>`. The file is not signed (no Apple Developer ID), so copy it by USB/scp. If you download it through a browser, Gatekeeper blocks it.
+**macOS:** `sudo ./install-macos.sh https://itops.cty.local:8443 <ca_pin> [SITE]`. The file is not signed (no Apple Developer ID), so copy it by USB/scp. If you download it through a browser, Gatekeeper blocks it.
+
+### Reinstalling on a machine that is already listed (IT approval, server ≥ 2.8.0)
+If a *new* installation (new `uid` – e.g. after `uninstall --purge` or reinstalling Windows) matches an existing endpoint
+(same hostname + machine ID or serial), the server answers **429 + `pending`** instead of a key. The installer prints
+`CHỜ DUYỆT …` and the service asks again every 5 minutes; once IT approves under *Endpoints → Pending approvals* the agent
+starts on its own (no reinstall). If IT rejects, the agent gets 403 and stops. The current agent keeps working meanwhile.
+Agents older than 1.0.4 also work: they treat the 429 as "server busy" and retry (with longer back-off, up to 30 min).
 
 ### HTTPS and `ca_pin` (with or without AD CS)
 - **AD CS available:** issue the server a certificate from the internal CA. Machines in the domain trust it automatically, so `--ca-pin` is not needed.

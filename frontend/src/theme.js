@@ -1,4 +1,4 @@
-// Giao diện Sáng / Tối / Theo hệ thống + ghim thanh bên trái. Lưu lựa chọn trên trình duyệt (chỉ là tuỳ chọn hiển thị).
+// Appearance: Light / Dark / System, with a pinnable sidebar. Preferences are saved in this browser.
 import { useSyncExternalStore } from "react";
 
 const KEY_THEME = "itops_theme";            // "light" | "dark" | "system"
@@ -7,7 +7,7 @@ const listeners = new Set();
 const mql = typeof window !== "undefined" && window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
 
 function load(key, def) { try { return localStorage.getItem(key) ?? def; } catch { return def; } }
-function save(key, v) { try { localStorage.setItem(key, v); } catch { /* trình duyệt chặn lưu → chỉ có tác dụng trong phiên */ } }
+function save(key, v) { try { localStorage.setItem(key, v); } catch { /* browser storage is blocked; this applies to the current session only */ } }
 
 let state = { pref: load(KEY_THEME, "system"), pinned: load(KEY_PIN, "1") !== "0" };
 const resolve = (pref) => (pref === "dark" || (pref === "system" && mql && mql.matches) ? "dark" : "light");
@@ -16,7 +16,7 @@ state.theme = resolve(state.pref);
 function apply() {
   const el = document.documentElement;
   el.dataset.theme = state.theme;
-  el.style.colorScheme = state.theme;          // thanh cuộn, ô chọn, lịch… của trình duyệt cũng đổi theo
+  el.style.colorScheme = state.theme;          // the browser scrollbar, form controls, and date picker follow the selected theme
 }
 function emit(next) { state = { ...state, ...next }; state.theme = resolve(state.pref); apply(); listeners.forEach((l) => l()); }
 
@@ -31,7 +31,7 @@ export function useUi() {
   return useSyncExternalStore(subscribe, () => state);
 }
 
-// Màu cho biểu đồ ECharts (không đọc được biến CSS) – lấy từ biến CSS của giao diện hiện tại
+// ECharts chart colors (CSS variables are not directly readable) — read from the current theme variables
 export function chartColors() {
   const cs = getComputedStyle(document.documentElement);
   const v = (n) => cs.getPropertyValue(n).trim();

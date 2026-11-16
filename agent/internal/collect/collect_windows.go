@@ -82,8 +82,30 @@ func memStatus() (memStatusEx, bool) {
 	return m, r != 0
 }
 
-func consoleUser() string {
-	sid := windows.WTSGetActiveConsoleSessionId()
+// sessionUser: người dùng đang đăng nhập + nguồn. Ưu tiên phiên console (ngồi trước máy); không có thì lấy
+// phiên Remote Desktop đang hoạt động đầu tiên (máy chủ, máy làm việc từ xa).
+func sessionUser() (string, string) {
+	if u := sessUser(windows.WTSGetActiveConsoleSessionId()); u != "" {
+		return u, "console"
+	}
+	var list *windows.WTS_SESSION_INFO
+	var n uint32
+	if windows.WTSEnumerateSessions(0, 0, 1, &list, &n) != nil || list == nil {
+		return "", ""
+	}
+	defer windows.WTSFreeMemory(uintptr(unsafe.Pointer(list)))
+	for _, s := range unsafe.Slice(list, n) {
+		if s.State != windows.WTSActive || s.SessionID == 0 {
+			continue
+		}
+		if u := sessUser(s.SessionID); u != "" {
+			return u, "rdp"
+		}
+	}
+	return "", ""
+}
+
+func sessUser(sid uint32) string {
 	if sid == 0xFFFFFFFF {
 		return ""
 	}
@@ -127,7 +149,9 @@ func (w *win) System() protocol.SystemInfo {
 		Manufacturer: regStr(registry.LOCAL_MACHINE, `HARDWARE\DESCRIPTION\System\BIOS`, "SystemManufacturer"),
 		Model:        regStr(registry.LOCAL_MACHINE, `HARDWARE\DESCRIPTION\System\BIOS`, "SystemProductName"),
 		CPUModel:     regStr(registry.LOCAL_MACHINE, `HARDWARE\DESCRIPTION\System\CentralProcessor\0`, "ProcessorNameString"),
-		CPUCores:     runtime.NumCPU(), IPs: LocalIPs(), LoggedUser: consoleUser()}
+		CPUCores:     runtime.NumCPU(), IPs: LocalIPs(), MACs: LocalMACs(),
+		MachineID: strings.Trim(regStr(registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\Cryptography`, "MachineGuid"), "{}")}
+	s.LoggedUser, s.UserSource = sessionUser()
 	buf := make([]uint16, 256)
 	n := uint32(len(buf))
 	if windows.GetComputerNameEx(windows.ComputerNameDnsDomain, &buf[0], &n) == nil {
@@ -145,7 +169,25 @@ func (w *win) System() protocol.SystemInfo {
 		s.Serial = v
 	}
 	w.mu.Unlock()
+	if s.Serial == "" {
+		s.Serial = biosSerial() // lúc đăng ký PowerShell chưa chạy → đọc riêng serial (một lần) để nhận ra máy cài lại Windows
+	}
 	return s
+}
+
+var (
+	serialOnce sync.Once
+	serialVal  string
+)
+
+func biosSerial() string {
+	serialOnce.Do(func() {
+		out, err := run(30*time.Second, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "(Get-CimInstance Win32_BIOS).SerialNumber")
+		if err == nil {
+			serialVal = strings.TrimSpace(string(out))
+		}
+	})
+	return serialVal
 }
 
 // ---------------------------------------------------------------- hiệu năng

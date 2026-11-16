@@ -1,8 +1,7 @@
-"""Máy trạm MẪU cho DỮ LIỆU MẪU (DEMO_DATA=true) – xem trang Máy trạm khi chưa cài agent thật.
+"""Sample workstations for DEMO DATA (DEMO_DATA=true) – view the Workstations page before installing real agents.
 
-Dữ liệu đi qua ĐÚNG đường xử lý của agent thật (agents.process_report): lọc, dịch tiếng Việt, gộp, cảnh báo.
-Máy mẫu có uid bắt đầu bằng "demo-". Tắt bằng DEMO_AGENTS=0.
-"""
+Data follows the EXACT processing path used by real agents (agents.process_report): filtering, localization, grouping, and alerting.
+Sample machines have UIDs beginning with "demo-". Disable with DEMO_AGENTS=0."""
 import asyncio
 import logging
 import os
@@ -15,16 +14,16 @@ from .db import SessionLocal
 
 log = logging.getLogger("itops.demo_agents")
 
-# (tên, hệ điều hành, loại, người dùng, IP, model, RAM GB, CPU nền, RAM nền, ổ C %)
+# (tên, hệ điều hành, loại, người dùng, IP, model, RAM GB, CPU nền, RAM nền, disk C %)
 MACHINES = [
     ("PC-KT01", "windows", "client", "CTY\\lan.nt", "10.10.5.21", "Dell OptiPlex 7010", 16, 8, 55, 71),
     ("PC-KT02", "windows", "client", "CTY\\hung.pv", "10.10.5.22", "Dell OptiPlex 7010", 16, 6, 48, 64),
-    ("PC-NS01", "windows", "client", "CTY\\thu.tt", "10.10.5.31", "HP ProDesk 400 G9", 8, 12, 78, 93),     # ổ gần đầy
+    ("PC-NS01", "windows", "client", "CTY\\thu.tt", "10.10.5.31", "HP ProDesk 400 G9", 8, 12, 78, 93),     # disk gần đầy
     ("PC-KD03", "windows", "client", "CTY\\minh.lq", "10.10.6.13", "Lenovo ThinkCentre M70q", 16, 15, 61, 58),
     ("PC-KD04", "windows", "client", "", "10.10.6.14", "Lenovo ThinkCentre M70q", 16, 3, 35, 47),
     ("LT-GD01", "windows", "client", "CTY\\giamdoc", "10.10.7.10", "Lenovo ThinkPad X1 Carbon Gen 12", 32, 10, 52, 66),
     ("LT-IT02", "windows", "client", "CTY\\it.admin", "10.10.9.12", "Dell Latitude 5440", 16, 18, 67, 54),
-    ("PC-LA", "windows", "client", "CTY\\tam.dh", "10.10.9.99", "HP EliteDesk 800 G6", 8, 22, 81, 77),    # máy bị dùng dò mật khẩu
+    ("PC-LA", "windows", "client", "CTY\\tam.dh", "10.10.9.99", "HP EliteDesk 800 G6", 8, 22, 81, 77),    # machines bị dùng password spraying
     ("SRV-FILE01", "windows", "server", "", "10.10.1.20", "VMware Virtual Platform", 16, 14, 62, 82),
     ("SRV-DC01", "windows", "server", "", "10.10.1.10", "VMware Virtual Platform", 8, 9, 58, 46),
     ("srv-web01", "linux", "server", "", "10.10.1.40", "VMware Virtual Platform", 8, 20, 71, 62),
@@ -77,10 +76,10 @@ def _ev(name, eid, data, minutes_ago, channel="Security", provider="Microsoft-Wi
 
 
 def _events(name):
-    """Sự cố mẫu theo từng máy – đúng tên trường của Windows thật."""
+    """Sự cố mẫu theo fromng machines – đúng tên trường of Windows thật."""
     out = []
     if name == "SRV-DC01":
-        # 14 lần đăng nhập RDP sai từ PC-LA trong vài phút → "Nghi dò mật khẩu"; sau đó tài khoản bị khoá
+        # 14 lần sign-in RDP sai from PC-LA trong andi minutes → "Nghi password spraying"; sau đó account bị khoá
         for i, u in enumerate(["administrator"] * 6 + ["admin", "ketoan", "lan.nt", "lan.nt", "lan.nt", "backup", "sa", "test"]):
             out.append(_ev(name, 4625, {"TargetUserName": u, "TargetDomainName": "CTY", "IpAddress": "10.10.9.99", "WorkstationName": "PC-LA",
                                         "LogonType": "10", "Status": "0xc000006d", "SubStatus": "0xc000006a" if u != "admin" else "0xc0000064"},
@@ -99,7 +98,7 @@ def _events(name):
                                     "Path": "file:_C:\\Users\\minh.lq\\Downloads\\HoaDon_T11.pdf.exe", "Detection User": "CTY\\minh.lq",
                                     "Process Name": "C:\\Windows\\explorer.exe"}, 95,
                        channel="Microsoft-Windows-Windows Defender/Operational", provider="Microsoft-Windows-Windows Defender", rec=7001))
-        out.append(_ev(name, 1117, {"Threat Name": "Trojan:Win32/Wacatac.B!ml", "Action Name": "Cách ly (Quarantine)", "Detection User": "CTY\\minh.lq",
+        out.append(_ev(name, 1117, {"Threat Name": "Trojan:Win32/Wacatac.B!ml", "Action Name": "Quarantined", "Detection User": "CTY\\minh.lq",
                                     "Path": "file:_C:\\Users\\minh.lq\\Downloads\\HoaDon_T11.pdf.exe"}, 94,
                        channel="Microsoft-Windows-Windows Defender/Operational", provider="Microsoft-Windows-Windows Defender", rec=7002))
     if name == "PC-NS01":
@@ -148,18 +147,18 @@ def seed():
         db.commit()
     for m in MACHINES:
         _report(m, first=True)
-    # lịch sử hiệu năng 24 giờ (5 phút / điểm) để biểu đồ có dữ liệu ngay
+    # lịch sử performance 24 hours (5 minutes / điểm) để biểu đồ có dữ liệu ngay
     with SessionLocal() as db:
         now = ag.utcnow()
         for m in MACHINES:
             a = db.query(models.Agent).filter_by(uid=f"demo-{m[0].lower()}").one()
             for i in range(288, 0, -1):
                 t = now - timedelta(minutes=5 * i)
-                work = 1.0 if 1 <= (t.hour + 7) % 24 - 8 <= 9 else 0.35         # giờ làm việc (UTC+7) bận hơn
+                work = 1.0 if 1 <= (t.hour + 7) % 24 - 8 <= 9 else 0.35         # hours làm việc (UTC+7) bận hơn
                 db.add(models.AgentMetric(agent_id=a.id, ts=t, cpu=round(min(99, m[7] * work * random.uniform(0.5, 1.6) + random.uniform(0, 4)), 1),
                                           mem=round(min(99, m[8] * (0.8 + 0.2 * work) + random.uniform(-3, 3)), 1), disk=m[9]))
         db.commit()
-    log.warning("Đã tạo %d máy trạm mẫu (DEMO_AGENTS=0 để tắt)", len(MACHINES))
+    log.warning("Created %d demo endpoints (set DEMO_AGENTS=0 to disable)", len(MACHINES))
 
 
 def _report(m, first=False):
@@ -194,7 +193,7 @@ def _report(m, first=False):
 
 
 async def live_loop():
-    """Máy mẫu "gửi" hiệu năng mỗi phút để luôn hiện đang kết nối; PC-KD04 coi như đã tắt máy."""
+    """Máy mẫu "gửi" performance every minutes để luôn hiện đang kết nối; PC-KD04 coi như đã disabled machines."""
     while True:
         await asyncio.sleep(60)
         try:
@@ -202,4 +201,4 @@ async def live_loop():
                 if m[0] != "PC-KD04":
                     await asyncio.to_thread(_report, m)
         except Exception:
-            log.exception("máy trạm mẫu lỗi")
+            log.exception("demo endpoint generator failed")

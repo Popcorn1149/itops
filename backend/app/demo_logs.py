@@ -1,12 +1,11 @@
-"""Log thiết bị "như thật" cho DỮ LIỆU MẪU (DEMO_DATA=true) – để test tính năng mà không cần thiết bị.
+"""Realistic device logs for DEMO DATA (DEMO_DATA=true) – test features without physical devices.
 
-* seed_history(): một lần khi tạo dữ liệu mẫu – dựng 24 giờ log/trap đã qua (có sự cố đã tự đóng và còn mở).
-* live_loop():   khi app chạy – log thường vài giây/lần, cứ vài phút một sự cố rồi tự phục hồi.
+* seed_history(): once when creating sample data – generates 24 hours of past logs/traps (including incidents that auto-resolved and those still open).
+* live_loop(): while the app runs – emits normal logs every few seconds, creates an incident every few minutes, then recovers automatically.
 
-Mọi log đi qua ĐÚNG đường xử lý của log thật (syslog_parser → quy tắc → mở/đóng cảnh báo → thông báo),
-chỉ khác: lịch sử được gắn sẵn mốc thời gian (_at). Chỉ chạy khi DEMO_DATA=true; tắt bằng DEMO_LOGS=0.
-Thiết bị lấy theo tên trong dữ liệu mẫu (seed.py); không có trong CSDL thì bỏ qua.
-"""
+All logs follow the EXACT processing path used by real logs (syslog_parser → rules → open/close alerts → notifications),
+with only the timestamps pre-seeded (_at). Runs only when DEMO_DATA=true; disable with DEMO_LOGS=0.
+Devices are selected by name from the sample data (seed.py); missing database records are skipped."""
 import asyncio
 import logging
 import os
@@ -21,7 +20,7 @@ _TZ = timezone(timedelta(hours=float(os.environ.get("APP_TZ_OFFSET", "7"))))
 ATTACKERS = ["185.220.101.47", "45.155.205.233", "193.32.162.71", "92.63.197.153"]
 USERS_TRIED = ["admin", "root", "administrator", "test", "support", "ubnt", "guest", "oracle"]
 STAFF = ["ketoan01", "ketoan02", "sale.lan", "sale.minh", "hr.thu", "it.hung", "nv.tam", "giamdoc"]
-STATIC_IPS = ["10.0.20.31", "10.0.20.10"]          # ERP-DB, DC01 – IP tĩnh quan trọng cho UC-10 (IP đổi MAC)
+STATIC_IPS = ["10.0.20.31", "10.0.20.10"]          # ERP-DB, DC01 – IP tĩnh quan trọng cho UC-10 (IP-to-MAC change)
 MACS = ["3c:22:fb:1a:90:4e", "a4:83:e7:52:10:bb", "f0:18:98:6e:21:0c", "dc:a6:32:11:9f:7a", "9c:b6:d0:0e:44:12"]
 
 
@@ -40,7 +39,7 @@ def _line(at, pri, host, app, msg):
 
 
 class Devices:
-    """Tra IP/tên thiết bị mẫu theo tên (đọc từ CSDL)."""
+    """Tra IP/tên devices mẫu theo tên (đọc from CSDL)."""
 
     def __init__(self):
         with SessionLocal() as db:
@@ -79,9 +78,9 @@ def _trap(dev, at, name, oid, varbinds):
     return ev
 
 
-# ---------------------------------------------------------------- log thường ngày
+# ---------------------------------------------------------------- log thường days
 def noise(dev, at, rnd=random):
-    """Một log "bình thường" ngẫu nhiên của một thiết bị mẫu."""
+    """Một log "normally" ngẫu nhiên of một devices mẫu."""
     u, mac = rnd.choice(STAFF), rnd.choice(MACS)
     lan = f"10.0.{rnd.choice([30, 31, 32])}.{rnd.randint(20, 220)}"
     k = rnd.randrange(22)
@@ -142,7 +141,7 @@ def incidents(rnd=random):
     wan = rnd.choice(["WAN_FPT", "WAN_VIETTEL"])
     att = rnd.choice(ATTACKERS)
     vol = rnd.choice(["DS-SSD01", "DS-SAS02"])
-    lan_ip, mac1, mac2 = rnd.choice(STATIC_IPS), "00:50:56:9a:3c:" + f"{rnd.randint(16, 255):02x}", rnd.choice(MACS)   # IP tĩnh bị máy lạ nhận
+    lan_ip, mac1, mac2 = rnd.choice(STATIC_IPS), "00:50:56:9a:3c:" + f"{rnd.randint(16, 255):02x}", rnd.choice(MACS)   # IP tĩnh bị machines lạ nhận
     p_core = rnd.randint(1, 24)
     return {
         "port_flap": [
@@ -180,13 +179,13 @@ def incidents(rnd=random):
     }
 
 
-# Sự cố kèm theo trong lịch sử 24h: (giờ trước "bây giờ", tên, có phục hồi không)
+# Sự cố kèm theo trong lịch sử 24h: (hours trước "bây hours", tên, có phục hồi không)
 HISTORY_PLAN = [
     (22.6, "wan_down", True), (19.3, "port_flap", True), (17.8, "ups_battery", True), (15.1, "brute_force", True),
     (13.4, "core_link_trap", True), (11.2, "datastore_apd", True), (9.7, "port_flap", True), (8.2, "ap_reboot", True),
     (6.5, "arp_moved", True), (4.9, "wan_down", True), (3.1, "port_flap", False), (0.25, "brute_force", True),
 ]
-# sự cố riêng (không phục hồi) để luôn có cảnh báo đang mở đúng kiểu thực tế
+# sự cố riêng (không phục hồi) để luôn có alerts đang mở đúng kiểu thực tế
 OPEN_ISSUES = [
     (6.0, lambda d, t: _syslog(d, t, "NAS-HN", 10, "System", "Storage Pool 1 has degraded. Please repair it as soon as possible.")),
     (6.0, lambda d, t: _syslog(d, t, "NAS-HN", 12, "kernel", "md2: Disk 3 [sdc] has been marked as failing (bad sectors: 128)")),
@@ -199,21 +198,21 @@ OPEN_ISSUES = [
 def _expand_incident(name, start, rnd, resolve=True):
     steps = incidents(rnd)[name]
     if not resolve:
-        steps = [s for s in steps if s[0] < 60] or steps[:1]   # chỉ phần "đang lỗi"
+        steps = [s for s in steps if s[0] < 60] or steps[:1]   # chỉ phần "đang error"
     return [(start + timedelta(seconds=sec), fn) for sec, fn in steps]
 
 
 def _demo_rule_setup():
-    """Dữ liệu mẫu: bật rule UC-10 với danh sách IP tĩnh quan trọng (mặc định rule này tắt, cần admin khai IP)."""
+    """Demo data: enabled rule UC-10 với danh sách IP tĩnh quan trọng (mặc định rule này disabled, cần admin khai IP)."""
     with SessionLocal() as db:
-        r = db.query(models.EventRule).filter(models.EventRule.name.like("IP đổi MAC%")).first()
+        r = db.query(models.EventRule).filter(models.EventRule.name.like("IP-to-MAC address change%")).first()
         if r and not r.key_filter:
             r.enabled, r.key_filter = True, "10.0.0.1, 10.0.20.10, 10.0.20.11, 10.0.20.31"
             db.commit()
 
 
 def seed_history(hours: int = 24, per_hour: int = 160, seed: int = 20261108) -> dict:
-    """Dựng lịch sử log cho dữ liệu mẫu, xử lý qua pipeline thật (không gửi thông báo)."""
+    """Dựng lịch sử log cho dữ liệu mẫu, xử lý qua pipeline thật (do not send thông báo)."""
     from . import events
     _demo_rule_setup()
     rnd = random.Random(seed)
@@ -223,7 +222,7 @@ def seed_history(hours: int = 24, per_hour: int = 160, seed: int = 20261108) -> 
     plan = []
     t = start
     while t < now:
-        busy = 1.6 if 8 <= t.replace(tzinfo=timezone.utc).astimezone(_TZ).hour < 18 else 0.5   # giờ hành chính nhiều log hơn
+        busy = 1.6 if 8 <= t.replace(tzinfo=timezone.utc).astimezone(_TZ).hour < 18 else 0.5   # hours hành chính nhiều log hơn
         t += timedelta(seconds=rnd.expovariate(per_hour * busy / 3600))
         plan.append((t, lambda d, at: noise(d, at, rnd)))
     for h, name, resolve in HISTORY_PLAN:
@@ -243,27 +242,27 @@ def seed_history(hours: int = 24, per_hour: int = 160, seed: int = 20261108) -> 
         out = {"events": db.query(models.Event).count(),
                "alerts_open": db.query(models.Alert).filter(models.Alert.source == "event", models.Alert.status != "resolved").count(),
                "alerts_resolved": db.query(models.Alert).filter(models.Alert.source == "event", models.Alert.status == "resolved").count()}
-    log.warning("Dữ liệu mẫu: đã dựng %d giờ log (%d sự kiện, %d cảnh báo đang mở, %d đã tự đóng)",
+    log.warning("Demo data: generated %d hours of logs (%d events, %d open alerts, %d auto-resolved)",
                 hours, out["events"], out["alerts_open"], out["alerts_resolved"])
     return out
 
 
 def _auto_resolve_history(now):
-    """Rule có "tự đóng sau N phút không lặp lại": đóng đúng mốc last_seen + N trong quá khứ
-    (giống như app đã chạy suốt 24 giờ), thay vì để housekeeping đóng tất cả vào lúc khởi động."""
+    """Rule có "auto-resolved after N minutes without recurrence": đóng đúng mốc last_seen + N trong quá khứ
+    (giống như app đã chạy suốt 24 hours), thay vì để housekeeping đóng tất cả ando lúc khởi động."""
     with SessionLocal() as db:
         rules = {r.id: r for r in db.query(models.EventRule)}
         for a in db.query(models.Alert).filter(models.Alert.source == "event", models.Alert.status != "resolved"):
             r = rules.get(a.event_rule_id)
             if r and r.auto_resolve_min and a.last_seen and a.last_seen + timedelta(minutes=r.auto_resolve_min) < now:
                 a.status, a.resolved_at = "resolved", a.last_seen + timedelta(minutes=r.auto_resolve_min)
-                a.message = f"{a.message} · tự đóng sau {r.auto_resolve_min} phút không lặp lại"[:2000]
+                a.message = f"{a.message} · auto-resolved after {r.auto_resolve_min} minutes without recurrence"[:2000]
         db.commit()
 
 
 async def live_loop(min_gap: float = 8.0, max_gap: float = 25.0, incident_every=None):
-    """Log trực tiếp: đưa vào hàng đợi chung như log nhận qua mạng → rule → cảnh báo → thông báo.
-    DEMO_INCIDENT_EVERY="240,720" = mỗi 4–12 phút một sự cố (giây, có thể đổi cho dày/thưa hơn)."""
+    """Log trực tiếp: đưa ando hàng đợi chung như log nhận qua mạng → rule → alerts → thông báo.
+    DEMO_INCIDENT_EVERY="240,720" = every 4–12 minutes một sự cố (giây, có thể đổi cho dày/thưa hơn)."""
     from . import events
     if incident_every is None:
         try:
@@ -300,9 +299,9 @@ async def live_loop(min_gap: float = 8.0, max_gap: float = 25.0, incident_every=
             loop_t = asyncio.get_running_loop().time()
             if loop_t >= next_incident:
                 name = rnd.choices(names, weights)[0]
-                log.info("Dữ liệu mẫu: bắt đầu sự cố %s", name)
+                log.info("Demo data: starting incident %s", name)
                 asyncio.create_task(run_incident(name))
                 next_incident = loop_t + rnd.uniform(*incident_every)
         except Exception:
-            log.exception("bộ phát log mẫu lỗi")
+            log.exception("demo log generator failed")
         await asyncio.sleep(rnd.uniform(min_gap, max_gap))

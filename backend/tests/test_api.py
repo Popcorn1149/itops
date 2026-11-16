@@ -1,4 +1,4 @@
-"""API: đăng nhập, phân quyền, CRUD, mã hoá bí mật, xuất/nhập, bản đồ, rủi ro."""
+"""API: sign-in, phân quyền, CRUD, mã hoá bí mật, xuất/nhập, bản đồ, rủi ro."""
 
 from tests.pgtest import sql
 
@@ -102,8 +102,8 @@ def test_secrets_encrypted_and_masked(client, admin, clean):
     for path in ["/api/checks", f"/api/checks/{c['id']}", "/api/export", "/api/dashboard"]:
         assert "SieuBiMat" not in client.get(path, headers=admin).text, path
     raw = sql("select config::text from checks where id=%s", (c["id"],))[0][0]
-    assert "SieuBiMat" not in raw and "enc2:" in raw and '"enc:' not in raw     # AES-256-GCM, không còn Fernet
-    # sửa check gửi lại MASK → giữ mật khẩu cũ
+    assert "SieuBiMat" not in raw and "enc2:" in raw and '"enc:' not in raw     # AES-256-GCM, không remaining Fernet
+    # sửa check gửi lại MASK → giữ password cũ
     client.put(f"/api/checks/{c['id']}", json={"config": {"username": "ro2", "password": "__SECRET__"}}, headers=admin)
     raw2 = sql("select config::text from checks where id=%s", (c["id"],))[0][0]
     assert "enc2:" in raw2 and "ro2" in raw2
@@ -178,18 +178,18 @@ def test_topology_and_risks(client, admin, clean):
     assert hq["children"][0]["children"][0]["name"] == "sw"
     assert {c["name"] for c in hq["children"][0]["children"][0]["children"][0]["children"]} == {"dc01", "erp"}
     names = {c["name"] for c in root["children"]}
-    assert "Chưa gán site" in names and "Dịch vụ bên ngoài" in names
+    assert "No site assigned" in names and "External service" in names
     assert hq["count"] == 6  # site + 5 tài sản
     edges = {(e["source"], e["target"], e["label"]) for e in t["flow"]["edges"]}
-    assert any(l == "phụ thuộc" for *_, l in edges) and any(l == "chạy trên" for *_, l in edges)
+    assert any(l == "depends on" for *_, l in edges) and any(l == "runs on" for *_, l in edges)
 
     risks = client.get("/api/risks", headers=admin).json()
     kinds = {(r["kind"], r["title"]) for r in risks}
-    assert ("Chưa backup", "ERP") in kinds
-    assert ("Chưa ghép máy chủ", "Chấm công") in kinds
-    assert ("Điểm tập trung", "esx") in kinds  # 2 hệ thống High trên cùng host
-    assert not any(k == "Chưa backup" and t_ == "M365" for k, t_ in kinds)
-    assert not any(k == "Chưa backup" and t_ == "AD" for k, t_ in kinds)
+    assert ("No backup", "ERP") in kinds
+    assert ("No server mapped", "Chấm công") in kinds
+    assert ("Concentration risk", "esx") in kinds  # 2 hệ thống High trên cùng host
+    assert not any(k == "No backup" and t_ == "M365" for k, t_ in kinds)
+    assert not any(k == "No backup" and t_ == "AD" for k, t_ in kinds)
     assert risks == sorted(risks, key=lambda r: {"high": 0, "medium": 1, "low": 2}[r["severity"]])
 
     d = client.get("/api/dashboard", headers=admin).json()

@@ -1,8 +1,7 @@
-"""SNMP v2c/v3 cho switch, router, AP, UPS, NAS, iLO/iDRAC, pfSense (bsnmpd)...
+"""SNMP v2c/v3 for switches, routers, APs, UPSs, NAS, iLO/iDRAC, pfSense (bsnmpd), etc.
 
-Thu: sysName/sysDescr/uptime, bảng cổng (up/down, tốc độ, alias), CPU (HOST-RESOURCES),
-cộng thêm theo profile: UPS (RFC1628), Synology. Có thể khai báo OID tuỳ chỉnh.
-"""
+Collects: sysName/sysDescr/uptime, interface table (up/down, speed, alias), CPU (HOST-RESOURCES),
+plus profile-specific data: UPS (RFC1628), Synology. Custom OIDs can also be configured."""
 from pysnmp.hlapi.v3arch.asyncio import (
     SnmpEngine, CommunityData, UsmUserData, UdpTransportTarget, ContextData,
     ObjectType, ObjectIdentity, get_cmd, bulk_walk_cmd,
@@ -11,6 +10,7 @@ from pysnmp.hlapi.v3arch.asyncio import (
 )
 
 import re
+from collections import Counter
 import time
 
 from .base import Result, apply_resources, fmt_uptime, worst
@@ -24,11 +24,11 @@ IF_NAME = "1.3.6.1.2.1.31.1.1.1.1"
 IF_ALIAS = "1.3.6.1.2.1.31.1.1.1.18"
 IF_SPEED = "1.3.6.1.2.1.31.1.1.1.15"
 HR_CPU = "1.3.6.1.2.1.25.3.3.1.2"
-HR_UPTIME = "1.3.6.1.2.1.25.1.1.0"           # uptime của hệ điều hành (sysUpTime chỉ là uptime của dịch vụ SNMP)
+HR_UPTIME = "1.3.6.1.2.1.25.1.1.0"           # uptime of hệ điều hành (sysUpTime chỉ là uptime of service SNMP)
 IF_HC_IN, IF_HC_OUT = "1.3.6.1.2.1.31.1.1.1.6", "1.3.6.1.2.1.31.1.1.1.10"   # bộ đếm 64-bit
 IF_IN, IF_OUT = "1.3.6.1.2.1.2.2.1.10", "1.3.6.1.2.1.2.2.1.16"             # bộ đếm 32-bit (dự phòng)
 
-# cổng ảo không tính vào "x/y cổng up"
+# cổng ảo không tính ando "x/y interfaces up"
 VIRTUAL_IF = re.compile(r"^(lo\d*|pflog\d*|pfsync\d*|enc\d*|ipfw\d*|gif\d*|gre\d*|null\d*|Null\d*|loopback.*|InLoopBack.*|stf\d*|usbus\d*)$", re.I)
 # cổng có khả năng là WAN: PPPoE, tên/alias chứa WAN hoặc tên nhà mạng
 WAN_HINT = re.compile(r"(^pppoe\d*$|^wan|wan|fpt|vnpt|viettel|cmc|netnam|spt|isp|internet)", re.I)
@@ -38,7 +38,7 @@ _COUNTERS: dict = {}
 
 
 def compute_rates(target: str, t: float, counters: dict, bits: int = 64) -> dict:
-    """Tính Mbps vào/ra cho từng cổng từ chênh lệch bộ đếm giữa 2 lần đọc. Xử lý tràn 32-bit / reset bộ đếm."""
+    """Tính Mbps ando/ra cho fromng cổng from chênh lệch bộ đếm giữa 2 lần đọc. Xử lý tràn 32-bit / reset bộ đếm."""
     out = {}
     wrap = 2 ** bits
     for idx, (i, o) in counters.items():
@@ -53,7 +53,7 @@ def compute_rates(target: str, t: float, counters: dict, bits: int = 64) -> dict
             di = di + wrap if bits == 32 else None
         if do < 0:
             do = do + wrap if bits == 32 else None
-        if di is None or do is None:   # bộ đếm reset (thiết bị khởi động lại) → bỏ qua lần này
+        if di is None or do is None:   # bộ đếm reset (devices khởi động lại) → bỏ qua lần này
             continue
         out[idx] = (round(di * 8 / dt / 1e6, 3), round(do * 8 / dt / 1e6, 3))
     return out
@@ -135,7 +135,7 @@ HP_MEM_TOTAL, HP_MEM_FREE = "1.3.6.1.4.1.11.2.14.11.5.1.1.2.1.1.1.5", "1.3.6.1.4
 
 
 def _u32(v):
-    """hrStorageSize/Used là Integer32 – ổ lớn bị tràn thành số âm."""
+    """hrStorageSize/Used là Integer32 – disk lớn bị tràn thành số âm."""
     return v + 2 ** 32 if isinstance(v, int) and v < 0 else v
 
 
@@ -147,19 +147,19 @@ SKIP_FSTYPE = {"devfs", "tmpfs", "fdescfs", "procfs", "linprocfs", "nullfs", "mf
 def parse_storage(rows: dict, mem_size_kb: int | None = None) -> dict:
     """rows: {idx: {type, descr, unit, size, used}} → {mem, mem_total_gb, swap, disks, mem_note?}.
 
-    Hỗ trợ net-snmp (Linux/Synology), Windows, và bsnmpd của FreeBSD/pfSense (dữ liệu RAM/disk theo kiểu riêng).
+    Hỗ trợ net-snmp (Linux/Synology), Windows, and bsnmpd of FreeBSD/pfSense (dữ liệu RAM/disk theo kiểu riêng).
     """
     out = {"disks": []}
     by_descr = {str(r.get("descr", "")).lower(): r for r in rows.values()}
     bsd_real = by_descr.get("real memory metrics")
     if bsd_real:
-        # bsnmpd: size = RAM tiến trình đang dùng (vmtotal.t_rm), không phải tổng → chia cho hrMemorySize.
+        # bsnmpd: size = Process memory in use (vmtotal.t_rm), không phải tổng → chia cho hrMemorySize.
         # Các dòng RAM khác là bộ nhớ kernel (malloc type) – bỏ qua.
         if mem_size_kb and isinstance(bsd_real.get("size"), int):
             used_kb = bsd_real["size"] * (bsd_real.get("unit") or 4096) / 1024
             out["mem"] = min(100.0, used_kb / mem_size_kb * 100)
             out["mem_total_gb"] = mem_size_kb / 1048576
-            out["mem_note"] = "RAM tiến trình đang dùng (SNMP của pfSense/FreeBSD không tính wired/ARC)"
+            out["mem_note"] = "Process memory in use (pfSense/FreeBSD SNMP excludes wired/ARC)"
     else:
         ram = [r for r in rows.values() if str(r.get("type", "")).endswith(ST_RAM) and r.get("size")]
         if ram:
@@ -210,7 +210,7 @@ def parse_storage(rows: dict, mem_size_kb: int | None = None) -> dict:
         m = re.match(r"^([A-Za-z]:)\\", name)
         if m:
             name = m.group(1)
-        key = (r["size"], r["used"])          # nhiều mount chung 1 thiết bị (btrfs, bind) → giữ 1 dòng
+        key = (r["size"], r["used"])          # nhiều mount chung 1 devices (btrfs, bind) → giữ 1 dòng
         if key in seen:
             continue
         seen.add(key)
@@ -246,7 +246,7 @@ async def read_resources(engine, auth, tgt) -> dict:
         msz = None
     ucd = {k: v for k, v in u.items() if isinstance(v, int)}
     if ucd.get("total", 0) > 0 and "avail" in ucd:
-        # memAvailReal = trang trống; cộng buffer + cache (Linux) / inactive (FreeBSD) → giống "available" của free / Dashboard pfSense
+        # memAvailReal = trang trống; cộng buffer + cache (Linux) / inactive (FreeBSD) → giống "available" of free / Dashboard pfSense
         free = ucd["avail"] + ucd.get("buf", 0) + ucd.get("cached", 0)
         res["mem"] = max(0.0, (ucd["total"] - min(free, ucd["total"])) / ucd["total"] * 100)
         res["mem_total_gb"] = ucd["total"] / 1048576
@@ -267,7 +267,7 @@ async def read_resources(engine, auth, tgt) -> dict:
         for k in ("mem", "mem_total_gb", "swap"):
             if k in st and k not in res:
                 res[k] = st[k]
-        if from_storage:                      # chỉ khi RAM thật sự lấy từ hrStorage mới kèm ghi chú "ước tính"
+        if from_storage:                      # chỉ khi RAM thật sự lấy from hrStorage mới kèm ghi chú "ước tính"
             res["mem_src"] = "HOST-RESOURCES"
             if st.get("mem_note"):
                 res["mem_note"] = st["mem_note"]
@@ -319,13 +319,77 @@ async def read_resources(engine, auth, tgt) -> dict:
     return res
 
 
-# ---- máy ảo trên ESXi (VMWARE-VMINFO-MIB): tên, HĐH, RAM cấp, trạng thái nguồn, vCPU. Không có hiệu năng từng VM.
+# ---- machines ảo trên ESXi (VMWARE-VMINFO-MIB): tên, HĐH, RAM cấp, trạng thái nguồn, vCPU. Không có performance fromng VM.
 VMW_VM = "1.3.6.1.4.1.6876.2.1.1"   # .2 tên .3 file cấu hình .4 HĐH .5 RAM (MB) .6 power .8 guest state .9 vCPU .10 UUID
 VMW_POWER = {"poweredon": "up", "on": "up", "poweredoff": "off", "off": "off", "suspended": "off"}
 
 
+# ---- Wi-Fi clients on Aruba Instant APs (AI-AP-MIB; a standalone Instant AP acts as its own virtual controller)
+AI_AP = "1.3.6.1.4.1.14823.2.3.3.1.2.1.1"       # aiAccessPointTable: .2 name .3 IP          (index = AP MAC)
+AI_WLAN = "1.3.6.1.4.1.14823.2.3.3.1.2.3.1"     # aiWlanTable: .3 ESSID .4 BSSID              (index = AP MAC . WLAN index)
+AI_CLIENT = "1.3.6.1.4.1.14823.2.3.3.1.2.4.1"   # aiClientTable: .2 BSSID .3 IP .4 AP IP .5 name .6 OS .7 SNR (dB)
+                                                # .11 tx rate .15 rx rate (Mbps)  (index = client MAC)
+MAX_WIFI_CLIENTS = 1000
+WEAK_SNR = 20          # dB – below this the link is unreliable (drops, slow speed)
+
+
+def _enterprise(objid) -> int | None:
+    """Vendor enterprise number from sysObjectID, numeric ("1.3.6.1.4.1.14823.1.2.78")
+    or MIB-resolved ("SNMPv2-SMI::enterprises.14823.1.2.78") form."""
+    m = re.search(r"(?:^\.?1\.3\.6\.1\.4\.1|enterprises)\.(\d+)", str(objid or ""))
+    return int(m.group(1)) if m else None
+
+
+def _mac(v) -> str:
+    """MacAddress value or 6-octet OID index → 'aa:bb:cc:dd:ee:ff'."""
+    s = str(v or "").strip()
+    if re.fullmatch(r"\d+(\.\d+){5}", s):
+        return ":".join(f"{int(x):02x}" for x in s.split("."))
+    if s.lower().startswith("0x"):
+        s = s[2:]
+    s = re.sub(r"[^0-9a-fA-F]", "", s)
+    return ":".join(s[i:i + 2] for i in range(0, 12, 2)).lower() if len(s) == 12 else str(v or "")
+
+
+def _rows(walk: dict) -> dict[str, dict]:
+    """{"<col>.<index>": v} → {index: {col: v}} (index may contain dots)."""
+    out: dict[str, dict] = {}
+    for k, v in walk.items():
+        col, _, idx = k.partition(".")
+        if idx:
+            out.setdefault(idx, {})[col] = v
+    return out
+
+
+def _int(v):
+    return v if isinstance(v, int) else None
+
+
+def parse_aruba_clients(ap_walk: dict, wlan_walk: dict, client_walk: dict) -> list[dict]:
+    """Join client, WLAN and AP tables → [{name, ip, mac, os, essid, ap, ap_ip, snr, tx_rate, rx_rate}]."""
+    aps = {}
+    for idx, c in _rows(ap_walk).items():
+        ip = str(c.get("3") or "")
+        if ip:
+            aps[ip] = str(c.get("2") or "") or ip
+    essid_by_bssid = {}
+    for c in _rows(wlan_walk).values():
+        if c.get("4"):
+            essid_by_bssid[_mac(c["4"])] = str(c.get("3") or "")
+    out = []
+    for idx, c in _rows(client_walk).items():
+        ap_ip = str(c.get("4") or "")
+        out.append({"name": str(c.get("5") or ""), "ip": str(c.get("3") or ""), "mac": _mac(c.get("1") or idx),
+                    "os": str(c.get("6") or ""), "essid": essid_by_bssid.get(_mac(c.get("2")), ""),
+                    "ap": aps.get(ap_ip, ap_ip), "ap_ip": ap_ip,
+                    "snr": _int(c.get("7")), "tx_rate": _int(c.get("11")), "rx_rate": _int(c.get("15"))})
+    out.sort(key=lambda x: (x["ap"], x["essid"], x["name"] or x["mac"]))
+    return out[:MAX_WIFI_CLIENTS]
+
+
+
 def parse_vminfo(rows: dict) -> list[dict]:
-    """rows: {"<cột>.<idx>": giá trị} từ walk VMW_VM → danh sách VM để đưa lên bản đồ (gắn dưới host của check)."""
+    """rows: {"<cột>.<idx>": value} from walk VMW_VM → danh sách VM để đưa lên bản đồ (gắn dưới host of check)."""
     vms: dict[str, dict] = {}
     for k, v in rows.items():
         col, _, idx = k.partition(".")
@@ -348,15 +412,20 @@ def parse_vminfo(rows: dict) -> list[dict]:
     return out
 
 
+def _esxi_perf_succeeded(note: str) -> bool:
+    """Return True only for the normalized ESXi API success message."""
+    return isinstance(note, str) and note.startswith("performance data retrieved")
+
+
 async def _merge_esxi_perf(target: str, cfg: dict, vms: list[dict]):
-    """Gọi API ESXi (tài khoản chỉ đọc) lấy CPU/RAM/Disk, IP, VMware Tools của từng VM rồi gộp theo tên vào danh sách SNMP."""
+    """Gọi API ESXi (account chỉ đọc) lấy CPU/RAM/Disk, IP, VMware Tools of fromng VM rồi gộp theo tên ando danh sách SNMP."""
     import importlib
     api = importlib.import_module("app.collectors.esxi")
     r = await api.esxi(target, {"username": cfg["esxi_user"], "password": cfg["esxi_password"], "port": int(cfg.get("esxi_port", 443)),
                                 "verify_ssl": False, "timeout": 40, "snapshot_warn_days": 10 ** 6})
     api_vms = [d for d in (r.discovered or []) if d.get("type") == "vm"]
     if not api_vms:
-        return f"API ESXi: {r.message}"[:160] if r.status == "fail" else "API ESXi không trả VM"
+        return f"API ESXi: {r.message}"[:160] if r.status == "fail" else "ESXi API returned no VMs"
     if not vms:
         for d in api_vms:
             d.pop("parent_key", None)
@@ -379,7 +448,7 @@ async def _merge_esxi_perf(target: str, cfg: dict, vms: list[dict]):
         if a.get("os") and len(a["os"]) > len(v.get("os") or ""):
             v["os"] = a["os"]
         v["meta"]["perf_via"] = "api"
-    return f"hiệu năng {hit}/{len(vms)} VM qua API"
+    return f"performance data retrieved for {hit}/{len(vms)} VMs via API"
 
 
 async def snmp(target: str, cfg: dict) -> Result:
@@ -390,9 +459,9 @@ async def snmp(target: str, cfg: dict) -> Result:
         try:
             sysinfo = await _get(engine, auth, tgt, SYS)
         except Exception as e:
-            return Result("fail", f"SNMP không phản hồi: {e}"[:300])
+            return Result("fail", f"No SNMP response: {e}"[:300])
         if not sysinfo:
-            return Result("fail", "SNMP không phản hồi (sai community/ACL?)")
+            return Result("fail", "No SNMP response (check community string and ACL)")
 
         data = {"sys_name": sysinfo.get("name", ""), "sys_descr": str(sysinfo.get("descr", ""))[:300],
                 "location": sysinfo.get("location", ""), "uptime": fmt_uptime((sysinfo.get("uptime") or 0) / 100)}
@@ -400,7 +469,7 @@ async def snmp(target: str, cfg: dict) -> Result:
         notes = []
         value = None
 
-        # uptime thật của hệ điều hành (nếu có HOST-RESOURCES-MIB)
+        # uptime thật of hệ điều hành (nếu có HOST-RESOURCES-MIB)
         try:
             hr = await _get(engine, auth, tgt, {"up": HR_UPTIME})
             if isinstance(hr.get("up"), int):
@@ -421,7 +490,7 @@ async def snmp(target: str, cfg: dict) -> Result:
             bits = 64
             hc_in = await _walk(engine, auth, tgt, IF_HC_IN)
             hc_out = await _walk(engine, auth, tgt, IF_HC_OUT)
-            if not hc_in:   # SNMP v1 hoặc thiết bị không có bộ đếm 64-bit
+            if not hc_in:   # SNMP v1 hoặc devices không có bộ đếm 64-bit
                 bits = 32
                 hc_in = await _walk(engine, auth, tgt, IF_IN)
                 hc_out = await _walk(engine, auth, tgt, IF_OUT)
@@ -439,7 +508,7 @@ async def snmp(target: str, cfg: dict) -> Result:
                 p = {"idx": idx, "name": name, "alias": al, "oper": o, "admin": a, "speed": speed.get(idx, 0),
                      "in_mbps": r[0] if r else None, "out_mbps": r[1] if r else None,
                      "virtual": bool(VIRTUAL_IF.match(name)), "wan": bool(WAN_HINT.search(name) or WAN_HINT.search(al))}
-                # status thực tế: SNMP báo down nhưng vẫn có lưu lượng (hay gặp với PPPoE/tunnel) → coi là đang chạy
+                # status thực tế: SNMP báo down nhưng vẫn có lưu lượng (hay gặp với PPPoE/tunnel) → coi là running
                 active = bool(r) and (r[0] + r[1]) > 0.0005
                 p["state"] = "up" if o == "up" else ("active" if active else ("disabled" if a == "down" else "down"))
                 ports.append(p)
@@ -447,7 +516,7 @@ async def snmp(target: str, cfg: dict) -> Result:
             up = sum(1 for p in real if p["state"] in ("up", "active"))
             data["ports"] = ports[:300]
             data["ports_up"], data["ports_total"] = up, len(real)
-            notes.append(f"{up}/{len(real)} cổng up")
+            notes.append(f"{up}/{len(real)} interfaces up")
             wans = [p for p in real if p["wan"]]
             if wans:
                 w_up = [p for p in wans if p["state"] in ("up", "active")]
@@ -461,16 +530,16 @@ async def snmp(target: str, cfg: dict) -> Result:
                     data["wan_in_mbps"], data["wan_out_mbps"] = round(tin, 2), round(tout, 2)
                     notes.append(f"WAN ↓{tin:.1f} ↑{tout:.1f} Mbps")
             elif counters:
-                notes.append("đang đo lưu lượng (cần 2 lần đọc)")
+                notes.append("traffic measurement in progress (requires two polls)")
             watch = [w.strip().lower() for w in str(cfg.get("watch_ports", "")).split(",") if w.strip()]
             def _watched(p):
                 return p["name"].lower() in watch or p["alias"].lower() in watch or p["idx"] in watch
-            # chỉ báo down khi chắc chắn: chưa có số liệu lưu lượng thì không kết luận cổng ảo/PPPoE là down
+            # chỉ báo down khi chắc chắn: none số liệu lưu lượng thì không kết luận cổng ảo/PPPoE là down
             down_watched = [p["alias"] or p["name"] for p in ports if _watched(p) and (
                 p["state"] == "disabled" or (p["state"] == "down" and (rates or not p["wan"])))]
             if down_watched:
                 statuses.append("fail")
-                notes.append("Cổng quan trọng down: " + ", ".join(down_watched))
+                notes.append("Critical interfaces are down: " + ", ".join(down_watched))
 
         # tài nguyên: CPU / RAM / Disk
         metrics = {}
@@ -495,14 +564,14 @@ async def snmp(target: str, cfg: dict) -> Result:
             data.update(extra)
             if prof == "ups":
                 if extra.get("output_source") == 5:
-                    statuses.append("warn"); notes.append("UPS đang chạy pin")
+                    statuses.append("warn"); notes.append("UPS running on battery")
                 if extra.get("battery_status") in (3, 4):
-                    statuses.append("fail"); notes.append("Pin yếu")
+                    statuses.append("fail"); notes.append("Low battery")
                 if "battery_charge" in extra:
                     value = extra["battery_charge"]; notes.append(f"Pin {value}%")
             if prof == "synology":
                 if extra.get("system_status") not in (None, 1):
-                    statuses.append("fail"); notes.append("Synology báo lỗi hệ thống")
+                    statuses.append("fail"); notes.append("Synology reports a system error")
                 if "temperature" in extra:
                     notes.append(f"{extra['temperature']}°C")
 
@@ -520,9 +589,9 @@ async def snmp(target: str, cfg: dict) -> Result:
             except Exception:
                 pass
 
-        # máy ảo nếu là ESXi
+        # machines ảo nếu là ESXi
         discovered = []
-        is_vmware = str(sysinfo.get("objid", "")).startswith("1.3.6.1.4.1.6876") or "vmware" in data["sys_descr"].lower() or "esx" in data["sys_descr"].lower()
+        is_vmware = _enterprise(sysinfo.get("objid")) == 6876 or "vmware" in data["sys_descr"].lower() or "esx" in data["sys_descr"].lower()
         if is_vmware and cfg.get("vm_inventory", True):
             vm_err, vm_rows = "", {}
             try:
@@ -532,16 +601,16 @@ async def snmp(target: str, cfg: dict) -> Result:
                 vm_err = f"{type(e).__name__}: {e}"[:200]
             data["vm_inventory"] = {"rows": len(vm_rows), "vms": len(discovered), "error": vm_err,
                                     "sample": dict(list(vm_rows.items())[:12])}   # chẩn đoán
-            # SNMP của ESXi không có hiệu năng từng VM → nếu có tài khoản ESXi chỉ đọc, lấy thêm CPU/RAM/Disk qua API và gộp vào
+            # SNMP of ESXi không có performance fromng VM → nếu có account ESXi chỉ đọc, lấy thêm CPU/RAM/Disk qua API and gộp ando
             if cfg.get("esxi_user") and cfg.get("esxi_password"):
                 try:
                     perf_note = await _merge_esxi_perf(target, cfg, discovered)
                 except Exception as e:
-                    perf_note = f"API ESXi lỗi: {type(e).__name__} {e}"[:200]
+                    perf_note = f"API ESXi error: {type(e).__name__} {e}"[:200]
                 if isinstance(perf_note, list):
-                    discovered = perf_note   # bảng VM SNMP trống → dùng danh sách từ API
-                    perf_note = "hiệu năng VM qua API"
-                ok = perf_note.startswith("hiệu năng")
+                    discovered = perf_note   # bảng VM SNMP trống → dùng danh sách from API
+                    perf_note = "performance data retrieved via API (SNMP VM inventory was empty)"
+                ok = _esxi_perf_succeeded(perf_note)
                 data["vm_perf"] = {"ok": ok, "note": perf_note}
                 notes.append(perf_note)
                 if not ok:
@@ -549,10 +618,24 @@ async def snmp(target: str, cfg: dict) -> Result:
             if discovered:
                 on = sum(1 for d in discovered if d["status"] == "up")
                 data["vms"] = {"total": len(discovered), "on": on}
-                notes.insert(0, f"{on}/{len(discovered)} VM chạy")
+                notes.insert(0, f"{on}/{len(discovered)} VMs running")
             else:
-                notes.append("chưa đọc được danh sách VM qua SNMP" + (f" ({vm_err})" if vm_err else " (bảng VMWARE-VMINFO-MIB trống)"))
+                notes.append("unable to read VM inventory via SNMP" + (f" ({vm_err})" if vm_err else " (VMWARE-VMINFO-MIB table is empty)"))
 
+        # Wi-Fi clients if this is an Aruba Instant AP / virtual controller
+        if (_enterprise(sysinfo.get("objid")) == 14823 or "arubaos" in data["sys_descr"].lower()) and cfg.get("wifi_clients", True):
+            try:
+                ap_w = await _walk(engine, auth, tgt, AI_AP, limit=2000)
+                wlan_w = await _walk(engine, auth, tgt, AI_WLAN, limit=4000)
+                cl_w = await _walk(engine, auth, tgt, AI_CLIENT, limit=MAX_WIFI_CLIENTS * 8)
+                clients = parse_aruba_clients(ap_w, wlan_w, cl_w)
+                data["wifi_clients"] = clients
+                data["wifi"] = {"clients": len(clients), "aps": len(_rows(ap_w)),
+                                "weak_signal": sum(1 for c in clients if c["snr"] is not None and c["snr"] < WEAK_SNR),
+                                "by_essid": dict(Counter(c["essid"] or "?" for c in clients))}
+                notes.append(f"{len(clients)} Wi-Fi clients")
+            except Exception as e:
+                data["wifi"] = {"error": f"{type(e).__name__}: {e}"[:200]}
         msg = " · ".join([data["sys_name"] or target, f"uptime {data['uptime']}"] + notes)
         return Result(worst(*statuses), msg, None, value, data, discovered)
     finally:

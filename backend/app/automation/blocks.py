@@ -1,7 +1,6 @@
-"""Khối nội dung dùng chung cho báo cáo (template RPT-* và kịch bản tự tạo).
+"""Shared content blocks for reports (RPT-* templates and custom workflows).
 
-Mỗi khối trả về (tiêu đề, [dòng], số mục). Số mục = 0 nghĩa là "không có gì đáng báo".
-"""
+Each block returns (title, [lines], item count). A count of 0 means "nothing to report"."""
 from datetime import timedelta
 
 from sqlalchemy import func
@@ -33,12 +32,12 @@ def _site_of(obj, assets):
 def fmt_dur(minutes: float) -> str:
     m = int(round(minutes))
     if m < 60:
-        return f"{m} phút"
+        return f"{m} minutes"
     h, m = divmod(m, 60)
     if h < 24:
-        return f"{h} giờ {m} phút" if m else f"{h} giờ"
+        return f"{h} hours {m} minutes" if m else f"{h} hours"
     d, h = divmod(h, 24)
-    return f"{d} ngày {h} giờ"
+    return f"{d} days {h} hours"
 
 
 def fmt_local(dt) -> str:
@@ -54,9 +53,9 @@ def overview(db, scope, **_):
     bad = [a for a in sel if a.status in ("down", "warning")]
     alerts = [al for al in open_alerts_q(db, scope, assets)]
     high = sum(1 for a in alerts if a.severity in HIGH)
-    lines = [f"Tài sản: {ok}/{len(sel)} OK" + (f" · {len(bad)} đang lỗi/cảnh báo" if bad else ""),
-             f"Cảnh báo đang mở: {len(alerts)}" + (f" ({high} DOWN/Critical)" if high else "")]
-    return "Tổng quan", lines, len(bad) + len(alerts)
+    lines = [f"Assets: {ok}/{len(sel)} OK" + (f" · {len(bad)} in error/warning state" if bad else ""),
+             f"Open alerts: {len(alerts)}" + (f" ({high} DOWN/Critical)" if high else "")]
+    return "Overview", lines, len(bad) + len(alerts)
 
 
 def open_alerts_q(db, scope, assets=None):
@@ -73,11 +72,11 @@ def open_alerts(db, scope, limit=10, **_):
     al = open_alerts_q(db, scope, assets)
     order = {"down": 0, "critical": 1, "trouble": 2, "warning": 2, "attention": 3}
     al.sort(key=lambda a: (order.get(a.severity, 4), a.opened_at))
-    lines = [f"- [{SEV_LABEL.get(a.severity, a.severity)}] {a.title} (từ {fmt_local(a.opened_at)})" + (" · đã nhận" if a.status == "acknowledged" else "")
+    lines = [f"- [{SEV_LABEL.get(a.severity, a.severity)}] {a.title} (from {fmt_local(a.opened_at)})" + (" · acknowledged" if a.status == "acknowledged" else "")
              for a in al[:limit]]
     if len(al) > limit:
-        lines.append(f"… và {len(al) - limit} cảnh báo khác")
-    return "Cảnh báo đang mở", lines or ["Không có"], len(al)
+        lines.append(f"… and {len(al) - limit} more alerts")
+    return "Open alerts", lines or ["None"], len(al)
 
 
 def incidents(db, scope, hours=24, **_):
@@ -86,8 +85,8 @@ def incidents(db, scope, hours=24, **_):
     al = [a for a in db.query(models.Alert).filter(models.Alert.opened_at >= since)
           if in_scope(scope, site_id=_site_of(a, assets), asset=assets.get(a.asset_id), severity=a.severity, name=a.title)]
     closed = sum(1 for a in al if a.status == "resolved")
-    lines = [f"{len(al)} sự cố trong {hours} giờ qua, đã đóng {closed}"] if al else [f"Không có sự cố trong {hours} giờ qua"]
-    return f"{hours} giờ qua", lines, len(al)
+    lines = [f"{len(al)} incidents in the last {hours} hours, {closed} closed"] if al else [f"No incidents in the last {hours} hours"]
+    return f"Last {hours} hours", lines, len(al)
 
 
 def wan_lines(db, scope, **_):
@@ -100,9 +99,9 @@ def wan_lines(db, scope, **_):
         down = sum(1 for x in ls if x["down"])
         n_down += down
         total += len(ls)
-        lines.append(f"{sites.get(sid, 'Chưa gán site')}: {len(ls) - down}/{len(ls)} line" + (f" · {down} down" if down else "")
+        lines.append(f"{sites.get(sid, 'No site assigned')}: {len(ls) - down}/{len(ls)} line" + (f" · {down} down" if down else "")
                      + "".join(f" · {x['name']} {x['latency_ms']:g} ms" for x in ls if x.get("latency_ms") is not None and not x["down"])[:200])
-    # thêm WAN đọc từ firewall (SNMP/API) nếu có
+    # thêm WAN đọc from firewall (SNMP/API) nếu có
     assets = _assets(db)
     for c in db.query(models.Check).filter(models.Check.enabled == True):  # noqa: E712
         a = assets.get(c.asset_id)
@@ -110,7 +109,7 @@ def wan_lines(db, scope, **_):
         if a and a.type == "firewall" and d.get("wan_total") and in_scope(scope, site_id=a.site_id, asset=a):
             mb = f" · ↓{d['wan_in_mbps']:g} ↑{d['wan_out_mbps']:g} Mbps" if d.get("wan_in_mbps") is not None else ""
             lines.append(f"{a.name}: WAN {d.get('wan_up', 0)}/{d['wan_total']} up{mb}")
-    return "Internet / WAN", lines or ["Chưa gán Line Internet nào"], n_down
+    return "Internet / WAN", lines or ["No Internet links assigned"], n_down
 
 
 def ssl_expiring(db, scope, days=14, **_):
@@ -121,8 +120,8 @@ def ssl_expiring(db, scope, days=14, **_):
         if d is not None and d <= days and in_scope(scope, site_id=_site_of(c, assets), asset=assets.get(c.asset_id), name=c.name):
             rows.append((d, c))
     rows.sort(key=lambda x: x[0])
-    lines = [f"- SSL {c.target.split('://')[-1].split('/')[0]}: {'ĐÃ HẾT HẠN' if d < 0 else f'còn {d} ngày'}" for d, c in rows]
-    return f"SSL hết hạn trong {days} ngày", lines or ["Không có"], len(rows)
+    lines = [f"- SSL {c.target.split('://')[-1].split('/')[0]}: {'EXPIRED' if d < 0 else f'remaining {d} days'}" for d, c in rows]
+    return f"SSL expires in {days} days", lines or ["None"], len(rows)
 
 
 def resources_top(db, scope, n=5, **_):
@@ -134,7 +133,7 @@ def resources_top(db, scope, n=5, **_):
         parts = [f"{k} {r[key]:g}%" for k, key in (("CPU", "cpu"), ("RAM", "mem"), ("Disk", "disk")) if r.get(key) is not None
                  and (r["levels"].get(key) or "ok") != "ok"]
         lines.append(f"- {r['name']}: {', '.join(parts)} ({SEV_LABEL.get(r['level'], r['level'])})")
-    return "Tài nguyên vượt threshold", lines or ["Không có"], len(rows)
+    return "Resources above threshold", lines or ["None"], len(rows)
 
 
 def log_top(db, scope, hours=24, n=5, **_):
@@ -142,12 +141,12 @@ def log_top(db, scope, hours=24, n=5, **_):
     q = db.query(models.Event.source_ip, func.max(models.Event.host), func.count()).filter(
         models.Event.ts >= since, models.Event.severity <= 4, models.Event.source_ip != "127.0.0.1").group_by(models.Event.source_ip) \
         .order_by(func.count().desc()).limit(n)
-    lines = [f"- {h or ip} ({ip}): {cnt} log lỗi/cảnh báo" for ip, h, cnt in q]
-    return f"Log lỗi/cảnh báo nhiều nhất ({hours} giờ)", lines or ["Không có"], len(lines)
+    lines = [f"- {h or ip} ({ip}): {cnt} error logs/alerts" for ip, h, cnt in q]
+    return f"Most error logs/alerts ({hours} hours)", lines or ["None"], len(lines)
 
 
 def uptime_by_site(db, scope, days=7, end=None, **_):
-    """Uptime = tỉ lệ lần chạy không DOWN. end = giờ VN kết thúc kỳ (mặc định bây giờ)."""
+    """Uptime = tỉ lệ lần chạy không DOWN. end = hours VN kết thúc kỳ (mặc định bây hours)."""
     from .engine import local_now
     end = end or local_now()
     start = end - timedelta(days=days)
@@ -166,8 +165,8 @@ def uptime_by_site(db, scope, days=7, end=None, **_):
     for sid, (tot, dn, mins) in sorted(by.items(), key=lambda x: (x[1][0] - x[1][1]) / x[1][0]):
         pct = (tot - dn) / tot * 100
         worst = min(worst, pct)
-        lines.append(f"- {sites.get(sid, 'Chưa gán site')}: {pct:.2f}%" + (f" · DOWN {fmt_dur(mins)}" if dn else ""))
-    return f"Uptime theo site ({days} ngày)", lines or ["Chưa có dữ liệu"], len(lines)
+        lines.append(f"- {sites.get(sid, 'No site assigned')}: {pct:.2f}%" + (f" · DOWN {fmt_dur(mins)}" if dn else ""))
+    return f"Uptime by site (last {days} days)", lines or ["No data available"], len(lines)
 
 
 def mtta_mttr(db, scope, days=7, **_):
@@ -177,10 +176,10 @@ def mtta_mttr(db, scope, days=7, **_):
           if in_scope(scope, site_id=_site_of(a, assets), asset=assets.get(a.asset_id), severity=a.severity)]
     acks = [(a.acked_at - a.opened_at).total_seconds() / 60 for a in al if a.acked_at]
     fixes = [(a.resolved_at - a.opened_at).total_seconds() / 60 for a in al if a.resolved_at]
-    lines = [f"Số sự cố: {len(al)} ({sum(1 for a in al if a.severity in HIGH)} DOWN/Critical)",
-             f"MTTA (thời gian tới khi có người nhận): {fmt_dur(sum(acks) / len(acks)) if acks else 'chưa có ai bấm Nhận'}",
-             f"MTTR (thời gian tới khi đóng): {fmt_dur(sum(fixes) / len(fixes)) if fixes else 'chưa có sự cố đóng'}"]
-    return "Sự cố", lines, len(al)
+    lines = [f"Incidents: {len(al)} ({sum(1 for a in al if a.severity in HIGH)} DOWN/Critical)",
+             f"MTTA (time until acknowledgment): {fmt_dur(sum(acks) / len(acks)) if acks else 'no one acknowledged'}",
+             f"MTTR (time to resolution): {fmt_dur(sum(fixes) / len(fixes)) if fixes else 'no incidents resolved'}"]
+    return "Incidents", lines, len(al)
 
 
 def top_noisy(db, scope, days=7, n=5, **_):
@@ -192,19 +191,19 @@ def top_noisy(db, scope, days=7, n=5, **_):
         if in_scope(scope, site_id=_site_of(a, assets), asset=assets.get(a.asset_id)):
             cnt[key] = cnt.get(key, 0) + 1
     top = sorted(cnt.items(), key=lambda x: -x[1])[:n]
-    return f"Top {n} thiết bị nhiều sự cố", [f"- {k}: {v} lần" for k, v in top] or ["Không có"], len(top)
+    return f"Top {n} devices by incident count", [f"- {k}: {v} occurrences" for k, v in top] or ["None"], len(top)
 
 
 def backup_risks(db, scope, **_):
-    """Rủi ro trên bản đồ: hệ thống trọng yếu chưa backup, điểm đơn lẻ (SPOF), phụ thuộc đang lỗi..."""
+    """Rủi ro trên bản đồ: critical systems chưa backup, điểm đơn lẻ (SPOF), depends on đang error..."""
     from ..topology import build_risks
     risks = build_risks(db)
     risks.sort(key=lambda r: {"high": 0, "medium": 1}.get(r.get("severity"), 2))
-    lines = [f"- [{'Cao' if r.get('severity') == 'high' else 'TB' if r.get('severity') == 'medium' else 'Thấp'}] {r['title']}"
+    lines = [f"- [{'Cao' if r.get('severity') == 'high' else 'TB' if r.get('severity') == 'medium' else 'Low'}] {r['title']}"
              + (f": {r['detail']}" if r.get("detail") else "") for r in risks[:12]]
     if len(risks) > 12:
-        lines.append(f"… và {len(risks) - 12} mục khác")
-    return "Backup & rủi ro", lines or ["Không có hệ thống trọng yếu nào thiếu backup hay điểm rủi ro"], len(risks)
+        lines.append(f"… and {len(risks) - 12} other items")
+    return "Backup & Risks", lines or ["No critical systems are missing backups or risk indicators"], len(risks)
 
 
 def asset_changes(db, scope, days=30, silent_days=7, **_):
@@ -214,11 +213,11 @@ def asset_changes(db, scope, days=30, silent_days=7, **_):
     silent = [a for a in assets if a.last_seen and a.last_seen < now() - timedelta(days=silent_days)]
     no_owner = [a for a in assets if not (a.owner or "").strip() and a.type not in ("vm", "container")]
     unknown = unknown_sources(db, days)
-    lines = [f"Tài sản mới ({days} ngày): {len(new)}" + (" – " + ", ".join(a.name for a in new[:8]) if new else ""),
-             f"Nguồn lạ gửi log chưa xử lý: {len(unknown)}" + (" – " + ", ".join(ip for ip, _ in unknown[:8]) if unknown else ""),
-             f"Im lặng > {silent_days} ngày: {len(silent)}" + (" – " + ", ".join(a.name for a in silent[:8]) if silent else ""),
-             f"Thiếu người phụ trách: {len(no_owner)}" + (" – " + ", ".join(a.name for a in no_owner[:8]) if no_owner else "")]
-    return "Biến động tài sản", lines, len(new) + len(unknown) + len(silent) + len(no_owner)
+    lines = [f"New assets ({days} days): {len(new)}" + (" – " + ", ".join(a.name for a in new[:8]) if new else ""),
+             f"Unrecognized log sources: {len(unknown)}" + (" – " + ", ".join(ip for ip, _ in unknown[:8]) if unknown else ""),
+             f"Silent for > {silent_days} days: {len(silent)}" + (" – " + ", ".join(a.name for a in silent[:8]) if silent else ""),
+             f"Missing owner: {len(no_owner)}" + (" – " + ", ".join(a.name for a in no_owner[:8]) if no_owner else "")]
+    return "Asset Changes", lines, len(new) + len(unknown) + len(silent) + len(no_owner)
 
 
 def unknown_sources(db, days=30):
@@ -229,18 +228,18 @@ def unknown_sources(db, days=30):
 
 
 BLOCKS = {
-    "overview": ("Tổng quan tài sản + cảnh báo", overview),
-    "open_alerts": ("Cảnh báo đang mở", open_alerts),
-    "incidents": ("Sự cố trong N giờ", incidents),
+    "overview": ("Overview assets + alerts", overview),
+    "open_alerts": ("Open alerts", open_alerts),
+    "incidents": ("Incidents in the last N hours", incidents),
     "wan_lines": ("Internet / WAN", wan_lines),
-    "ssl_expiring": ("SSL sắp hết hạn", ssl_expiring),
-    "resources_top": ("Tài nguyên vượt threshold", resources_top),
-    "log_top": ("Log lỗi nhiều nhất", log_top),
+    "ssl_expiring": ("SSL certificates expiring soon", ssl_expiring),
+    "resources_top": ("Resources above threshold", resources_top),
+    "log_top": ("Top error logs", log_top),
     "uptime_by_site": ("Uptime theo site", uptime_by_site),
-    "mtta_mttr": ("Số sự cố, MTTA, MTTR", mtta_mttr),
-    "top_noisy": ("Top thiết bị nhiều sự cố", top_noisy),
-    "backup_risks": ("Backup & rủi ro", backup_risks),
-    "asset_changes": ("Biến động tài sản", asset_changes),
+    "mtta_mttr": ("Incident count, MTTA, MTTR", mtta_mttr),
+    "top_noisy": ("Devices with the most incidents", top_noisy),
+    "backup_risks": ("Backup & Risks", backup_risks),
+    "asset_changes": ("Asset Changes", asset_changes),
 }
 
 

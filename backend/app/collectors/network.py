@@ -1,4 +1,4 @@
-"""Ping (ICMP), TCP port và HTTP(S) + hạn chứng chỉ SSL."""
+"""Ping (ICMP), TCP ports, and HTTP(S) + SSL certificate expiry."""
 import asyncio
 import os
 import re
@@ -23,7 +23,7 @@ def _ping_cmd(target: str, count: int, timeout: int) -> list[str]:
 
 
 def parse_ping(text: str) -> tuple[float, float | None, bool]:
-    """Trả (loss %, rtt trung bình ms, có đọc được thống kê không). Hỗ trợ Linux/macOS và Windows (tiếng Anh/Việt)."""
+    """Trả (loss %, rtt trung bình ms, có đọc được thống kê không). Hỗ trợ Linux/macOS and Windows (tiếng Anh/Việt)."""
     m = re.search(r"([\d.]+)% packet loss", text)                      # Linux / macOS
     if m:
         rtt = re.search(r"= [\d.]+/([\d.]+)/", text)
@@ -41,22 +41,22 @@ async def ping(target: str, cfg: dict) -> Result:
     timeout = int(cfg.get("timeout", 2))
     import subprocess
     try:
-        # chạy trong thread: hoạt động với mọi loại event loop (Windows SelectorEventLoop không hỗ trợ subprocess)
+        # chạy trong thread: hoạt động với mọi loại event loop (Windows SelectorEventLoop is not supported subprocess)
         cp = await asyncio.to_thread(subprocess.run, _ping_cmd(target, count, timeout), capture_output=True,
                                      timeout=count * (timeout + 1) + 5,
                                      creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except FileNotFoundError:
-        return Result("fail", "Máy chủ thiếu lệnh ping (cài iputils-ping)")
+        return Result("fail", "The server is missing the ping command (install iputils-ping)")
     except subprocess.TimeoutExpired:
-        return Result("fail", "Ping quá thời gian")
+        return Result("fail", "Ping timed out")
     raw = cp.stdout + cp.stderr
     text = raw.decode("utf-8", errors="ignore") if not IS_WINDOWS else raw.decode("mbcs", errors="ignore")
     loss, rtt, parsed = parse_ping(text)
     if loss >= 100:
-        msg = "Không phản hồi" if parsed else (text.strip().splitlines() or ["Ping lỗi"])[-1]
+        msg = "No response" if parsed else (text.strip().splitlines() or ["Ping failed"])[-1]
         return Result("fail", msg, None, loss, {"loss": loss}, down=True)
     status = "warn" if loss > float(cfg.get("warn_loss", 20)) or (rtt and rtt > float(cfg.get("warn_ms", 200))) else "ok"
-    return Result(status, f"{rtt:.1f} ms · mất {loss:.0f}%" if rtt is not None else f"mất {loss:.0f}%", rtt, loss, {"loss": loss})
+    return Result(status, f"{rtt:.1f} ms · {loss:.0f}% packet loss" if rtt is not None else f"{loss:.0f}% packet loss", rtt, loss, {"loss": loss})
 
 
 async def tcp(target: str, cfg: dict) -> Result:
@@ -70,9 +70,9 @@ async def tcp(target: str, cfg: dict) -> Result:
         except Exception:
             pass
     except Exception as e:
-        return Result("fail", f"Cổng {port} đóng: {type(e).__name__} {e}".strip())
+        return Result("fail", f"Port {port} is closed: {type(e).__name__} {e}".strip())
     ms = (time.perf_counter() - t0) * 1000
-    return Result("ok", f"Cổng {port} mở · {ms:.0f} ms", ms)
+    return Result("ok", f"Port {port} is open · {ms:.0f} ms", ms)
 
 
 def _cert_days_left(host: str, port: int, timeout: float = 5) -> int | None:
@@ -101,7 +101,7 @@ async def http(target: str, cfg: dict) -> Result:
         async with httpx.AsyncClient(verify=verify, timeout=float(cfg.get("timeout", 10)), follow_redirects=True) as c:
             r = await c.request(cfg.get("method", "GET"), url)
     except Exception as e:
-        return Result("fail", f"Không truy cập được: {type(e).__name__} {e}"[:300])
+        return Result("fail", f"Unable to access: {type(e).__name__} {e}"[:300])
     ms = (time.perf_counter() - t0) * 1000
 
     ok_code = r.status_code in expected
@@ -112,10 +112,10 @@ async def http(target: str, cfg: dict) -> Result:
     status, parts = "ok", [f"HTTP {r.status_code} · {ms:.0f} ms"]
     down = False
     if not ok_code:
-        status, down = "fail", True          # web trả mã lỗi = trang không dùng được (giống Uptime Kuma)
+        status, down = "fail", True          # web trả mã error = trang không dùng được (giống Uptime Kuma)
     if keyword and keyword not in r.text:
         status, down = "fail", True
-        parts.append(f"không thấy '{keyword}'")
+        parts.append(f"Expected keyword '{keyword}' was not found")
     if ms > float(cfg.get("warn_ms", 3000)) and status == "ok":
         status = "warn"
 
@@ -125,7 +125,7 @@ async def http(target: str, cfg: dict) -> Result:
             days = await asyncio.to_thread(_cert_days_left, u.hostname, u.port or 443)
             if days is not None:
                 data["cert_days"] = days
-                parts.append(f"SSL còn {days} ngày")
+                parts.append(f"SSL certificate expires in {days} days")
                 if days < 0:
                     status = "fail"
                 elif days < int(cfg.get("cert_warn_days", 14)) and status == "ok":
@@ -137,12 +137,25 @@ async def http(target: str, cfg: dict) -> Result:
 
 # ---------------------------------------------------------------- Đường Internet (kiểu Uptime Kuma / UptimeRobot)
 DEFAULT_INET_TARGETS = "1.1.1.1, 8.8.8.8, 208.67.222.222"
+
+
+def inet_targets(target: str) -> list[str]:
+    return [t.strip() for t in (target or DEFAULT_INET_TARGETS).replace(";", ",").split(",") if t.strip()][:8]
+
+
+# Well-known public resolvers: if ALL of them stay silent while DNS / HTTP work, ICMP is probably blocked → warning only.
+PUBLIC_RESOLVERS = {"1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4", "208.67.222.222", "208.67.220.220", "9.9.9.9", "149.112.112.112"}
+
+
+def is_custom_inet(target: str) -> bool:
+    """True when the check pings at least one address of IT's own (a WAN public IP, a gateway…), not only public resolvers."""
+    return not set(inet_targets(target)) <= PUBLIC_RESOLVERS
 _LAST_PUBLIC_IP: dict = {}     # {check key: ip} – phát hiện đổi đường WAN (failover)
 
 
 def ping_samples(text: str) -> list[float]:
-    """Thời gian từng gói (ms). Linux 'time=12.3 ms'; Windows 'time=12ms' / 'time<1ms' / 'thời gian=12ms'."""
-    return [float(x) for x in re.findall(r"(?:time|thời gian|thoi gian)\s?[=<]\s?([\d.]+)\s?ms", text, re.I)]
+    """Thời gian fromng gói (ms). Linux 'time=12.3 ms'; Windows 'time=12ms' / 'time<1ms' / '\u0074h\u1eddi gian=12ms'."""
+    return [float(x) for x in re.findall(r"(?:time|\u0074h\u1eddi gian|thoi gian)\s?[=<]\s?([\d.]+)\s?ms", text, re.I)]
 
 
 def jitter(samples: list[float]) -> float | None:
@@ -160,9 +173,9 @@ async def _ping_one(target: str, count: int, timeout: int) -> dict:
         raw = cp.stdout + cp.stderr
         text = raw.decode("utf-8", errors="ignore") if not IS_WINDOWS else raw.decode("mbcs", errors="ignore")
     except FileNotFoundError:
-        return {"target": target, "loss": 100.0, "rtt": None, "error": "thiếu lệnh ping"}
+        return {"target": target, "loss": 100.0, "rtt": None, "error": "ping command is missing"}
     except subprocess.TimeoutExpired:
-        return {"target": target, "loss": 100.0, "rtt": None, "error": "quá thời gian"}
+        return {"target": target, "loss": 100.0, "rtt": None, "error": "timed out"}
     loss, rtt, _ = parse_ping(text)
     smp = ping_samples(text)
     return {"target": target, "loss": loss, "rtt": round(rtt, 1) if rtt is not None else None, "jitter": jitter(smp),
@@ -201,10 +214,11 @@ async def _public_ip(timeout: float) -> str | None:
 async def internet(target: str, cfg: dict) -> Result:
     """Kiểm tra đường Internet: ping nhiều đích công cộng + DNS + HTTP (+ IP public để biết đang ra bằng đường WAN nào).
 
-    - Lỗi (mất Internet): mọi đích ping, DNS và HTTP đều không được.
-    - Cảnh báo: một phần đích không phản hồi, mất gói/độ trễ/jitter vượt threshold, DNS hoặc HTTP lỗi, IP public đổi.
+    - Error (mất Internet): mọi đích ping, DNS and HTTP đều không được.
+    - Warning: một phần đích not responding, mất gói/độ trễ/jitter vượt threshold, DNS hoặc HTTP failure, IP public đổi.
     """
-    targets = [t.strip() for t in (target or DEFAULT_INET_TARGETS).replace(";", ",").split(",") if t.strip()][:8]
+    targets = inet_targets(target)
+    custom = is_custom_inet(target)
     count, timeout = int(cfg.get("count", 5)), int(cfg.get("timeout", 2))
     jobs = [_ping_one(t, count, timeout) for t in targets]
     dns_name = str(cfg.get("dns_name", "google.com")).strip()
@@ -217,9 +231,7 @@ async def internet(target: str, cfg: dict) -> Result:
     want_ip = cfg.get("public_ip", True)
     if want_ip:
         extra.append(_public_ip(4))
-    t0 = time.perf_counter()
     out = await asyncio.gather(*jobs, *extra)
-    ms_total = (time.perf_counter() - t0) * 1000
     pings = out[: len(targets)]
     rest = list(out[len(targets):])
     dns = rest.pop(0) if dns_name else None
@@ -237,17 +249,21 @@ async def internet(target: str, cfg: dict) -> Result:
 
     any_ok = bool(alive) or (dns and dns["ok"]) or (web and web["ok"])
     if not any_ok:
-        return Result("fail", f"Mất Internet · 0/{len(pings)} đích phản hồi" + (" · DNS lỗi" if dns else "") + (" · HTTP lỗi" if web else ""),
+        return Result("fail", f"Internet outage · 0/{len(pings)} targets responding" + (" · DNS failure" if dns else "") + (" · HTTP failure" if web else ""),
                       None, 100.0, data, down=True)
+    if not alive and custom:
+        # Your own targets (e.g. one WAN's public IP / gateway): none answering = that line is DOWN.
+        # DNS / HTTP below go out through the server's own default route, so they say nothing about that line.
+        return Result("fail", f"No response from {', '.join(targets)} · 100% packet loss", None, 100.0, data, down=True)
     if not alive:
-        statuses.append("warn"); notes.append("không ping được đích nào (ICMP bị chặn?)")
+        statuses.append("warn"); notes.append("no ping targets responded (is ICMP blocked?)")
     elif len(alive) < len(pings):
-        statuses.append("warn"); notes.append(f"{len(pings) - len(alive)}/{len(pings)} đích không phản hồi: " + ", ".join(p["target"] for p in pings if p["loss"] >= 100))
+        statuses.append("warn"); notes.append(f"{len(pings) - len(alive)}/{len(pings)} targets did not respond: " + ", ".join(p["target"] for p in pings if p["loss"] >= 100))
     if best is not None:
         notes.insert(0, f"{best:g} ms")
         if best > float(cfg.get("warn_ms", 150)):
-            statuses.append("warn"); notes.append(f"độ trễ cao (> {cfg.get('warn_ms', 150)} ms)")
-    notes.insert(1 if best is not None else 0, f"mất {loss:g}%")
+            statuses.append("warn"); notes.append(f"high latency (> {cfg.get('warn_ms', 150)} ms)")
+    notes.insert(1 if best is not None else 0, f"{loss:g}% packet loss")
     if alive and loss > float(cfg.get("warn_loss", 10)):
         statuses.append("warn")
     if jit_v is not None:
@@ -260,9 +276,9 @@ async def internet(target: str, cfg: dict) -> Result:
             if dns["ms"] > float(cfg.get("warn_dns_ms", 500)):
                 statuses.append("warn")
         else:
-            statuses.append("warn"); notes.append("DNS lỗi")
+            statuses.append("warn"); notes.append("DNS failure")
     if web and not web["ok"]:
-        statuses.append("warn"); notes.append(f"HTTP lỗi ({web.get('code') or web.get('error')})")
+        statuses.append("warn"); notes.append(f"HTTP failure ({web.get('code') or web.get('error')})")
     if pub:
         key = ",".join(targets)
         prev = _LAST_PUBLIC_IP.get(key)
@@ -270,8 +286,9 @@ async def internet(target: str, cfg: dict) -> Result:
         notes.append(f"IP {pub}")
         if prev and prev != pub:
             data["public_ip_prev"] = prev
-            notes.append(f"đổi đường ra: {prev} → {pub}")
+            notes.append(f"WAN egress path changed: {prev} → {pub}")
             if cfg.get("warn_ip_change", True):
                 statuses.append("warn")
     from .base import worst
-    return Result(worst(*statuses), " · ".join(notes), best if best is not None else ms_total, loss, data)
+    # latency = best ping RTT only; without any ping reply there is no latency (not the probe's total run time)
+    return Result(worst(*statuses), " · ".join(notes), best, loss, data)

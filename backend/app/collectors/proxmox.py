@@ -1,12 +1,11 @@
-"""Proxmox VE qua REST API (API token, không cần mật khẩu root).
+"""Proxmox VE via REST API (API token; no root password required).
 
-Lấy: node (CPU/RAM/rootfs/uptime), storage, VM (QEMU) và container (LXC) trên từng node:
-status, vCPU, RAM cấp phát / đang dùng, CPU %, disk, uptime, snapshot. Tùy chọn qua QEMU guest agent: IP và
-dung lượng ổ trong guest. VM/LXC tự đưa lên bản đồ, gắn dưới node (host).
+Collects: node (CPU/RAM/rootfs/uptime), storage, VM (QEMU), and container (LXC) data on each node:
+status, vCPU, allocated / used RAM, CPU %, disk, uptime, and snapshots. Optionally uses the QEMU guest agent for guest IP and disk capacity.
+VMs/LXCs are automatically added to the topology map under their node (host).
 
-Quyền tối thiểu: role PVEAuditor trên "/" cho user của token (tắt Privilege Separation hoặc gán quyền cho chính token).
-Đọc guest agent cần thêm quyền VM.GuestAgent.Audit (PVE 9) / VM.Monitor (PVE 8) – thiếu thì bỏ qua, không lỗi.
-"""
+Minimum permission: PVEAuditor role on "/" for the token user (disable Privilege Separation or assign permissions directly to the token).
+Guest-agent access additionally requires VM.GuestAgent.Audit (PVE 9) / VM.Monitor (PVE 8); if missing, it is skipped without an error."""
 import asyncio
 import time
 from datetime import datetime, timezone
@@ -37,7 +36,7 @@ def _pct(used, total):
 
 
 async def _guest_extra(c, sem, node, g, cfg):
-    """Snapshot (QEMU + LXC) và guest agent (QEMU đang chạy). Lỗi/thiếu quyền → bỏ qua."""
+    """Snapshot (QEMU + LXC) and guest agent (QEMU running). Error/missing quyền → bỏ qua."""
     kind, vmid = g["_kind"], g["vmid"]
     async with sem:
         if cfg.get("snapshot_check", True):
@@ -70,7 +69,7 @@ async def _guest_extra(c, sem, node, g, cfg):
 async def proxmox(target: str, cfg: dict) -> Result:
     token_id, secret = str(cfg.get("token_id", "")).strip(), str(cfg.get("token_secret", "")).strip()
     if not token_id or not secret:
-        return Result("fail", "Thiếu API token (token ID + secret)", down=False)
+        return Result("fail", "Missing API token (token ID + secret)", down=False)
     host = target if "://" in target else f"https://{target}:{int(cfg.get('port', 8006))}"
     headers = {"Authorization": f"PVEAPIToken={token_id}={secret}"}
     t0 = time.perf_counter()
@@ -163,17 +162,17 @@ async def proxmox(target: str, cfg: dict) -> Result:
                                  "netin": g.get("netin"), "netout": g.get("netout"), "res": vres or None}})
                     if g.get("_oldest") is not None and g["_oldest"] > int(cfg.get("snapshot_warn_days", 7)):
                         statuses.append("warn")
-                        notes.append(f"{gname} có snapshot {g['_oldest']} ngày")
+                        notes.append(f"{gname} has a snapshot older than {g['_oldest']} days")
             data.update(vm_total=vm_total, vm_on=vm_on, lxc_total=lxc_total, lxc_on=lxc_on)
             res_notes: list = []
             metrics = apply_resources(data, cfg, statuses, res_notes, cpu=max(cpu_vals) if cpu_vals else None,
                                       mem=max(mem_vals) if mem_vals else None, disks=storages,
                                       mem_total_gb=mem_total or None, disk_label="Storage")
-            parts = [f"{len(nodes)} node", f"{vm_on}/{vm_total} VM chạy"] + ([f"{lxc_on}/{lxc_total} LXC"] if lxc_total else [])
+            parts = [f"{len(nodes)} node", f"{vm_on}/{vm_total} running VMs"] + ([f"{lxc_on}/{lxc_total} LXC"] if lxc_total else [])
             return Result(worst(*statuses), " · ".join(parts + res_notes + notes[:5]), ms, metrics.get("cpu"), data, discovered)
     except httpx.HTTPStatusError as e:
         code = e.response.status_code
-        hint = " – kiểm tra token ID/secret và quyền PVEAuditor" if code in (401, 403) else ""
+        hint = " – – check the token ID/secret and PVEAuditor permissions" if code in (401, 403) else ""
         return Result("fail", f"Proxmox API HTTP {code}{hint}", down=code not in (401, 403))
     except Exception as e:
-        return Result("fail", f"Không kết nối được Proxmox: {type(e).__name__} {e}"[:300], down=True)
+        return Result("fail", f"Unable to connect to Proxmox: {type(e).__name__} {e}"[:300], down=True)

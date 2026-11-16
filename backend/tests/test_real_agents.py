@@ -1,4 +1,4 @@
-"""SNMP và SSH với agent thật (net-snmp snmpd, OpenSSH sshd) chạy cục bộ. Tự bỏ qua nếu máy test không có."""
+"""SNMP and SSH với agent thật (net-snmp snmpd, OpenSSH sshd) chạy cục bộ. Tự bỏ qua nếu machines test không có."""
 import asyncio
 import os
 import shutil
@@ -96,7 +96,7 @@ def test_ssh_default_metrics(sshd):
 
 def test_ssh_disk_threshold(sshd):
     port, key = sshd
-    # threshold cũ (disk_warn/disk_fail) vẫn đọc được = Trouble/Critical; vượt threshold KHÔNG làm check lỗi kết nối
+    # threshold cũ (disk_warn/disk_fail) vẫn đọc được = Trouble/Critical; vượt threshold KHÔNG làm check error kết nối
     r = run("ssh", "127.0.0.1", {"port": port, "username": "root", "private_key": key, "disk_warn": 1, "disk_fail": 100})
     assert r.status == "ok" and r.data["res"]["levels"]["disk"] == "trouble"
     r = run("ssh", "127.0.0.1", {"port": port, "username": "root", "private_key": key, "disk_warn": 0, "disk_fail": 1})
@@ -116,29 +116,29 @@ def test_ssh_custom_command_exit_codes(sshd):
 def test_ssh_wrong_key(sshd):
     port, _ = sshd
     r = run("ssh", "127.0.0.1", {"port": port, "username": "root", "password": "sai", "timeout": 5})
-    assert r.status == "fail" and "SSH lỗi" in r.message
+    assert r.status == "fail" and "SSH error" in r.message
 
 
 def test_snmp_traffic_rates_two_polls(snmpd):
-    """Lần 1 chưa có Mbps; lần 2 (sau khi có lưu lượng) tính ra Mbps cho cổng lo."""
+    """Lần 1 none Mbps; lần 2 (sau khi có lưu lượng) tính ra Mbps cho cổng lo."""
     import importlib
     import subprocess as sp
     importlib.import_module("app.collectors.snmp")._COUNTERS.clear()
     cfg = {"community": "qa-community", "port": snmpd, **NO_RES_LIMIT}
     r1 = run("snmp", "127.0.0.1", cfg)
-    assert r1.status == "ok" and "đang đo lưu lượng" in r1.message
+    assert r1.status == "ok" and "traffic" in r1.message
     sp.run(["ping", "-c", "40", "-i", "0.05", "-s", "1400", "127.0.0.1"], capture_output=True)
-    time.sleep(5)  # net-snmp cache bộ đếm interface vài giây
+    time.sleep(5)  # net-snmp cache bộ đếm interface andi giây
     r2 = run("snmp", "127.0.0.1", cfg)
     lo = next(p for p in r2.data["ports"] if p["name"] == "lo")
     assert lo["in_mbps"] is not None and lo["in_mbps"] > 0, lo
-    assert lo["virtual"] is True and lo not in [p for p in r2.data["ports"] if not p["virtual"]], "lo là cổng ảo, không tính vào tổng"
+    assert lo["virtual"] is True and lo not in [p for p in r2.data["ports"] if not p["virtual"]], "lo là cổng ảo, không tính ando tổng"
     assert r2.data["traffic_ready"] is True
     assert r2.data.get("uptime")
 
 
 def test_snmp_resources_from_host_mib(snmpd):
-    """snmpd thật: đọc RAM (đã trừ buffer/cache) và ổ đĩa qua hrStorage; threshold thấp → cảnh báo."""
+    """snmpd thật: đọc RAM (đã trừ buffer/cache) and disk đĩa qua hrStorage; threshold thấp → cảnh báo."""
     r = run("snmp", "127.0.0.1", {"community": "qa-community", "port": snmpd, **NO_RES_LIMIT})
     res = r.data["res"]
     assert 0 < res["mem"] < 100 and res["mem_total_gb"] > 0

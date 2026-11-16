@@ -1,4 +1,4 @@
-"""Giám sát an ninh: C10 khoá xoá dữ liệu, C11 gộp theo IP source, C12 danh sách khoá, UC-14 cảnh báo audit + tách nhiệm vụ,
+"""Security Monitoring: C10 khoá xoá dữ liệu, C11 gộp theo IP source, C12 danh sách khoá, UC-14 cảnh báo audit + tách nhiệm vụ,
 B5 SLA, UC-13 log source im lặng, B7/B8 archive + chuỗi hash, B9/C14/C15 đọc Windows Event theo RecordId."""
 from datetime import date, datetime, timedelta
 
@@ -39,7 +39,7 @@ def test_reset_blocked_in_production(client, admin, clean, audit_on, monkeypatch
     assert r.status_code == 403
     assert client.get("/api/health").json()["production"] is True
     a = [x for x in _alerts(client, admin) if x["source"] == "audit"]
-    assert a and a[0]["severity"] == "critical" and "thử xoá dữ liệu" in a[0]["title"]
+    assert a and a[0]["severity"] == "critical" and "attempted to delete data" in a[0]["title"]
     assert any(x["action"] == "reset_blocked" for x in client.get("/api/audit", headers=admin).json())
 
 
@@ -48,24 +48,25 @@ def test_login_failures_grouped_by_source_ip(client, admin, clean):
     batch = [_syslog(f"Failed password for {u} from 203.0.113.7 port 5{i} ssh2") for i, u in enumerate(["root", "admin", "test", "oracle", "root", "ubuntu"])]
     batch.append(_syslog("Failed password for root from 198.51.100.9 port 22 ssh2"))
     ev_mod.process_batch(batch)
-    al = [a for a in _alerts(client, admin) if a["title"].startswith("Đăng nhập sai liên tục")]
+    al = [a for a in _alerts(client, admin) if a["title"].startswith("Repeated failed sign-ins")]
     assert len(al) == 1, "một IP thử nhiều user → 1 cảnh báo"
     assert "203.0.113.7" in al[0]["title"] and al[0]["severity"] == "trouble"
-    assert "User đã thử:" in al[0]["message"] and "oracle" in al[0]["message"] and "admin" in al[0]["message"]
+    assert "203.0.113.7" in al[0]["message"]
+    assert "Attempted users:" in al[0]["message"] and "oracle" in al[0]["message"] and "admin" in al[0]["message"]
 
 
 # ---------------------------------------------------------------- C12
 def test_arp_rule_only_for_listed_static_ips(client, admin, clean):
     rules = client.get("/api/event-rules", headers=admin).json()
-    arp = next(r for r in rules if r["name"].startswith("IP đổi MAC"))
+    arp = next(r for r in rules if r["name"].startswith("IP-to-MAC address change"))
     assert arp["enabled"] is False
     r = client.put(f"/api/event-rules/{arp['id']}", json={"enabled": True, "key_filter": "10.0.0.1, 10.0.0.10"}, headers=admin)
     assert r.status_code == 200
     ev_mod.invalidate_caches()
     ev_mod.process_batch([_syslog("arp: 10.0.0.55 moved from aa:aa:aa:aa:aa:01 to aa:aa:aa:aa:aa:02 on igb1", app="kernel")])
-    assert not [a for a in _alerts(client, admin) if "IP đổi MAC" in a["title"]], "IP DHCP không nằm trong danh sách → không báo"
+    assert not [a for a in _alerts(client, admin) if "IP-to-MAC address change" in a["title"]], "IP DHCP không nằm trong danh sách → không báo"
     ev_mod.process_batch([_syslog("arp: 10.0.0.1 moved from aa:aa:aa:aa:aa:01 to bb:bb:bb:bb:bb:02 on igb1", app="kernel")])
-    al = [a for a in _alerts(client, admin) if "IP đổi MAC" in a["title"]]
+    al = [a for a in _alerts(client, admin) if "IP-to-MAC address change" in a["title"]]
     assert len(al) == 1 and "10.0.0.1" in al[0]["title"] and al[0]["severity"] == "attention"
     client.put(f"/api/event-rules/{arp['id']}", json={"enabled": False, "key_filter": ""}, headers=admin)
 
@@ -75,14 +76,15 @@ def test_admin_actions_raise_audit_alerts_and_actor_cannot_close(client, admin, 
     r = client.post("/api/users", json={"username": "boss2", "password": "Boss@12345", "role": "admin"}, headers=admin)
     assert r.status_code == 200
     a = next(x for x in _alerts(client, admin) if x["source"] == "audit")
-    assert a["severity"] == "critical" and "tạo tài khoản boss2" in a["title"] and a["actor"] == "admin"
-    assert secmon._pending, "thông báo gửi người nhận riêng"
+    assert a["severity"] == "critical" and "created account boss2" in a["title"] and a["actor"] == "admin"
+    assert "Performed by: admin" in a["message"] and "create user boss2" in a["message"]
+    assert secmon._pending, "thông báo send to dedicated recipients"
     assert client.post(f"/api/alerts/{a['id']}/ack", headers=admin).status_code == 403, "người thực hiện không tự ack"
     h2 = {"Authorization": "Bearer " + client.post("/api/auth/login", json={"username": "boss2", "password": "Boss@12345"}).json()["token"]}
     assert client.post(f"/api/alerts/{a['id']}/ack", headers=h2).status_code == 200, "người khác ack được"
     c = client.post("/api/checks", json={"name": "c", "type": "tcp", "target": "127.0.0.1", "enabled": True, "config": {"port": 1}}, headers=admin).json()
     client.put(f"/api/checks/{c['id']}", json={"enabled": False}, headers=admin)
-    assert any("tắt check giám sát c" in x["title"] for x in _alerts(client, admin) if x["source"] == "audit")
+    assert any("disabled monitoring check c" in x["title"] for x in _alerts(client, admin) if x["source"] == "audit")
     uid = r.json()["id"]
     client.delete(f"/api/users/{uid}", headers=admin)
 
@@ -90,7 +92,7 @@ def test_admin_actions_raise_audit_alerts_and_actor_cannot_close(client, admin, 
 def test_login_failure_burst_on_itops(client, admin, audit_on):
     for _ in range(5):
         client.post("/api/auth/login", json={"username": "ghost", "password": "x"})
-    assert any("đăng nhập sai liên tục" in x["title"] for x in _alerts(client, admin) if x["source"] == "audit")
+    assert any("repeated failed sign-ins" in x["title"] for x in _alerts(client, admin) if x["source"] == "audit")
     from app import main
     main._FAILED.clear()
 
@@ -102,9 +104,9 @@ def test_business_minutes_and_sla():
     biz = cfg["business"]
     sat = datetime(2026, 11, 7, 18, 0, tzinfo=TZ)                     # Thứ 7 18:00, làm tới 18:30
     assert secmon.add_business_minutes(sat, 60, biz) == datetime(2026, 11, 9, 8, 0, tzinfo=TZ)   # CN nghỉ → T2 08:00
-    a = models.Alert(severity="critical", title="x", opened_at=datetime(2026, 11, 7, 15, 0))     # 22:00 giờ VN → ngoài giờ
+    a = models.Alert(severity="critical", title="x", opened_at=datetime(2026, 11, 7, 15, 0))     # 22:00 hours VN → ngoài hours
     assert secmon.sla_due(a, cfg) == datetime(2026, 11, 7, 15, 30)
-    a2 = models.Alert(severity="critical", title="x", opened_at=datetime(2026, 11, 5, 3, 0))     # 10:00 giờ VN → trong giờ
+    a2 = models.Alert(severity="critical", title="x", opened_at=datetime(2026, 11, 5, 3, 0))     # 10:00 hours VN → trong hours
     assert secmon.sla_due(a2, cfg) == datetime(2026, 11, 5, 3, 15)
     a3 = models.Alert(severity="warning", title="x", opened_at=datetime(2026, 11, 7, 11, 0))     # 18:00 T7, Trouble theo business hours
     assert secmon.sla_due(a3, cfg) == datetime(2026, 11, 9, 1, 0)
@@ -163,7 +165,7 @@ def test_archive_and_hash_chain(client, admin, clean, tmp_path):
         cfg = secmon.get_settings(db)
         r1 = secmon.archive_day(db, cfg, d1)
         r2 = secmon.archive_day(db, cfg, d2)
-        assert secmon.archive_day(db, cfg, d1) is None, "không ghi đè ngày đã lưu"
+        assert secmon.archive_day(db, cfg, d1) is None, "không ghi đè days đã lưu"
     assert r1["rows"] >= 1 and r2["rows"] >= 1
     res = client.get("/api/secmon/archive", headers=admin).json()
     assert res["ok"] and len(res["days"]) == 2
@@ -193,13 +195,13 @@ def test_winevents_cursor_and_events():
     assert cur == {"Security": 510, "System": 905}
     msgs = [e["message"] for e in evs]
     assert any(m.startswith("EventID=4720") and "target=eve" in m for m in msgs)
-    assert any("EventID=1100" in m and "planned=1" in m for m in msgs), "1100 có 1074 đi kèm = tắt máy có kế hoạch"
+    assert any("EventID=1100" in m and "planned=1" in m for m in msgs), "1100 có 1074 đi kèm = tắt machines có kế hoạch"
     assert not any("EventID=1074" in m for m in msgs)
     cur2, evs2, _ = W.parse_output("##LOG Security 3 1\n##LOG System 905 1", cur)
-    assert any("RecordId giảm" in e["message"] for e in evs2) and cur2["Security"] == 3
+    assert any("RecordId decreased" in e["message"] for e in evs2) and cur2["Security"] == 3
     _, evs3, _ = W.parse_output("##LOG Security 700 600\n##LOG System 905 1", cur)
-    assert any("RecordId có khoảng trống" in e["message"] for e in evs3)
-    assert "EventRecordID>510" not in W.build_command(cur)   # lệnh được mã hoá base64
+    assert any("RecordId has a gap" in e["message"] for e in evs3)
+    assert "EventRecordID>510" not in W.build_command(cur)   # lệnh được base64-encoded
     import base64
     ps = base64.b64decode(W.build_command(cur).split()[-1]).decode("utf-16-le")
     assert '"Security": 510' in ps and "4720" in ps
@@ -218,9 +220,9 @@ def test_winevents_rules_raise_alerts(client, admin, clean):
     ev_mod.invalidate_caches()
     ev_mod.process_batch(batch)
     titles = [a["title"] for a in _alerts(client, admin)]
-    assert any(t.startswith("Windows: xóa event log") for t in titles)
-    assert any(t.startswith("Windows: dịch vụ log dừng ngoài kế hoạch") for t in titles)
-    assert sum(t.startswith("Windows: thêm vào admin group") for t in titles) == 1, "chỉ nhóm đặc quyền"
+    assert any(t.startswith("Windows: event log cleared") for t in titles)
+    assert any(t.startswith("Windows: event logging service stopped unexpectedly") for t in titles)
+    assert sum(t.startswith("Windows: added to administrators group") for t in titles) == 1, "chỉ nhóm đặc quyền"
 
 
 # ---------------------------------------------------------------- D

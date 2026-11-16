@@ -1,4 +1,4 @@
-"""SSH tới máy Linux (hoặc lệnh tuỳ chỉnh): uptime, load, RAM, disk, docker containers."""
+"""SSH to Linux hosts (or custom commands): uptime, load, RAM, disks, and Docker containers."""
 import asyncio
 import base64
 import json
@@ -36,7 +36,7 @@ $os = Get-CimInstance Win32_OperatingSystem
 """
 
 
-# FreeBSD / pfSense / OPNsense – chạy qua "sh -s" (shell đăng nhập của pfSense là menu rc.initial)
+# FreeBSD / pfSense / OPNsense – chạy qua "sh -s" (shell sign-in of pfSense là menu rc.initial)
 FREEBSD_SCRIPT = r"""
 echo "##HOST"; hostname
 echo "##OS"; if [ -f /etc/version ]; then echo "pfSense $(cat /etc/version) / $(uname -r)"; elif [ -f /usr/local/opnsense/version/core ]; then echo "OPNsense / $(uname -r)"; else uname -sr; fi
@@ -111,7 +111,7 @@ def parse_freebsd(s: dict) -> dict:
 
 
 async def freebsd_resources(target: str, cfg: dict, prefix: str = "") -> dict:
-    """Đăng nhập SSH và đọc tài nguyên FreeBSD/pfSense. prefix='cli_' khi dùng kèm check pfSense (SNMP + CLI)."""
+    """Đăng nhập SSH and đọc tài nguyên FreeBSD/pfSense. prefix='cli_' khi dùng kèm check pfSense (SNMP + CLI)."""
     kw = dict(host=target, port=int(cfg.get(f"{prefix}port") or 22), username=cfg.get(f"{prefix}username") or "admin",
               known_hosts=None, connect_timeout=float(cfg.get("timeout", 10)))
     if cfg.get(f"{prefix}private_key"):
@@ -125,7 +125,7 @@ async def freebsd_resources(target: str, cfg: dict, prefix: str = "") -> dict:
     out["hostname"] = (s.get("HOST") or [""])[0]
     out["os"] = (s.get("OS") or [""])[0]
     if "mem" not in out and "cpu" not in out:
-        raise RuntimeError(f"không đọc được số liệu (shell trả về: {(r.stdout or r.stderr or '')[:120]!r})")
+        raise RuntimeError(f"unable to read metrics (shell returned: {(r.stdout or r.stderr or '')[:120]!r})")
     return out
 
 
@@ -189,14 +189,14 @@ HV_POWER = {"Running": "up", "Off": "off", "Saved": "off", "Paused": "off", "Sta
 
 
 def parse_hyperv(text: str, warn_days: int = 7) -> tuple[list, dict, list]:
-    """Trả (discovered VM, thông tin host, ghi chú). VM gắn dưới tài sản của check (host Hyper-V)."""
+    """Trả (discovered VM, thông tin host, ghi chú). VM gắn dưới assets of check (host Hyper-V)."""
     line = next((l for l in (text or "").splitlines() if l.startswith("##HV ")), "")
     if not line:
-        return [], {}, ["Không đọc được Hyper-V (chưa cài role Hyper-V hoặc user thiếu quyền Hyper-V Administrators)"]
+        return [], {}, ["Unable to read Hyper-V (the Hyper-V role is not installed or the user lacks Hyper-V Administrators permissions)"]
     try:
         js = json.loads(line[5:])
     except ValueError:
-        return [], {}, ["Dữ liệu Hyper-V không hợp lệ"]
+        return [], {}, ["Invalid Hyper-V data"]
     vms = js.get("vms") or []
     if isinstance(vms, dict):
         vms = [vms]
@@ -222,20 +222,20 @@ def parse_hyperv(text: str, warn_days: int = 7) -> tuple[list, dict, list]:
                              "heartbeat": v.get("heartbeat"), "disk_alloc_gb": round((v.get("vhd_size") or 0) / 1073741824, 1),
                              "disk_file_gb": round((v.get("vhd_file") or 0) / 1073741824, 1), "res": vres or None}})
         if v.get("oldest") is not None and v["oldest"] > warn_days:
-            notes.append(f"VM {v.get('name')} có snapshot {v['oldest']} ngày")
+            notes.append(f"VM {v.get('name')} has a snapshot {v['oldest']} days")
     h = js.get("host") or {}
     return out, {"cores": h.get("cores"), "mem_gb": round((h.get("mem") or 0) / 1073741824)}, notes
 
 
 def custom_command_allowed() -> bool:
-    """Lệnh SSH tuỳ chỉnh chạy BẤT KỲ lệnh nào bằng tài khoản đã lưu → mặc định tắt. Bật: ALLOW_SSH_COMMAND=1."""
+    """Lệnh SSH tuỳ chỉnh chạy BẤT KỲ lệnh nào bằng account đã lưu → mặc định disabled. Bật: ALLOW_SSH_COMMAND=1."""
     import os
     return os.environ.get("ALLOW_SSH_COMMAND", "0").strip().lower() in ("1", "true", "yes", "on")
 
 
 async def ssh(target: str, cfg: dict) -> Result:
     if str(cfg.get("command") or "").strip() and not custom_command_allowed():
-        return Result("fail", "Lệnh SSH tuỳ chỉnh đang bị khoá (ALLOW_SSH_COMMAND chưa bật) – bỏ trống ô lệnh để dùng bộ đo mặc định")
+        return Result("fail", "Custom SSH commands are locked (ALLOW_SSH_COMMAND is not enabled). Leave the command field empty to use the default collector.")
     kw = dict(host=target, port=int(cfg.get("port", 22)), username=cfg.get("username", "root"), known_hosts=None,
               connect_timeout=float(cfg.get("timeout", 10)))
     if cfg.get("private_key"):
@@ -247,7 +247,7 @@ async def ssh(target: str, cfg: dict) -> Result:
         try:
             b = await freebsd_resources(target, cfg)
         except Exception as e:
-            return Result("fail", f"SSH lỗi: {type(e).__name__} {e}"[:300])
+            return Result("fail", f"SSH error: {type(e).__name__} {e}"[:300])
         ms = (time.perf_counter() - t0) * 1000
         data, statuses, notes = {"hostname": b.get("hostname"), "os": b.get("os"), "nproc": b.get("nproc"), "disks": b["disks"]}, ["ok"], []
         if b.get("uptime_s"):
@@ -270,10 +270,10 @@ async def ssh(target: str, cfg: dict) -> Result:
                 from .winevents import collect as win_collect
                 try:
                     win_ev = await win_collect(conn, target, "")
-                except Exception as e:   # đọc event lỗi không làm check SSH lỗi
-                    win_ev = (0, [f"Đọc Windows Event lỗi: {type(e).__name__} {e}"[:200]])
+                except Exception as e:   # đọc event error không làm check SSH error
+                    win_ev = (0, [f"Windows Event read error: {type(e).__name__} {e}"[:200]])
     except Exception as e:
-        return Result("fail", f"SSH lỗi: {type(e).__name__} {e}"[:300])
+        return Result("fail", f"SSH error: {type(e).__name__} {e}"[:300])
 
     out = r.stdout or ""
     if cfg.get("command"):  # lệnh tuỳ chỉnh: exit code 0 = ok, 1 = warn, khác = fail
@@ -312,7 +312,7 @@ async def ssh(target: str, cfg: dict) -> Result:
         must = [x.strip().lower() for x in str(cfg.get("watch_services", "")).split(",") if x.strip()]
         bad = [x for x in w["stopped_services"] if x.lower() in must]
         if bad:
-            statuses.append("fail"); notes.append("Service dừng: " + ", ".join(bad))
+            statuses.append("fail"); notes.append("Stopped services: " + ", ".join(bad))
         data["stopped_services"] = w["stopped_services"][:50]
         if win_ev is not None:
             data["win_events"] = {"read": win_ev[0], "notes": win_ev[1]}
@@ -323,7 +323,7 @@ async def ssh(target: str, cfg: dict) -> Result:
             discovered, hv_host, hv_notes = parse_hyperv(hv_out, int(cfg.get("snapshot_warn_days", 7)))
             on = sum(1 for d in discovered if d["status"] == "up")
             data["hyperv"] = {"vm_total": len(discovered), "vm_on": on, **hv_host}
-            notes.insert(0, f"Hyper-V {on}/{len(discovered)} VM chạy")
+            notes.insert(0, f"Hyper-V {on}/{len(discovered)} VMs running")
             for n in hv_notes:
                 statuses.append("warn"); notes.append(n)
         msg = " · ".join([data.get("hostname") or target, f"up {data.get('uptime', '?')}"] + notes)
@@ -371,11 +371,11 @@ async def ssh(target: str, cfg: dict) -> Result:
     if containers:
         data["containers"] = containers
         stopped = [c["name"] for c in containers if not c["running"]]
-        notes.append(f"{len(containers) - len(stopped)}/{len(containers)} container chạy")
+        notes.append(f"{len(containers) - len(stopped)}/{len(containers)} running containers")
         must = [x.strip() for x in str(cfg.get("watch_containers", "")).split(",") if x.strip()]
         bad = [m for m in must if m in stopped or m not in [c["name"] for c in containers]]
         if bad:
-            statuses.append("fail"); notes.append("Container dừng: " + ", ".join(bad))
+            statuses.append("fail"); notes.append("Stopped containers: " + ", ".join(bad))
 
     discovered = []
     if cfg.get("discover_containers", True):

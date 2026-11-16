@@ -1,15 +1,14 @@
-"""PostgreSQL chạy kèm (PG_LOCAL=1) – dùng cho demo/dev bằng VS Code trên Windows, không cần cài PostgreSQL.
+"""Bundled PostgreSQL (PG_LOCAL=1) – for demo/development in VS Code on Windows without a separate PostgreSQL installation.
 
-- Binary: backend/tools/pgsql (lần đầu tự tải, hoặc chạy tay `python tools/get_postgres.py`) hoặc thư mục bin trong biến PG_BIN.
-- Dữ liệu: <DATA_DIR>/pgdata  ·  mật khẩu ngẫu nhiên: <DATA_DIR>/.pg_password  ·  log: <DATA_DIR>/postgres.log
-- Chỉ nghe 127.0.0.1 (cổng PG_LOCAL_PORT, mặc định 5433), xác thực scram-sha-256, không mở socket ra ngoài.
-- App khởi động → tự initdb lần đầu + start nếu chưa chạy. PostgreSQL vẫn chạy sau khi tắt app (như một dịch vụ);
-  tắt hẳn: `python -m app.pg_local stop` (task VS Code "PostgreSQL: dừng").
+- Binary: backend/tools/pgsql (downloaded automatically on first run, or manually with `python tools/get_postgres.py`) or the bin directory in PG_BIN.
+- Data: <DATA_DIR>/pgdata  ·  random password: <DATA_DIR>/.pg_password  ·  log: <DATA_DIR>/postgres.log
+- Listens only on 127.0.0.1 (PG_LOCAL_PORT, default 5433), SCRAM-SHA-256 authentication, no external socket.
+- App startup → runs initdb on first use and starts PostgreSQL if it is not running. PostgreSQL remains running after the app is disabled (like a service);
+  stop it explicitly with `python -m app.pg_local stop` (VS Code task "PostgreSQL: stop").
 
-Chạy thật trên Linux/Docker: KHÔNG dùng chế độ này – đặt DATABASE_URL trỏ tới PostgreSQL thật.
+For production on Linux/Docker: do NOT use this mode – set DATABASE_URL to a real PostgreSQL instance.
 
-    python -m app.pg_local start|stop|status|url
-"""
+    python -m app.pg_local start|stop|status|url"""
 import os
 import secrets
 import shutil
@@ -39,18 +38,18 @@ def _bin(name: str) -> str:
     if found:
         return found
     if not os.environ.get("PG_BIN") and not getattr(_bin, "_tried", False):
-        _bin._tried = True                     # lần chạy đầu: tự tải bộ PostgreSQL di động (~30 MB, có kiểm tra sha512)
+        _bin._tried = True                     # lần chạy đầu: tự tải bộ Portable PostgreSQL (~30 MB, có kiểm tra sha512)
         try:
             import importlib.util
             spec = importlib.util.spec_from_file_location("get_postgres", TOOLS_PG.parent.parent / "get_postgres.py")
             mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
             mod.main([])
-        except (Exception, SystemExit) as e:   # noqa: BLE001 – báo lỗi gọn bên dưới
-            raise PgLocalError(f"Tự tải PostgreSQL không được ({e}). Chạy tay: python tools/get_postgres.py") from None
+        except (Exception, SystemExit) as e:   # noqa: BLE001 – báo error gọn bên dưới
+            raise PgLocalError(f"Unable to download PostgreSQL automatically ({e}). Run manually: python tools/get_postgres.py") from None
         return _bin(name)
-    raise PgLocalError("Chưa có PostgreSQL di động. Chạy:  python tools/get_postgres.py  (hoặc task VS Code "
-                       "\"0. Tải PostgreSQL\"), hoặc đặt DATABASE_URL tới PostgreSQL có sẵn.")
+    raise PgLocalError("No bundled PostgreSQL found. Run:  python tools/get_postgres.py  (or the VS Code task "
+                       "\"0. Download PostgreSQL\"), or set DATABASE_URL to an existing PostgreSQL instance.")
 
 
 def _paths(data_dir: str):
@@ -62,7 +61,7 @@ def port() -> int:
     return int(os.environ.get("PG_LOCAL_PORT", "5433"))
 
 
-# Windows: chạy ẩn, không bật cửa sổ console (pg_ctl gọi cmd.exe để chạy postgres – thiếu cờ này sẽ hiện cửa sổ đen)
+# Windows: chạy ẩn, không enabled cửa sdisk console (pg_ctl gọi cmd.exe để chạy postgres – missing cờ này sẽ hiện cửa sdisk đen)
 NO_WINDOW = 0x08000000 if WIN else 0          # CREATE_NO_WINDOW
 
 
@@ -75,12 +74,12 @@ def _run(args, **kw):
 
 def _not_root():
     if not WIN and hasattr(os, "geteuid") and os.geteuid() == 0:
-        raise PgLocalError("PostgreSQL không chạy bằng tài khoản root. Hãy chạy app bằng user thường, "
-                           "hoặc dùng PostgreSQL riêng (DATABASE_URL).")
+        raise PgLocalError("PostgreSQL cannot run under the root account. Run the app as a regular user, "
+                           "or use a separate PostgreSQL instance (DATABASE_URL).")
 
 
 def _init(pgdata: Path, pwfile: Path, p: int):
-    pw = secrets.token_hex(24)                       # chỉ chữ số hex → không cần mã hoá khi đưa vào URL
+    pw = secrets.token_hex(24)                       # chỉ chữ số hex → without requiring mã hoá khi đưa ando URL
     pgdata.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", delete=False, suffix=".pw", encoding="utf-8") as f:
         f.write(pw)
@@ -91,7 +90,7 @@ def _init(pgdata: Path, pwfile: Path, p: int):
     finally:
         os.unlink(tmp)
     if rc != 0:
-        raise PgLocalError(f"initdb lỗi:\n{out[-1500:]}")
+        raise PgLocalError(f"initdb error:\n{out[-1500:]}")
     with open(pgdata / "postgresql.conf", "a", encoding="utf-8") as f:
         f.write("\n# --- IT Ops (pg_local) ---\n"
                 "listen_addresses = '127.0.0.1'\n"
@@ -100,7 +99,7 @@ def _init(pgdata: Path, pwfile: Path, p: int):
                 "max_connections = 60\n"
                 "shared_buffers = 128MB\n"
                 "log_min_messages = warning\n"
-                "timezone = 'UTC'\n")                  # app lưu giờ UTC (naive), hiển thị theo TZ của app
+                "timezone = 'UTC'\n")                  # app lưu hours UTC (naive), hiển thị theo TZ of app
     pwfile.write_text(pw, encoding="utf-8")
     try:
         os.chmod(pwfile, 0o600)
@@ -123,9 +122,9 @@ def _port_busy(p: int) -> bool:
 
 def _start(pgdata: Path, log: Path, p: int):
     if _port_busy(p):
-        raise PgLocalError(f"Cổng {p} đang có chương trình khác dùng (PostgreSQL khác?). Đổi PG_LOCAL_PORT hoặc tắt chương trình đó.")
+        raise PgLocalError(f"Port {p} is already in use by another process (possibly another PostgreSQL instance). Change PG_LOCAL_PORT or stop that process.")
     args = [_bin("pg_ctl"), "start", "-w", "-t", "60", "-D", str(pgdata), "-l", str(log), "-o", f"-p {p}"]
-    # Output ghi ra FILE, không dùng pipe: postgres là tiến trình con của pg_ctl và có thể kế thừa handle của pipe
+    # Output ghi ra FILE, không dùng pipe: postgres là tiến trình con of pg_ctl and có thể kế thừa handle of pipe
     # → subprocess chờ pipe đóng mãi (hay gặp trên Windows).
     out_file = log.with_name("pg_ctl.out")
     kw = {"stdin": subprocess.DEVNULL, "stderr": subprocess.STDOUT}
@@ -133,7 +132,7 @@ def _start(pgdata: Path, log: Path, p: int):
         kw["stdout"] = fo
         if WIN:
             # tách khỏi tiến trình VS Code/debugger để Stop debug không "giết" PostgreSQL giữa chừng.
-            # KHÔNG dùng DETACHED_PROCESS: pg_ctl gọi cmd.exe → Windows mở cửa sổ console mới. CREATE_NO_WINDOW = console ẩn.
+            # DO NOT use DETACHED_PROCESS: pg_ctl gọi cmd.exe → Windows mở cửa sdisk console mới. CREATE_NO_WINDOW = console ẩn.
             base = subprocess.CREATE_NEW_PROCESS_GROUP | NO_WINDOW
             try:
                 rc = subprocess.run(args, creationflags=base | 0x01000000, **kw).returncode   # CREATE_BREAKAWAY_FROM_JOB
@@ -144,7 +143,7 @@ def _start(pgdata: Path, log: Path, p: int):
     out = out_file.read_text(encoding="utf-8", errors="replace")
     if rc != 0:
         tail = log.read_text(encoding="utf-8", errors="replace")[-1500:] if log.exists() else ""
-        raise PgLocalError(f"Không khởi động được PostgreSQL:\n{out[-800:]}\n--- postgres.log ---\n{tail}")
+        raise PgLocalError(f"Unable to start PostgreSQL:\n{out[-800:]}\n--- postgres.log ---\n{tail}")
 
 
 def _ensure_db(url_admin: str):
@@ -162,14 +161,14 @@ def _ensure_db(url_admin: str):
 
 
 def ensure_running(data_dir: str) -> str:
-    """Bảo đảm PostgreSQL kèm theo đang chạy, trả về DATABASE_URL (SQLAlchemy + psycopg)."""
+    """Bảo đảm PostgreSQL kèm theo running, trả về DATABASE_URL (SQLAlchemy + psycopg)."""
     _not_root()
     pgdata, pwfile, log = _paths(data_dir)
     p = port()
     if not (pgdata / "PG_VERSION").exists():
         _init(pgdata, pwfile, p)
     if not pwfile.exists():
-        raise PgLocalError(f"Thiếu {pwfile} (mật khẩu CSDL). Không xoá file này; nếu đã mất hãy xoá cả thư mục {pgdata} để tạo lại.")
+        raise PgLocalError(f"Missing {pwfile} (database password). Do not delete this file; if it is missing, delete the entire directory {pgdata} to recreate it.")
     pw = pwfile.read_text(encoding="utf-8").strip()
     if not _running(pgdata):
         _start(pgdata, log, p)
@@ -195,18 +194,18 @@ def main(argv=None) -> int:
     try:
         if cmd == "start":
             ensure_running(data_dir)
-            print(f"PostgreSQL đang chạy – 127.0.0.1:{port()}  dữ liệu: {pgdata}")
+            print(f"PostgreSQL running – 127.0.0.1:{port()}  data: {pgdata}")
         elif cmd == "stop":
-            print("Đã dừng PostgreSQL." if stop(data_dir) else "PostgreSQL không chạy.")
+            print("PostgreSQL stopped." if stop(data_dir) else "PostgreSQL is not running.")
         elif cmd == "status":
-            print(f"PostgreSQL {'ĐANG CHẠY' if (pgdata / 'PG_VERSION').exists() and _running(pgdata) else 'không chạy'} – {pgdata}")
-        elif cmd == "url":                     # in URL (có mật khẩu) để dùng với công cụ quản trị DB – cẩn thận khi chia sẻ màn hình
+            print(f"PostgreSQL {'RUNNING' if (pgdata / 'PG_VERSION').exists() and _running(pgdata) else 'not running'} – {pgdata}")
+        elif cmd == "url":                     # in URL (có password) để dùng với công cụ quản trị DB – cẩn thận khi chia sẻ màn hình
             print(ensure_running(data_dir))
         else:
             print(__doc__)
             return 2
     except PgLocalError as e:
-        print(f"LỖI: {e}", file=sys.stderr)
+        print(f"ERROR: {e}", file=sys.stderr)
         return 1
     return 0
 

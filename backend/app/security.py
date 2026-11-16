@@ -1,12 +1,11 @@
-"""Đăng nhập, phiên, 2FA (TOTP) và mã hoá bí mật trong cấu hình.
+"""Sign-in, sessions, 2FA (TOTP), and encryption of configuration secrets.
 
-Hai khoá TÁCH RIÊNG (data/ hoặc biến môi trường):
-  * .secret_key (SECRET_KEY)      – chỉ để KÝ phiên đăng nhập (JWT HS256). Mất/đổi → mọi người phải đăng nhập lại.
-  * .enc_key    (ENCRYPTION_KEY)  – chỉ để MÃ HOÁ mật khẩu/community/token thiết bị (AES-256-GCM, tiền tố "enc2:").
-                                     Mất khoá này → KHÔNG giải mã lại được bí mật đã lưu → phải backup cùng CSDL.
-Dữ liệu cũ dạng "enc:" (Fernet, khoá suy ra từ SECRET_KEY của bản v1) vẫn đọc được và được mã hoá lại sang enc2
-khi app khởi động (reencrypt_all).
-"""
+Two SEPARATE keys (data/ or environment variables):
+  * .secret_key (SECRET_KEY)      – used only to SIGN sign-in sessions (JWT HS256). Lost/changed → everyone must sign in again.
+  * .enc_key    (ENCRYPTION_KEY)  – used only to ENCRYPT device passwords/community strings/tokens (AES-256-GCM, prefix "enc2:").
+                                     If this key is lost → stored secrets CANNOT be decrypted → back it up with the database.
+Legacy data using "enc:" (Fernet, key derived from the v1 SECRET_KEY) remains readable and is re-encrypted to enc2
+when the app starts (reencrypt_all)."""
 import base64
 import contextvars
 import hashlib
@@ -23,6 +22,7 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from fastapi import Depends, HTTPException, Request
 from jose import jwt, JWTError
+from jose.exceptions import ExpiredSignatureError
 from sqlalchemy.orm import Session
 
 from .db import get_db, DATA_DIR
@@ -52,7 +52,7 @@ SECRET_KEY = _load_or_create("SECRET_KEY", ".secret_key", lambda: secrets.token_
 _ENC_KEY_B64 = _load_or_create("ENCRYPTION_KEY", ".enc_key", lambda: base64.urlsafe_b64encode(os.urandom(32)).decode())
 _ENC_KEY = base64.urlsafe_b64decode(_ENC_KEY_B64)
 if len(_ENC_KEY) != 32:
-    raise RuntimeError("ENCRYPTION_KEY / .enc_key phải là 32 byte mã hoá base64 (AES-256)")
+    raise RuntimeError("ENCRYPTION_KEY / .enc_key must be 32 byte base64-encoded (AES-256)")
 _aes = AESGCM(_ENC_KEY)
 _AAD = b"itops-v2"
 _legacy_fernet = Fernet(base64.urlsafe_b64encode(hashlib.sha256(SECRET_KEY.encode()).digest()))   # chỉ để ĐỌC dữ liệu v1
@@ -62,11 +62,12 @@ TOKEN_HOURS = int(os.environ.get("TOKEN_HOURS", "12"))
 IDLE_MINUTES = int(os.environ.get("SESSION_IDLE_MINUTES", "30"))
 COOKIE_NAME = "itops_session"
 CSRF_HEADER = "X-Requested-With"          # giao diện luôn gửi X-Requested-With: itops
-REQUIRE_2FA_ADMIN = _env_flag("REQUIRE_2FA_ADMIN", "1")   # bắt buộc 2FA với admin – chỉ đổi được bằng biến môi trường
+REQUIRE_2FA_ADMIN = _env_flag("REQUIRE_2FA_ADMIN", "1")   # required 2FA với admin – chỉ đổi được bằng biến môi trường
 ISSUER = os.environ.get("APP_NAME", "IT Ops Workspace")
 
 SECRET_FIELDS = {"password", "community", "api_key", "token", "private_key", "bot_token", "auth_key", "priv_key", "client_secret",
-                 "cli_password", "cli_private_key", "token_secret", "esxi_password"}
+                 "cli_password", "cli_private_key", "token_secret", "esxi_password",
+                 "indexer_password"}
 MASK = "__SECRET__"
 
 # Bối cảnh request (cho audit 5W1H) – middleware đặt, audit() đọc
@@ -77,7 +78,7 @@ def now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-# ---------------------------------------------------------------- mật khẩu
+# ---------------------------------------------------------------- password
 def hash_password(p: str) -> str:
     return bcrypt.hashpw(p.encode(), bcrypt.gensalt()).decode()
 
@@ -89,7 +90,7 @@ def verify_password(p: str, h: str) -> bool:
         return False
 
 
-# ---------------------------------------------------------------- TOTP (RFC 6238, không cần thư viện ngoài)
+# ---------------------------------------------------------------- TOTP (RFC 6238, without requiring thư viện ngoài)
 TOTP_STEP, TOTP_DIGITS = 30, 6
 
 
@@ -110,7 +111,7 @@ def totp_now(secret_b32: str, at: float | None = None) -> str:
 
 
 def totp_match(secret_b32: str, code: str, last_step: int = 0, at: float | None = None) -> int | None:
-    """Trả về bước thời gian khớp (cho phép lệch ±1 bước = ±30s), None nếu sai hoặc mã đã dùng (chống replay)."""
+    """Trả về step thời gian khớp (cho phép lệch ±1 step = ±30s), None nếu sai hoặc mã đã dùng (chống replay)."""
     code = "".join(ch for ch in str(code or "") if ch.isdigit())
     if len(code) != TOTP_DIGITS or not secret_b32:
         return None
@@ -119,6 +120,64 @@ def totp_match(secret_b32: str, code: str, last_step: int = 0, at: float | None 
         if step > (last_step or 0) and hmac.compare_digest(_hotp(secret_b32, step), code):
             return step
     return None
+
+
+# ---------------------------------------------------------------- vé bước 2FA (mật khẩu đúng → có N giây để nhập mã)
+# Sau khi mật khẩu đúng, server cấp "vé" ký HMAC có hạn MFA_STEP_SECONDS (mặc định 180s = 3 phút).
+# Bước nhập mã chỉ gửi vé + mã (không gửi lại mật khẩu). Hết hạn → phải nhập lại mật khẩu.
+# Vé gắn với: tài khoản, IP, dấu vân tay mật khẩu (đổi mật khẩu → vé cũ vô hiệu) và chỉ dùng thành công 1 lần.
+MFA_STEP_SECONDS = max(30, int(os.environ.get("MFA_STEP_SECONDS", "180")))
+_MFA_TYP = "itops-mfa-pending"
+_USED_TICKETS: dict[str, float] = {}       # jti → hạn; vé đã đăng nhập thành công thì không dùng lại được
+
+
+def mfa_step_label(sec_: int | None = None) -> str:
+    n = MFA_STEP_SECONDS if sec_ is None else sec_
+    if n % 60:
+        return f"{n} seconds"
+    return "1 minute" if n == 60 else f"{n // 60} minutes"
+
+
+class MfaTicketError(Exception):
+    def __init__(self, expired: bool):
+        super().__init__("expired" if expired else "invalid")
+        self.expired = expired
+
+
+def _pw_fp(user: models.User) -> str:
+    return hmac.new(SECRET_KEY.encode(), (user.password_hash or "").encode(), hashlib.sha256).hexdigest()[:16]
+
+
+def create_mfa_ticket(user: models.User, ip: str) -> tuple[str, int]:
+    exp = int(time.time()) + MFA_STEP_SECONDS
+    tok = jwt.encode({"typ": _MFA_TYP, "sub": user.username, "ip": ip, "pw": _pw_fp(user),
+                      "jti": secrets.token_hex(12), "exp": exp}, SECRET_KEY, algorithm=ALGO)
+    return tok, MFA_STEP_SECONDS
+
+
+def read_mfa_ticket(ticket: str, ip: str) -> dict:
+    """Trả payload của vé hợp lệ; MfaTicketError(expired=True) nếu quá hạn, expired=False nếu giả/sai."""
+    try:
+        p = jwt.decode(str(ticket or ""), SECRET_KEY, algorithms=[ALGO])
+    except ExpiredSignatureError:
+        raise MfaTicketError(True) from None
+    except JWTError:
+        raise MfaTicketError(False) from None
+    if p.get("typ") != _MFA_TYP or p.get("ip") != ip or not p.get("sub") or p.get("jti") in _USED_TICKETS:
+        raise MfaTicketError(False)
+    return p
+
+
+def check_mfa_ticket_user(p: dict, user: models.User | None) -> None:
+    if not user or not user.totp_enabled or not hmac.compare_digest(p.get("pw", ""), _pw_fp(user)):
+        raise MfaTicketError(False)
+
+
+def burn_mfa_ticket(p: dict) -> None:
+    t = time.time()
+    for k in [k for k, v in _USED_TICKETS.items() if v < t]:
+        _USED_TICKETS.pop(k, None)
+    _USED_TICKETS[p["jti"]] = float(p.get("exp", t + MFA_STEP_SECONDS))
 
 
 def otpauth_uri(secret_b32: str, username: str) -> str:
@@ -135,7 +194,7 @@ def qr_svg(text: str) -> str:
     return buf.getvalue().decode()
 
 
-# ---------------------------------------------------------------- phiên đăng nhập
+# ---------------------------------------------------------------- sessions sign-in
 def create_session(db: Session, user: models.User, request: Request, mfa: bool) -> tuple[str, models.LoginSession]:
     sid = secrets.token_hex(16)
     t = now()
@@ -157,7 +216,7 @@ def revoke_sessions(db: Session, username: str, by: str, keep: str | None = None
     return n
 
 
-HINT_COOKIE = "itops_auth"   # cookie "gợi ý" KHÔNG chứa bí mật (giá trị "1"), JS đọc được → biết có nên hỏi /auth/me
+HINT_COOKIE = "itops_auth"   # cookie "gợi ý" KHÔNG chứa bí mật (value "1"), JS đọc được → biết có nên hỏi /auth/me
 
 
 def set_session_cookie(resp, request: Request, token: str):
@@ -175,7 +234,7 @@ def client_ip(request: Request) -> str:
     return (request.client.host if request.client else "") or "-"
 
 
-# Khi admin chưa bật 2FA mà hệ thống bắt buộc: chỉ cho gọi các API để tự bật 2FA
+# Khi admin chưa enabled 2FA mà hệ thống required: chỉ cho gọi các API để tự enabled 2FA
 _2FA_SETUP_PATHS = ("/api/auth/me", "/api/auth/logout", "/api/auth/2fa/", "/api/auth/sessions")
 
 
@@ -189,33 +248,33 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> models.User
         from_cookie = True
     # KHÔNG nhận token qua query string (?token=) – dễ lộ qua log, lịch sử trình duyệt, Referer.
     if not token:
-        raise HTTPException(401, "Chưa đăng nhập")
+        raise HTTPException(401, "Not logged in")
     if from_cookie and request.method not in ("GET", "HEAD", "OPTIONS") and request.headers.get(CSRF_HEADER) != "itops":
-        raise HTTPException(403, "Thiếu header chống CSRF")
+        raise HTTPException(403, "Missing CSRF protection header")
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGO])
     except JWTError:
-        raise HTTPException(401, "Phiên đăng nhập hết hạn") from None
+        raise HTTPException(401, "Login session expired") from None
     sess = db.get(models.LoginSession, str(payload.get("jti") or ""))
     t = now()
     if sess and sess.revoked_by == "idle-timeout":
-        raise HTTPException(401, f"Phiên đã hết hạn do không thao tác quá {IDLE_MINUTES} phút")
+        raise HTTPException(401, f"Session expired after being idle for {IDLE_MINUTES} minutes")
     if not sess or sess.revoked_at is not None or sess.username != payload.get("sub") or sess.expires_at < t:
-        raise HTTPException(401, "Phiên đăng nhập đã kết thúc – vui lòng đăng nhập lại")
+        raise HTTPException(401, "The login session has ended. Please sign in again.")
     if IDLE_MINUTES > 0 and (t - sess.last_seen) > timedelta(minutes=IDLE_MINUTES):
         sess.revoked_at, sess.revoked_by = t, "idle-timeout"
         db.commit()
-        raise HTTPException(401, f"Phiên đã hết hạn do không thao tác quá {IDLE_MINUTES} phút")
-    # Request nền (giao diện tự làm mới số liệu) không tính là "đang thao tác"
+        raise HTTPException(401, f"Session expired after being idle for {IDLE_MINUTES} minutes")
+    # Background requests (the UI refreshes data automatically) do not count as user activity
     if request.headers.get("X-Background") != "1" and (t - sess.last_seen) > timedelta(seconds=30):
         sess.last_seen = t
         db.commit()
     user = db.query(models.User).filter_by(username=payload.get("sub")).first()
     if not user:
-        raise HTTPException(401, "Tài khoản không tồn tại")
+        raise HTTPException(401, "Account does not exist")
     request.state.session = sess
     if need_2fa_setup(user) and not request.url.path.startswith(_2FA_SETUP_PATHS):
-        raise HTTPException(403, {"code": "2fa_required", "msg": "Tài khoản quản trị phải bật xác thực 2 lớp (2FA) trước khi sử dụng"})
+        raise HTTPException(403, {"code": "2fa_required", "msg": "Administrator accounts must enable two-factor authentication (2FA) before use"})
     return user
 
 
@@ -225,7 +284,7 @@ def need_2fa_setup(user: models.User) -> bool:
 
 def admin_user(user: models.User = Depends(current_user)) -> models.User:
     if user.role != "admin":
-        raise HTTPException(403, "Chỉ admin mới được thay đổi")
+        raise HTTPException(403, "Only administrators can make changes")
     return user
 
 
@@ -251,7 +310,7 @@ def decrypt(v):
 
 
 def seal_config(new: dict, old: dict | None = None) -> dict:
-    """Mã hoá các trường bí mật; giữ giá trị cũ nếu client gửi lại MASK."""
+    """Encrypt secret fields; preserve existing values when the client sends MASK."""
     old = old or {}
     out = {}
     for k, v in (new or {}).items():
@@ -277,7 +336,7 @@ def open_config(cfg: dict) -> dict:
 
 
 def _reseal(v):
-    """enc: (v1) → enc2:. Giá trị không giải mã được giữ nguyên để không mất dữ liệu."""
+    """enc: (v1) → enc2:. Values that cannot be decrypted are preserved to prevent data loss."""
     if isinstance(v, str) and v.startswith("enc:"):
         plain = decrypt(v)
         return encrypt(plain) if plain else v
@@ -289,7 +348,7 @@ def _reseal(v):
 
 
 def reencrypt_all(db: Session) -> int:
-    """Mã hoá lại mọi bí mật dạng cũ (enc:) sang AES-256-GCM (enc2:). Chạy lúc khởi động, an toàn khi chạy lại."""
+    """Mã hoá lại mọi bí mật dạng cũ (enc:) sang AES-256-GCM (enc2:). Runs at startup and is safe to repeat."""
     n = 0
     for chk in db.query(models.Check):
         new = _reseal(chk.config or {})

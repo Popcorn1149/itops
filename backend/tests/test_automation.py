@@ -1,7 +1,7 @@
-"""Tự động hoá: cron, kiểm tra kịch bản, từng template trong thư viện, kịch bản tự tạo, API.
+"""Automation: cron, kiểm tra kịch bản, từng template trong thư viện, kịch bản tự tạo, API.
 
-Mỗi template có ít nhất 1 test chạy trên dữ liệu dựng giống thực tế (site → firewall → switch → server, check, cảnh báo, log,
-lịch sử số liệu). Tin nhắn không gửi thật: send_to / notify được thay bằng hàm ghi lại.
+Mỗi template có ít nhất 1 test runs on dữ liệu dựng giống thực tế (site → firewall → switch → server, check, cảnh báo, log,
+lịch sử số liệu). Tin nhắn do not send thật: send_to / notify được thay bằng hàm ghi lại.
 """
 import asyncio
 from datetime import datetime, timedelta
@@ -19,7 +19,7 @@ from app.models import now
 # ---------------------------------------------------------------- tiện ích
 @pytest.fixture()
 def sent(monkeypatch):
-    """Ghi lại mọi tin: qua kịch bản (send_to) và qua kênh mặc định (notify)."""
+    """Ghi lại mọi tin: qua kịch bản (send_to) and qua kênh mặc định (notify)."""
     box = []
 
     async def fake_send(targets, subject, text, severity="info"):
@@ -56,13 +56,13 @@ def run(aid, trigger="manual", dry=False):
 
 
 def at(h=8, m=0, days=0):
-    """Giờ VN hôm nay ± ngày."""
+    """Giờ VN hôm nay ± days."""
     return E.local_now().replace(hour=h, minute=m) + timedelta(days=days)
 
 
 @pytest.fixture()
 def world(client, admin, autoclean):
-    """Hạ tầng mẫu: HQ (FW01 → SW-CORE → SRV-APP, SRV-DB), Chi nhánh (FW-CN). Check, cảnh báo, log, hệ thống trọng yếu."""
+    """Infrastructure mẫu: HQ (FW01 → SW-CORE → SRV-APP, SRV-DB), Chi nhánh (FW-CN). Check, cảnh báo, log, hệ thống trọng yếu."""
     db = SessionLocal()
     hq, cn = models.Site(name="HQ"), models.Site(name="Chi nhánh")
     db.add_all([hq, cn]); db.flush()
@@ -93,7 +93,7 @@ def world(client, admin, autoclean):
     C("Portal", "http", "https://portal.congty.vn", app_, last_data={"code": 200, "cert_days": 9})
     C("Printer", "ping", "10.0.0.99", old, status="fail", severity="down")
     crit = models.CriticalSystem(name="ERP", level="High", asset_id=dbs.id, check_ids=[c_db.id], backup=False, owner="",
-                                 runbook="Kiểm tra dịch vụ ERP\nXem log ứng dụng\nGọi nhà cung cấp ERP")
+                                 runbook="Kiểm tra service ERP\nXem log ứng dụng\nGọi nhà cung cấp ERP")
     db.add(crit)
     db.add(models.Alert(check_id=c_db.id, asset_id=dbs.id, site_id=hq.id, severity="trouble", metric="mem", source="resource",
                         title="SRV-DB: RAM 93% · Trouble", message="RAM 93%", opened_at=now() - timedelta(hours=2)))
@@ -108,17 +108,17 @@ def world(client, admin, autoclean):
 
 # ---------------------------------------------------------------- cron
 def test_cron_match_and_next():
-    t = datetime(2026, 11, 2, 8, 0, tzinfo=E.TZ)          # Thứ Hai
+    t = datetime(2026, 11, 2, 8, 0, tzinfo=E.TZ)          # Monday
     assert E.cron_match("0 8 * * 1", t) and not E.cron_match("0 8 * * 2", t)
     assert E.cron_match("*/15 8-9 * * 1-5", t) and E.cron_match("0 8 2 * *", t)
-    assert E.cron_match("0 8 1 * 1", t)                   # ngày & thứ đều giới hạn → một trong hai
-    assert E.cron_match("0 8 * * 7", datetime(2026, 11, 1, 8, 0, tzinfo=E.TZ))      # 7 = Chủ nhật
+    assert E.cron_match("0 8 1 * 1", t)                   # both day-of-month and weekday are restricted: either may match
+    assert E.cron_match("0 8 * * 7", datetime(2026, 11, 1, 8, 0, tzinfo=E.TZ))      # 7 = Sunday
     assert E.next_run("30 7 * * *", t) == t.replace(day=3, hour=7, minute=30)
     assert E.next_run("0 9 1 1,4,7,10 *", t).strftime("%d/%m/%Y %H:%M") == "01/01/2027 09:00"
     for bad in ("", "* * *", "60 * * * *", "* 24 * * *", "a b c d e", "*/0 * * * *", "5-1 * * * *"):
         with pytest.raises(ValueError):
             E.parse_cron(bad)
-    assert E.describe_cron("30 7 * * *") == "07:30 hằng ngày" and E.describe_cron("0 8 * * 1") == "08:00 Thứ Hai hằng tuần"
+    assert E.describe_cron("30 7 * * *") == "07:30 daily" and E.describe_cron("0 8 * * 1") == "08:00 Monday weekly"
 
 
 def test_validate_spec_errors():
@@ -130,9 +130,9 @@ def test_validate_spec_errors():
         E.validate_spec("RPT-01", {"actions": [{"type": "email", "to": "khong-phai-email"}]})
     with pytest.raises(ValueError, match="trigger.type"):
         E.validate_spec("INC-01", {"trigger": {"type": "schedule", "cron": "* * * * *"}})
-    with pytest.raises(ValueError, match="Khối không tồn tại"):
+    with pytest.raises(ValueError, match="Block does not exist"):
         E.validate_spec("CUSTOM", {"content": {"blocks": ["khong-co"]}})
-    with pytest.raises(ValueError, match="assets hoặc sites"):
+    with pytest.raises(ValueError, match="assets or sites"):
         E.validate_spec("LCM-01", {"params": {"windows": [{"name": "x", "cron": "0 22 * * 6", "duration_min": 60}]}})
     ok = E.validate_spec("RPT-02", {"actions": [{"type": "email", "to": ["a@congty.vn", "b@congty.vn"]}]})
     assert ok["actions"][0]["to"] == "a@congty.vn, b@congty.vn"
@@ -149,7 +149,7 @@ actions:
   - { type: email, to: [it-manager@congty.vn], format: html+pdf }
   - { type: telegram, chat: it-ops, format: summary }
 level: L0
-kpi: "Quản lý đọc trong 24h; không cần hỏi thêm số liệu"
+kpi: "Management can review within 24 hours without requesting additional data"
 """
 
 
@@ -163,15 +163,15 @@ def test_api_catalog_yaml_roundtrip_and_permissions(client, admin, autoclean):
     r = client.post("/api/automations", headers=admin, json={"code": "RPT-02", "yaml": DOC_YAML})
     assert r.status_code == 200, r.text
     a = r.json()
-    assert a["enabled"] is True and a["when"] == "08:00 Thứ Hai hằng tuần" and a["next_run"]
+    assert a["enabled"] is True and a["when"] == "08:00 Monday weekly" and a["next_run"]
     assert a["effective"]["actions"][0] == {"type": "email", "to": "it-manager@congty.vn", "format": "html+pdf"}
-    assert client.post("/api/automations", headers=admin, json={"code": "RPT-02"}).status_code == 400      # mỗi template 1 bản
+    assert client.post("/api/automations", headers=admin, json={"code": "RPT-02"}).status_code == 400      # every template 1 bản
     y = client.get(f"/api/automations/{a['id']}/yaml", headers=admin).json()["yaml"]
     assert "id: RPT-02" in y and "uptime_target: 99.5" in y
     r = client.put(f"/api/automations/{a['id']}", headers=admin, json={"yaml": y.replace("99.5", "99.9")})
     assert r.json()["effective"]["params"]["uptime_target"] == 99.9
     r = client.put(f"/api/automations/{a['id']}", headers=admin, json={"yaml": "trigger: [không đúng"})
-    assert r.status_code == 400 and "YAML lỗi" in r.json()["detail"]
+    assert r.status_code == 400 and "YAML error" in r.json()["detail"]
     assert client.put(f"/api/automations/{a['id']}", headers=admin, json={"enabled": False}).json()["enabled"] is False
     # người xem chỉ được đọc
     client.post("/api/users", headers=admin, json={"username": "viewer1", "password": "Viewer@12345", "role": "viewer", "full_name": "V"})
@@ -189,19 +189,19 @@ def test_rpt01_morning_digest(client, admin, world, sent):
     r = run(a["id"])
     assert r["status"] == "ok" and len(sent) == 1
     m = sent[0]
-    assert "Bản tin IT" in m["subject"] and m["targets"] == [{"type": "telegram", "chat": "-100123"}]
-    assert "SRV-DB: RAM 93% · Trouble" in m["text"] and "SSL portal.congty.vn: còn 9 ngày" in m["text"]
-    assert "HQ: 1/1 line" in m["text"] and "Tài sản:" in m["text"]
-    # chạy thử: có bản xem trước, không gửi, có lịch sử đánh dấu dry_run
+    assert "IT digest" in m["subject"] and m["targets"] == [{"type": "telegram", "chat": "-100123"}]
+    assert "SRV-DB: RAM 93% · Trouble" in m["text"] and "SSL portal.congty.vn: remaining 9 days" in m["text"]
+    assert "HQ: 1/1 line" in m["text"] and "Assets:" in m["text"]
+    # chạy thử: có bản xem trước, do not send, có lịch sử đánh dấu dry_run
     sent.clear()
     r = client.post(f"/api/automations/{a['id']}/run?dry=true", headers=admin).json()
-    assert r["status"] == "ok" and "Bản tin IT" in r["output"] and sent == []
+    assert r["status"] == "ok" and "IT digest" in r["output"] and sent == []
     runs = client.get(f"/api/automation/runs?automation_id={a['id']}", headers=admin).json()
     assert runs[0]["dry_run"] is True and runs[1]["dry_run"] is False and runs[1]["sent"] == {"fake": "ok"}
 
 
 def _results(db, cid, days, every_min=60, down_at=(), metric=None, latency=None):
-    """Bản ghi check_results giả: mỗi every_min phút trong `days` ngày qua."""
+    """Bản ghi check_results giả: every every_min phút trong `days` days qua."""
     t = now() - timedelta(days=days)
     i = 0
     while t < now():
@@ -214,24 +214,24 @@ def _results(db, cid, days, every_min=60, down_at=(), metric=None, latency=None)
 
 def test_rpt02_weekly_report(client, admin, world, sent):
     db = SessionLocal()
-    _results(db, world["c_fw"], 8, down_at=range(48, 51))            # 3 giờ DOWN, ~6 ngày trước
+    _results(db, world["c_fw"], 8, down_at=range(48, 51))            # 3 hours DOWN, ~6 days trước
     _results(db, world["c_app"], 8)
     al = models.Alert(check_id=world["c_fw"], asset_id=world["fw"], site_id=world["hq"], severity="down", title="FW01 ping DOWN",
                       opened_at=now() - timedelta(days=3), acked_at=now() - timedelta(days=3) + timedelta(minutes=12),
                       resolved_at=now() - timedelta(days=3) + timedelta(minutes=50), status="resolved")
     db.add(al)
-    db.query(models.Check).filter_by(id=world["c_fw"]).update({"interval": 3600})     # mỗi bản ghi = 1 giờ
+    db.query(models.Check).filter_by(id=world["c_fw"]).update({"interval": 3600})     # every bản ghi = 1 hours
     db.commit(); db.close()
     a = mk_auto(client, admin, "RPT-02", {"params": {"uptime_target": 99.9}})
     r = run(a["id"])
     assert r["status"] == "ok"
     t = sent[0]["text"]
-    assert "Báo cáo tuần vận hành" in sent[0]["subject"]
-    for sec in ("Tóm tắt:", "Số liệu chính:", "Sự cố đáng chú ý:", "Việc cần quyết định:"):
+    assert "Weekly Operations Report" in sent[0]["subject"]
+    for sec in ("Summary:", "Key metrics:", "Notable incidents:", "Decisions required:"):
         assert sec in t
-    assert "KHÔNG đạt mục tiêu 99.9%" in t and "HQ:" in t and "DOWN 3 giờ" in t
-    assert "MTTA (thời gian tới khi có người nhận): 12 phút" in t and "MTTR (thời gian tới khi đóng): 50 phút" in t
-    assert "FW01: " in t                                               # top thiết bị nhiều sự cố
+    assert "NOT MET target 99.9%" in t and "HQ:" in t and "DOWN 3 hours" in t
+    assert "MTTA (time until acknowledgment): 12 minutes" in t and "MTTR (time to resolution): 50 minutes" in t
+    assert "FW01: " in t                                               # top devices nhiều sự cố
 
 
 def test_rollup_and_rpt03_monthly_sla(client, admin, world, sent):
@@ -240,7 +240,7 @@ def test_rollup_and_rpt03_monthly_sla(client, admin, world, sent):
     prev = (first - timedelta(days=1)).replace(day=1)
     pp = (prev - timedelta(days=1)).replace(day=1)
     d = prev
-    while d < first:                                                     # tháng trước: 1 ngày có 60 phút DOWN
+    while d < first:                                                     # tháng trước: 1 days có 60 phút DOWN
         db.merge(models.DailyUptime(check_id=world["c_fw"], day=d.strftime("%Y-%m-%d"), total=1440,
                                     down=60 if d.day == 5 else 0, down_minutes=60 if d.day == 5 else 0))
         d += timedelta(days=1)
@@ -255,9 +255,9 @@ def test_rollup_and_rpt03_monthly_sla(client, admin, world, sent):
     t = sent[0]["text"]
     days = (first - prev).days
     pct = (1440 * days - 60) / (1440 * days) * 100
-    assert f"Báo cáo SLA tháng {prev.strftime('%m/%Y')}" == sent[0]["subject"]
-    assert f"✗ HQ: {pct:.3f}% · DOWN 1 giờ (tháng trước 100.00%)" in t
-    assert "✗ ERP:" in t and "Tìm nguyên nhân gốc" in t
+    assert f"Monthly SLA report {prev.strftime('%m/%Y')}" == sent[0]["subject"]
+    assert f"✗ HQ: {pct:.3f}% · DOWN 1 hours (previous month 100.00%)" in t
+    assert "✗ ERP:" in t and "Find the root cause" in t
 
 
 def test_rollup_uptime_from_raw_results(world):
@@ -285,9 +285,9 @@ def test_rpt06_asset_changes(client, admin, world, sent):
     a = mk_auto(client, admin, "RPT-06")
     run(a["id"])
     t = sent[0]["text"]
-    assert "Tài sản mới (30 ngày): " in t and "NAS-NEW" in t
-    assert "Nguồn lạ gửi log chưa xử lý: 1 – 10.9.9.9" in t
-    assert "Im lặng > 7 ngày: 1 – PRINTER-OLD" in t and "Thiếu người phụ trách:" in t and "SRV-APP" in t
+    assert "New assets (30 days): " in t and "NAS-NEW" in t
+    assert "Unrecognized log sources: 1 – 10.9.9.9" in t
+    assert "Silent for > 7 days: 1 – PRINTER-OLD" in t and "Missing owner:" in t and "SRV-APP" in t
 
 
 # ---------------------------------------------------------------- INC (hook trên luồng cảnh báo thật)
@@ -314,15 +314,15 @@ def test_inc01_root_cause_grouping(client, admin, world, sent, monkeypatch):
     subj = [m["subject"] for m in sent]
     assert "SW-CORE ping DOWN" in subj and "SRV-APP ping DOWN" not in subj
     sw_msg = next(m for m in sent if m["subject"] == "SW-CORE ping DOWN")
-    assert "2 thiết bị phía sau bị ảnh hưởng" in sw_msg["text"]       # SRV-APP, SRV-DB
+    assert "2 downstream devices affected" in sw_msg["text"]       # SRV-APP, SRV-DB
     db = SessionLocal()
     child = db.query(models.Alert).filter_by(check_id=world["c_app"]).first()
-    assert child.suppressed and "SW-CORE (cha) đang DOWN" in child.suppress_reason   # vẫn ghi nhận, chỉ không gửi
+    assert child.suppressed and "SW-CORE (cha) is DOWN" in child.suppress_reason   # vẫn ghi nhận, chỉ do not send
     db.close()
     runs = client.get(f"/api/automation/runs?automation_id={a['id']}", headers=admin).json()
-    assert any("Chặn: SRV-APP ping DOWN" in r["summary"] for r in runs)
+    assert any("Suppress: SRV-APP ping DOWN" in r["summary"] for r in runs)
     pv = client.post(f"/api/automations/{a['id']}/run?dry=true", headers=admin).json()
-    assert "SW-CORE ping DOWN: 2 thiết bị phía sau · 2 cảnh báo con sẽ bị gom" in pv["output"]
+    assert "SW-CORE ping DOWN: 2 downstream devices · 2 child alerts will be grouped" in pv["output"]
 
 
 def test_inc02_flapping(client, admin, world, sent, monkeypatch):
@@ -336,14 +336,14 @@ def test_inc02_flapping(client, admin, world, sent, monkeypatch):
         states["10.0.0.10"] = st
         _run_checks([world["c_app"]])
     subj = [m["subject"] for m in sent]
-    # 3 tin đầu bình thường (mới 2 lần đổi), lần đổi thứ 3 → gộp 1 tin "chập chờn", sau đó không còn tin lẻ
-    assert subj == ["SRV-APP ping DOWN", "SRV-APP ping đã hoạt động lại", "SRV-APP ping DOWN", "SRV-APP ping chập chờn"]
+    # 3 tin đầu normally (mới 2 lần đổi), lần đổi thứ 3 → gộp 1 tin "flapping", sau đó không remaining tin lẻ
+    assert subj == ["SRV-APP ping DOWN", "SRV-APP ping has recovered", "SRV-APP ping DOWN", "SRV-APP ping flapping"]
 
 
 def test_inc03_escalation(client, admin, world, sent):
     a = mk_auto(client, admin, "INC-03", {"params": {"steps": [
-        {"label": "Trưởng nhóm", "after_min": 15, "severities": ["High"], "targets": [{"type": "telegram", "chat": "111"}]},
-        {"label": "Quản lý", "after_min": 60, "severities": ["High"], "targets": [{"type": "email", "to": "boss@congty.vn"}]},
+        {"label": "Team lead", "after_min": 15, "severities": ["High"], "targets": [{"type": "telegram", "chat": "111"}]},
+        {"label": "Manager", "after_min": 60, "severities": ["High"], "targets": [{"type": "email", "to": "boss@congty.vn"}]},
         {"label": "Nhóm IT", "after_min": 30, "severities": ["Medium"], "targets": []}]}})
     db = SessionLocal()
     hi = models.Alert(check_id=world["c_fw"], asset_id=world["fw"], site_id=world["hq"], severity="down", title="FW01 DOWN",
@@ -352,9 +352,9 @@ def test_inc03_escalation(client, admin, world, sent):
     hid = hi.id
     db.close()
     run(a["id"], "interval")
-    # FW01 (High, 20′) → bước 1; RAM SRV-DB (Medium, 2 giờ) → bước 3. Chưa tới bước 2.
+    # FW01 (High, 20′) → step 1; RAM SRV-DB (Medium, 2 hours) → step 3. Chưa tới step 2.
     got = sorted((m["subject"], str(m["targets"])) for m in sent)
-    assert got == sorted([("[Leo thang – Trưởng nhóm] FW01 DOWN", str([{"type": "telegram", "chat": "111"}])),
+    assert got == sorted([("[Leo thang – Team lead] FW01 DOWN", str([{"type": "telegram", "chat": "111"}])),
                           ("[Leo thang – Nhóm IT] SRV-DB: RAM 93% · Trouble", str([{"type": "default"}]))])
     sent.clear()
     run(a["id"], "interval")
@@ -363,7 +363,7 @@ def test_inc03_escalation(client, admin, world, sent):
     db.query(models.Alert).filter_by(id=hid).update({"opened_at": now() - timedelta(minutes=61)})
     db.commit(); db.close()
     run(a["id"], "interval")
-    assert [m["subject"] for m in sent] == ["[Leo thang – Quản lý] FW01 DOWN"]
+    assert [m["subject"] for m in sent] == ["[Leo thang – Manager] FW01 DOWN"]
     sent.clear()
     client.post(f"/api/alerts/{hid}/ack", headers=admin)              # có người nhận → dừng
     db = SessionLocal()
@@ -382,7 +382,7 @@ def test_inc05_runbook(client, admin, world, sent, monkeypatch):
     db.close()
     _run_checks([world["c_app"], vnpt], times=2)
     app_msg = next(m for m in sent if m["subject"] == "SRV-APP ping DOWN")
-    assert "Cách xử lý:\n1. Ping lại từ máy khác" in app_msg["text"]
+    assert "Troubleshooting steps:\n1. Ping from another device" in app_msg["text"]
     vn = next(m for m in sent if m["subject"] == "Line VNPT DOWN")
     assert "1. Gọi 18001166\n2. Đọc mã HĐ 0123" in vn["text"]
 
@@ -390,11 +390,11 @@ def test_inc05_runbook(client, admin, world, sent, monkeypatch):
 def test_inc05_runbook_from_critical_system(client, admin, world, sent, monkeypatch):
     mk_auto(client, admin, "INC-05")
     async def fake(target, cfg):
-        return Result("fail", "SSH lỗi: timeout")
+        return Result("fail", "SSH error: timeout")
     monkeypatch.setitem(COLLECTORS, "ssh", fake)
     _run_checks([world["c_db"]], times=2)
     m = next(m for m in sent if m["subject"] == "SRV-DB SSH DOWN")
-    assert "1. Kiểm tra dịch vụ ERP\n2. Xem log ứng dụng\n3. Gọi nhà cung cấp ERP" in m["text"]
+    assert "1. Kiểm tra service ERP\n2. Xem log ứng dụng\n3. Gọi nhà cung cấp ERP" in m["text"]
 
 
 def test_inc08_user_notice(client, admin, world, sent):
@@ -410,7 +410,7 @@ def test_inc08_user_notice(client, admin, world, sent):
     db.query(models.Alert).filter_by(id=aid).update({"opened_at": now() - timedelta(minutes=12)})
     db.commit(); db.close()
     run(a["id"], "interval")
-    assert sent[0]["subject"] == "ERP đang gián đoạn" and "IT đã nhận thông tin" in sent[0]["text"]
+    assert sent[0]["subject"] == "ERP is experiencing an outage" and "IT has been notified" in sent[0]["text"]
     assert sent[0]["targets"] == [{"type": "telegram", "chat": "-100all"}]
     run(a["id"], "interval")
     assert len(sent) == 1
@@ -418,20 +418,20 @@ def test_inc08_user_notice(client, admin, world, sent):
     db.query(models.Alert).filter_by(id=aid).update({"status": "resolved", "resolved_at": now()})
     db.commit(); db.close()
     run(a["id"], "interval")
-    assert sent[1]["subject"] == "ERP đã hoạt động trở lại" and "khoảng 12 phút" in sent[1]["text"]
+    assert sent[1]["subject"] == "ERP has been restored" and "approximately 12 minutes" in sent[1]["text"]
 
 
 # ---------------------------------------------------------------- PRE
 def test_pre01_disk_forecast(client, admin, world, sent):
     db = SessionLocal()
-    # 5 ngày, tăng 1%/ngày từ 80% → hôm nay ~85% → chạm 90% sau ~5 ngày
+    # 5 days, increasing by 1%/days từ 80% → hôm nay ~85% → reaching 90% sau ~5 days
     _results(db, world["c_db"], 5, every_min=120, metric=lambda i: {"disk": round(80 + i * (2 / 24), 2), "cpu": 20, "mem": 50})
     db.commit(); db.close()
     a = mk_auto(client, admin, "PRE-01")
     r = run(a["id"])
     assert r["status"] == "ok"
     t = sent[0]["text"]
-    assert "SRV-DB (/data): " in t and "→ chạm 90% khoảng" in t and "(còn ~5 ngày, tăng 1.00%/ngày)" in t
+    assert "SRV-DB (/data): " in t and "→ reaching 90% in approximately" in t and "(remaining ~5 days, increasing by 1.00%/days)" in t
 
 
 def test_pre01_not_enough_data(client, admin, world, sent):
@@ -445,7 +445,7 @@ def test_pre01_not_enough_data(client, admin, world, sent):
 def test_pre02_ssl_reminders(client, admin, world, sent):
     a = mk_auto(client, admin, "PRE-02")
     run(a["id"])
-    assert sent[0]["subject"] == "SSL portal.congty.vn còn 9 ngày" and sent[0]["severity"] == "warning"   # mốc 14
+    assert sent[0]["subject"] == "SSL portal.congty.vn remaining 9 days" and sent[0]["severity"] == "warning"   # mốc 14
     run(a["id"])
     assert len(sent) == 1                                               # không nhắc lại cùng mốc
     db = SessionLocal()
@@ -453,7 +453,7 @@ def test_pre02_ssl_reminders(client, admin, world, sent):
     c.last_data = {"cert_days": 6}
     db.commit()
     run(a["id"])
-    assert sent[1]["severity"] == "critical" and "lần nhắc cuối" in sent[1]["text"]
+    assert sent[1]["severity"] == "critical" and "final reminder" in sent[1]["text"]
     c = db.query(models.Check).filter_by(name="Portal").first()
     c.last_data = {"cert_days": 365}                                    # gia hạn
     db.commit(); db.close()
@@ -471,9 +471,9 @@ def test_pre04_latency_anomaly(client, admin, world, sent):
     db.commit(); db.close()
     a = mk_auto(client, admin, "PRE-04")
     run(a["id"], "interval")
-    assert "FW01 ping: " in sent[0]["text"] and "ms trong 15 phút (bình thường 2.2 ± 0.2 ms)" in sent[0]["text"]
+    assert "FW01 ping: " in sent[0]["text"] and "ms over 15 minutes (baseline 2.2 ± 0.2 ms)" in sent[0]["text"]
     run(a["id"], "interval")
-    assert len(sent) == 1                                               # nghỉ 6 giờ trước khi nhắc lại
+    assert len(sent) == 1                                               # nghỉ 6 hours trước khi nhắc lại
 
 
 def test_pre08_log_anomaly(client, admin, world, sent):
@@ -487,7 +487,7 @@ def test_pre08_log_anomaly(client, admin, world, sent):
     a = mk_auto(client, admin, "PRE-08")
     run(a["id"], "interval")
     t = sent[0]["text"]
-    assert "FW01 (10.0.0.1): 60 log lỗi/cảnh báo trong 1 giờ (bình thường ~5)" in t and "kernel: em0 link flap" in t
+    assert "FW01 (10.0.0.1): 60 error logs/alerts in 1 hour (normally ~5)" in t and "kernel: em0 link flap" in t
 
 
 # ---------------------------------------------------------------- LCM
@@ -503,11 +503,11 @@ def test_lcm01_maintenance_window(client, admin, world, sent, monkeypatch):
     db.close()
     _run_checks([fwcn], times=2)
     subj = [m["subject"] for m in sent]
-    assert "SW-CORE ping DOWN" not in subj and "SRV-APP ping DOWN" not in subj    # trong bảo trì (gồm thiết bị phía sau)
+    assert "SW-CORE ping DOWN" not in subj and "SRV-APP ping DOWN" not in subj    # trong bảo trì (gồm downstream devices)
     assert "FW-CN ping DOWN" in subj                                              # ngoài phạm vi vẫn báo
     pv = client.post(f"/api/automations/{a['id']}/run?dry=true", headers=admin).json()
-    assert "Nâng cấp switch: ĐANG DIỄN RA · 60 phút · 3 thiết bị" in pv["output"]
-    # nhắc trước 24 giờ và tổng kết sau bảo trì
+    assert "Nâng cấp switch: IN PROGRESS · 60 minutes · 3 devices" in pv["output"]
+    # nhắc trước 24 hours and tổng kết sau bảo trì
     sent.clear()
     tomorrow = t0 + timedelta(hours=24)
     db = SessionLocal()
@@ -518,21 +518,21 @@ def test_lcm01_maintenance_window(client, admin, world, sent, monkeypatch):
     db.commit(); db.close()
     run(a["id"], "tick")
     subj = [m["subject"] for m in sent]
-    assert "Nhắc lịch bảo trì: Nâng cấp switch" in subj
-    assert any(s.startswith("Sau bảo trì 'Vừa xong': 0/1 xanh") for s in subj)
+    assert "Maintenance reminder: Nâng cấp switch" in subj
+    assert any(s.startswith("After maintenance 'Vừa xong': 0/1 healthy") for s in subj)
 
 
 def test_lcm02_onboard(client, admin, world, sent):
     a = mk_auto(client, admin, "LCM-02")
     run(a["id"])
     t = sent[0]["text"]
-    assert "NAS-NEW (nas): nên thêm Ping + SNMP · thiếu người phụ trách" in t and "Nguồn lạ 10.9.9.9: 5 log" in t
+    assert "NAS-NEW (nas): should add Ping + SNMP · missing owner" in t and "Unknown source 10.9.9.9: 5 log" in t
 
 
 def test_lcm03_offboard(client, admin, world, sent):
     a = mk_auto(client, admin, "LCM-03")
     run(a["id"])
-    assert "PRINTER-OLD (10.0.0.99): không phản hồi từ" in sent[0]["text"] and "không tự xoá" in sent[0]["text"]
+    assert "PRINTER-OLD (10.0.0.99): not responding since" in sent[0]["text"] and "does not delete assets automatically" in sent[0]["text"]
     db = SessionLocal()
     assert db.get(models.Asset, world["old"]) is not None                 # không xoá gì
     db.close()
@@ -545,22 +545,22 @@ def test_lcm06_quarterly_review(client, admin, world, sent):
     a = mk_auto(client, admin, "LCM-06")
     run(a["id"])
     t = sent[0]["text"]
-    assert "Tài sản thiếu người phụ trách: " in t and "SRV-APP" in t and "Check tắt > 14 ngày: 1 – Check cũ" in t
-    assert "Hệ thống trọng yếu thiếu người phụ trách: 1 – ERP" in t
+    assert "Assets missing an owner: " in t and "SRV-APP" in t and "Checks disabled for > 14 days: 1 – Check cũ" in t
+    assert "Critical systems missing an owner: 1 – ERP" in t
 
 
 # ---------------------------------------------------------------- kịch bản tự tạo
 def test_custom_schedule_blocks_and_send_when(client, admin, world, sent):
     a = mk_auto(client, admin, "CUSTOM", {"trigger": {"type": "schedule", "cron": "0 17 * * 1-5"},
-                                          "content": {"title": "Cuối ngày {time}", "blocks": ["open_alerts", "resources_top"]},
-                                          "scope": {"sites": [world["hq"]]}, "send_when": "has_items"}, name="Tổng kết cuối ngày")
-    assert a["when"] == "17:00 Thứ Hai–Thứ Sáu"
+                                          "content": {"title": "Cuối days {time}", "blocks": ["open_alerts", "resources_top"]},
+                                          "scope": {"sites": [world["hq"]]}, "send_when": "has_items"}, name="Tổng kết cuối days")
+    assert a["when"] == "17:00 Monday–Friday"
     run(a["id"])
-    assert sent[0]["subject"].startswith("Cuối ngày ") and "SRV-DB: RAM 93% · Trouble" in sent[0]["text"]
+    assert sent[0]["subject"].startswith("Cuối days ") and "SRV-DB: RAM 93% · Trouble" in sent[0]["text"]
     assert "SRV-DB SSH: RAM 93%, Disk 86% (Trouble)" in sent[0]["text"]
     b = mk_auto(client, admin, "CUSTOM", {"trigger": {"type": "interval", "minutes": 30}, "content": {"blocks": ["ssl_expiring"],
                                           "block_params": {"days": 3}}, "send_when": "has_items"}, name="SSL gấp")
-    assert run(b["id"])["status"] == "skipped"                        # còn 9 ngày > 3 → không gửi
+    assert run(b["id"])["status"] == "skipped"                        # remaining 9 days > 3 → do not send
 
 
 def test_custom_event_trigger_with_scope(client, admin, world, sent, monkeypatch):
@@ -582,7 +582,7 @@ def test_custom_event_trigger_with_scope(client, admin, world, sent, monkeypatch
 def test_preview_unsaved_and_tick_schedule(client, admin, world, sent):
     r = client.post("/api/automations/preview", headers=admin, json={"code": "CUSTOM", "spec": {
         "trigger": {"type": "schedule", "cron": "0 8 * * *"}, "content": {"blocks": ["overview"]}}})
-    assert r.status_code == 200 and "Tài sản:" in r.json()["output"] and sent == []
+    assert r.status_code == 200 and "Assets:" in r.json()["output"] and sent == []
     db = SessionLocal()
     assert db.query(models.Automation).count() == 0                  # bản xem trước không lưu lại
     db.close()
@@ -596,6 +596,6 @@ def test_preview_unsaved_and_tick_schedule(client, admin, world, sent):
     assert len(sent) == 1
     off = mk_auto(client, admin, "RPT-01", {"trigger": {"type": "schedule", "cron": f"{t.minute} {t.hour} * * *"}}, enabled=False)
     asyncio.run(E.tick(t + timedelta(days=1)))
-    assert len(sent) == 2 and sent[1]["subject"] == "Kịch bản tự tạo"     # ngày hôm sau chạy lại (tiêu đề = tên kịch bản); RPT-01 đang tắt không chạy
+    assert len(sent) == 2 and sent[1]["subject"] == "Custom Workflow"     # days hôm sau chạy lại (tiêu đề = tên kịch bản); RPT-01 đang tắt không chạy
     lst = {x["id"]: x for x in client.get("/api/automations", headers=admin).json()}
     assert lst[a["id"]]["last_status"] == "ok" and lst[off["id"]]["last_run_at"] is None

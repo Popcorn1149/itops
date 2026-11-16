@@ -1,4 +1,4 @@
-"""Tải syslog: 20 nguồn (IP 127.0.0.x) mỗi nguồn ~150 log/giây trong 20 giây (~60.000 log); đo ghi nhận & độ trễ API."""
+"""Tải syslog: 20 nguồn (IP 127.0.0.x) every nguồn ~150 log/giây trong 20 giây (~60.000 log); đo ghi nhận & độ trễ API."""
 import os, socket, statistics, sys, threading, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import e2e_ui as E  # noqa: E402
@@ -51,7 +51,7 @@ def main():
         E.check("Không bỏ log do đầy hàng đợi", r["dropped_queue"] == 0)
         E.check("API p95 < 1.5s trong lúc tải", lat[int(len(lat) * .95)] < 1500)
         log = open(os.path.join(d, "server.log")).read()
-        E.check("Không lỗi/khóa DB", "Traceback" not in log and "database is locked" not in log, log[-500:])
+        E.check("Không error/khóa DB", "Traceback" not in log and "database is locked" not in log, log[-500:])
     finally:
         proc.terminate()
     print(f"Syslog load: {sum(r[1] for r in E.RESULTS)}/{len(E.RESULTS)} PASS")

@@ -1,13 +1,12 @@
-"""Sao lưu / khôi phục / chuyển dữ liệu ở mức logic (không cần pg_dump – chạy được cả với PostgreSQL di động trên Windows).
+"""Logical backup / restore / data migration (no pg_dump required – also works with the bundled PostgreSQL executable on Windows).
 
-Định dạng trong file .zip:
-    db/manifest.json          {"format": 1, "revision": "<alembic>", "tables": {"users": 3, ...}, "created": "..."}
-    db/<bảng>.jsonl           mỗi dòng một bản ghi JSON (datetime dạng ISO, JSON giữ nguyên)
-Đọc trong MỘT transaction REPEATABLE READ READ ONLY → ảnh chụp nhất quán dù app đang ghi.
+ZIP archive format:
+    db/manifest.json          {"format": 1, "revision": "<alembic>", "tables": {"users": 3, ...}}
+    db/<table>.jsonl          one JSON record per line
+    .secret_key, .enc_key     copied separately; never included in the database dump
+    archive/                  archived files
 
-Khôi phục: CSDL đích trống → `alembic upgrade <revision của bản sao lưu>` → nạp dữ liệu → `upgrade head`
-(bản sao lưu cũ vẫn khôi phục được vào phiên bản app mới hơn).
-"""
+The dump is database-independent and can be restored through SQLAlchemy."""
 import json
 import zipfile
 from datetime import date, datetime
@@ -20,7 +19,7 @@ from sqlalchemy.types import JSON as SA_JSON
 
 FORMAT = 1
 BATCH = 1000
-SKIP_TABLES = {"alembic_version"}
+SKIP_TABLES = {"alembic_version", "flow_1m", "flow_1h"}   # traffic history: large, rebuilt from live data – not backed up
 
 
 class DumpError(RuntimeError):
@@ -33,7 +32,7 @@ def _enc(v):
     if isinstance(v, Decimal):
         return float(v)
     if isinstance(v, (bytes, memoryview)):
-        raise DumpError("Cột kiểu nhị phân chưa hỗ trợ sao lưu logic")
+        raise DumpError("Binary columns are not supported by logical backup")
     return v
 
 
@@ -74,9 +73,9 @@ def dump_to_zip(engine, z: zipfile.ZipFile, prefix: str = "db/") -> dict:
     return manifest
 
 
-# ---------------------------------------------------------------- nạp
+# ---------------------------------------------------------------- restored
 def _coerce(col, v):
-    """Đưa giá trị (từ JSONL hoặc SQLite) về đúng kiểu cột PostgreSQL."""
+    """Đưa value (from JSONL hoặc SQLite) về đúng kiểu cột PostgreSQL."""
     if v is None:
         return None
     t = col.type
@@ -102,7 +101,7 @@ def _coerce(col, v):
     if isinstance(t, Float) and isinstance(v, str):
         return float(v)
     if hasattr(t, "length") and getattr(t, "length", None) and isinstance(v, str) and len(v) > t.length:
-        return v[: t.length]          # SQLite không giới hạn độ dài, PostgreSQL có
+        return v[: t.length]          # SQLite unlimited độ dài, PostgreSQL có
     return v
 
 
@@ -121,17 +120,17 @@ def wipe(conn):
 
 
 def load_rows(conn, md: MetaData, rows_by_table) -> dict:
-    """rows_by_table(name) → iterable các dict. Chỉ chép cột có ở cả hai phía; cột thiếu dùng default của model."""
-    from . import models  # noqa: F401 – nạp model để lấy default (Column.default) cho cột không có trong nguồn
+    """rows_by_table(name) → iterable các dict. Chỉ chép cột có ở cả hai phía; cột missing dùng default of model."""
+    from . import models  # noqa: F401 – restored model để lấy default (Column.default) cho cột không có trong nguồn
     from .db import Base
     counts = {}
     for t in md.sorted_tables:
         model_t = Base.metadata.tables.get(t.name)
         self_fk = [fk.parent.name for fk in t.foreign_keys if fk.column.table.name == t.name]
-        deferred = []           # (pk, {col: val}) cho khoá ngoại trỏ về chính bảng (vd. assets.parent_id)
+        deferred = []           # (pk, {col: val}) cho khoá ngoại trỏ về chính bảng (e.g. assets.parent_id)
         n = 0
         batch = []
-        # bảng của model (có default cho cột thiếu) chỉ dùng khi schema đích đã đúng như model (khôi phục ở head / import)
+        # bảng of model (có default cho cột missing) chỉ dùng khi schema đích already đúng như model (khôi phục ở head / import)
         target = model_t if model_t is not None and set(model_t.c.keys()) <= set(t.c.keys()) else t
 
         cols_seen = None
@@ -189,27 +188,27 @@ def restore_from_zip(engine, z: zipfile.ZipFile, upgrade_fn, prefix: str = "db/"
     try:
         man = json.loads(z.read(f"{prefix}manifest.json"))
     except KeyError:
-        raise DumpError("File không phải bản sao lưu v2 (thiếu db/manifest.json). Bản sao lưu SQLite cũ → dùng import-sqlite.") from None
+        raise DumpError("This is not a v2 backup (db/manifest.json is missing). For legacy SQLite backups, use import-sqlite.") from None
     if man.get("format") != FORMAT:
-        raise DumpError(f"Định dạng sao lưu {man.get('format')} không hỗ trợ")
-    # một transaction duy nhất (DDL của PostgreSQL cũng nằm trong transaction): lỗi giữa chừng → CSDL cũ còn nguyên
+        raise DumpError(f"Backup format {man.get('format')} is not supported")
+    # một transaction duy nhất (DDL of PostgreSQL cũng nằm trong transaction): error giữa chừng → CSDL cũ remaining nguyên
     with engine.begin() as conn:
         if wipe_first:
             wipe(conn)
         if not is_empty(conn):
-            raise DumpError("CSDL đích đang có dữ liệu. Dùng --wipe để xoá sạch trước khi khôi phục.")
+            raise DumpError("The target database is not empty. Use --wipe to clear it before restoring.")
         upgrade_fn(conn, man["revision"])
         md = _reflect(conn)
         counts = load_rows(conn, md, lambda name: _jsonl(z, f"{prefix}{name}.jsonl"))
         for name, n in man["tables"].items():
             if counts.get(name, 0) != n:
-                raise DumpError(f"Số bản ghi bảng {name} không khớp: sao lưu {n}, nạp {counts.get(name, 0)}")
+                raise DumpError(f"Row count mismatch for table {name}; backup has {n}; restored {counts.get(name, 0)}")
         upgrade_fn(conn, "head")
     return {"revision": man["revision"], "tables": counts}
 
 
 # ---------------------------------------------------------------- SQLite (bản v1 / v2 cũ) → PostgreSQL
-SQLITE_SKIP = {"login_sessions", "sqlite_sequence"}     # phiên đăng nhập cũ không chuyển – đăng nhập lại
+SQLITE_SKIP = {"login_sessions", "sqlite_sequence"}     # sessions sign-in cũ không chuyển – sign-in lại
 
 
 def _sqlite_rows(path: str, table: str) -> Iterable[dict]:
@@ -247,7 +246,7 @@ def import_sqlite(engine, path: str, upgrade_fn, wipe_first: bool = False) -> di
         if wipe_first:
             wipe(conn)
         if not is_empty(conn):
-            raise DumpError("CSDL PostgreSQL đích đang có dữ liệu. Dùng --wipe để xoá sạch trước khi chuyển.")
+            raise DumpError("The target PostgreSQL database is not empty. Use --wipe to clear it before migration.")
         upgrade_fn(conn, "head")
         md = _reflect(conn)
         counts = load_rows(conn, md, lambda name: _sqlite_rows(path, name))

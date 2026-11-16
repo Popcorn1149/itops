@@ -1,9 +1,9 @@
 #!/bin/sh
 # Cài IT Ops Agent trên macOS (launchd). Chưa có Apple Developer ID → file chạy CHƯA KÝ:
 # Gatekeeper sẽ chặn nếu tải qua trình duyệt. Chép bằng USB/scp rồi chạy script này (sudo).
-#   sudo ./install-macos.sh https://itops.cty.local:8443 itk_xxx [CA_PIN]
+#   sudo ./install-macos.sh https://itops.cty.local:8443 [CA_PIN] [SITE]
 set -eu
-SERVER="$1"; TOKEN="$2"; PIN="${3:-}"
+SERVER="$1"; PIN="${2:-}"; SITE="${3:-}"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 case "$(uname -m)" in x86_64) A=amd64 ;; arm64) A=arm64 ;; *) echo "Chưa hỗ trợ"; exit 1 ;; esac
 BIN="$DIR/itops-agent-darwin-$A"
@@ -12,5 +12,7 @@ if [ -f "$DIR/SHA256SUMS.txt" ]; then
 fi
 xattr -d com.apple.quarantine "$BIN" 2>/dev/null || true
 chmod +x "$BIN"
-if [ -n "$PIN" ]; then "$BIN" install --server "$SERVER" --token "$TOKEN" --ca-pin "$PIN"
-else "$BIN" install --server "$SERVER" --token "$TOKEN"; fi
+set -- install --server "$SERVER"
+[ -n "$PIN" ] && set -- "$@" --ca-pin "$PIN"
+[ -n "$SITE" ] && set -- "$@" --site "$SITE"
+"$BIN" "$@"

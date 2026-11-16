@@ -6,6 +6,8 @@ import time
 import pytest
 
 from app.syslog_parser import parse
+from app import events, models
+from app.db import SessionLocal
 
 
 # ---------------------------------------------------------------- parser
@@ -155,18 +157,41 @@ def test_default_rules_switch_port_down_up_same_batch_no_duplicates(client, admi
     assert len(al) == 1 and "GigabitEthernet1/0/12" in al[0]["title"] and al[0]["count"] == 3, al
     send_udp(rx["udp"], "<189>90: %LINK-3-UPDOWN: Interface GigabitEthernet1/0/13, changed state to down")
     wait_events(client, admin, 4)
-    assert len(ev_alerts(client, admin)) == 2, "Cổng khác → cảnh báo riêng"
+    assert len(ev_alerts(client, admin)) == 2, "Port khác → cảnh báo riêng"
     send_udp(rx["udp"], up)
     wait_events(client, admin, 5)
     time.sleep(0.3)
     al = ev_alerts(client, admin)
-    assert len(al) == 1 and "1/0/13" in al[0]["title"], "Cổng 1/0/12 up → chỉ đóng đúng cảnh báo của nó"
+    assert len(al) == 1 and "1/0/13" in al[0]["title"], "Port 1/0/12 up → chỉ đóng đúng cảnh báo of nó"
     # down + up trong cùng 1 lô
     send_udp(rx["udp"], "<189>91: %LINK-3-UPDOWN: Interface Gi9, changed state to down", "<189>92: %LINK-3-UPDOWN: Interface Gi9, changed state to up")
     wait_events(client, admin, 7)
     time.sleep(0.3)
     assert not any("Gi9" in a["title"] for a in ev_alerts(client, admin))
 
+
+
+def test_seed_rules_migrates_legacy_names_without_duplicates(client, admin, clean):
+    with SessionLocal() as db:
+        legacy = models.EventRule(builtin=True, name="Cổng switch down", enabled=False,   # name saved by the Vietnamese release
+                                  description="customized legacy description", threshold=3)
+        duplicate = models.EventRule(builtin=True, name="Switch port down", enabled=True,
+                                     description="new default duplicate", threshold=1)
+        db.add_all([legacy, duplicate])
+        db.commit()
+        legacy_id = legacy.id
+
+        events.seed_rules(db)
+        rows = db.query(models.EventRule).filter_by(builtin=True, name="Switch port down").all()
+        assert len(rows) == 1
+        assert rows[0].id == legacy_id
+        assert rows[0].enabled is False
+        assert rows[0].description == "customized legacy description"
+        assert rows[0].threshold == 3
+
+        # Startup is idempotent: running the migration again must not add a duplicate.
+        events.seed_rules(db)
+        assert db.query(models.EventRule).filter_by(builtin=True, name="Switch port down").count() == 1
 
 def test_trap_linkdown_linkup_pairing(client, admin, clean, rx):
     vb = [("1.3.6.1.2.1.2.2.1.1.3", 3), ("1.3.6.1.2.1.31.1.1.1.1.3", "port3")]
@@ -187,7 +212,7 @@ def test_threshold_rule_bruteforce(client, admin, clean, rx):
     send_udp(rx["udp"], fail, fail)
     wait_events(client, admin, 6)
     al = ev_alerts(client, admin)
-    assert len(al) == 1 and al[0]["title"].startswith("Đăng nhập sai liên tục")
+    assert len(al) == 1 and al[0]["title"].startswith("Repeated failed sign-ins")
 
 
 def test_drop_rule_filterlog_and_crit_catchall(client, admin, clean, rx):
@@ -199,14 +224,14 @@ def test_drop_rule_filterlog_and_crit_catchall(client, admin, clean, rx):
     st = client.get("/api/events/stats", headers=admin).json()["receiver"]
     assert st["dropped_rule"] >= 1
     al = ev_alerts(client, admin)
-    assert len(al) == 1 and al[0]["severity"] == "critical" and al[0]["title"].startswith("Lỗi nghiêm trọng")
+    assert len(al) == 1 and al[0]["severity"] == "critical" and al[0]["title"].startswith("Critical error")
 
 
 @pytest.mark.parametrize("line,title", [
     ("<30>Nov  2 21:00:04 dpinger: MONITOR: WAN_FPT is down, omitting from routing group", "Gateway WAN down"),
-    ("<11>1 2026-11-02T14:00:03Z esx01 vmkernel - - - Lost access to volume 5f2a (DS01) due to connectivity issues", "Mất kết nối datastore"),
-    ("<13>Nov  2 21:12:00 NAS System: Volume 1 has been degraded", "Ổ cứng / RAID lỗi"),
-    ("<12>Nov  2 21:13:10 UPS apcupsd: Power failure. Running on UPS batteries.", "UPS chuyển sang chạy pin"),
+    ("<11>1 2026-11-02T14:00:03Z esx01 vmkernel - - - Lost access to volume 5f2a (DS01) due to connectivity issues", "Datastore connection lost"),
+    ("<13>Nov  2 21:12:00 NAS System: Volume 1 has been degraded", "Disk / RAID failure"),
+    ("<12>Nov  2 21:13:10 UPS apcupsd: Power failure. Running on UPS batteries.", "UPS switched to battery"),
 ])
 def test_default_vendor_rules(client, admin, clean, rx, line, title):
     send_udp(rx["udp"], line)
@@ -284,7 +309,7 @@ def test_notifications_sent_for_event_alerts(client, admin, clean, rx, sim_port)
         wait_events(client, admin, 2)
         time.sleep(0.8)
         texts = [m["text"] for m in S.STATE["telegram"]]
-        assert len(texts) == 2 and "WAN_VT" in texts[0] and "phục hồi" in texts[1], texts
+        assert len(texts) == 2 and "WAN_VT" in texts[0] and "recovered" in texts[1], texts
     finally:
         client.put("/api/settings/notify", headers=admin, json={"telegram": {}, "email": {}, "webhook": {}})
 
@@ -342,7 +367,7 @@ def test_retention_and_max_rows(client, admin, clean, rx, monkeypatch):
 
 
 def test_import_sqlite_v1_into_postgresql(tmp_path, monkeypatch):
-    """Dữ liệu bản v1 (SQLite, schema migration 0001, chưa có cột/bảng mới) chuyển sang PostgreSQL:
+    """Data bản v1 (SQLite, schema migration 0001, none cột/bảng mới) chuyển sang PostgreSQL:
     đúng kiểu (bool/JSON/datetime), khoá ngoại tự tham chiếu, cột mới lấy default, sequence nối tiếp, khoá được chép."""
     import sqlite3
     from alembic import command
@@ -361,7 +386,7 @@ def test_import_sqlite_v1_into_postgresql(tmp_path, monkeypatch):
     eng.dispose()
     c = sqlite3.connect(path)
 
-    def ins(table, **vals):     # điền cột NOT NULL còn thiếu bằng giá trị rỗng theo kiểu – như dữ liệu v1 thật
+    def ins(table, **vals):     # điền cột NOT NULL remaining missing bằng value rỗng theo kiểu – như dữ liệu v1 thật
         for _, name, typ, notnull, _, pk in c.execute(f"PRAGMA table_info({table})"):
             if notnull and not pk and name not in vals:
                 vals[name] = 0 if typ.upper() in ("INTEGER", "BOOLEAN", "FLOAT") else "{}" if typ.upper() == "JSON" else \
@@ -386,7 +411,7 @@ def test_import_sqlite_v1_into_postgresql(tmp_path, monkeypatch):
         monkeypatch.setattr(admin_tools, "SessionLocal", sessionmaker(bind=pg))
         monkeypatch.setattr(admin_tools, "DATA_DIR", str(keys_dir))
         out = admin_tools.import_sqlite(str(path))
-        assert "Đã chuyển" in out and "alerts" in out
+        assert "Migrated" in out and "alerts" in out
         with pg.connect() as conn:
             a = conn.execute(text("select title, sla_breached, suppressed, opened_at, count, last_seen from alerts where id=7")).one()
             assert a.title == "vm01 DOWN" and a.sla_breached is True and a.suppressed is False and a.count == 3
@@ -400,7 +425,7 @@ def test_import_sqlite_v1_into_postgresql(tmp_path, monkeypatch):
         assert (keys_dir / ".enc_key").read_text() == "khoa-ma-hoa-v1"
         assert any(p.name.startswith(".enc_key.bak-") and p.read_text() == "khoa-dang-co" for p in keys_dir.iterdir())
         import pytest
-        with pytest.raises(SystemExit, match="đang có dữ liệu"):
+        with pytest.raises(SystemExit, match="not empty"):
             admin_tools.import_sqlite(str(path))
 
 
@@ -454,3 +479,29 @@ def test_trap_acl_uses_real_sender_not_agent_address(client, admin, clean, rx):
     trap(rx["trap"], "1.3.6.1.6.3.1.1.5.3", [("1.3.6.1.6.3.18.1.3.0", "10.1.0.21"), ("1.3.6.1.2.1.2.2.1.1", 7)])
     evs = wait_events(client, admin, 1)
     assert evs and evs[0]["source_ip"] == "10.1.0.21" and evs[0]["data"]["via"] == "127.0.0.1"
+
+
+def test_seed_rules_upgrades_vietnamese_release_in_place(client, admin, clean):
+    """A database created by the Vietnamese release (v1/v2) keeps rule IDs and admin settings after the English upgrade."""
+    legacy_by_new = {}
+    for old, new in events.LEGACY_RULE_NAMES.items():
+        legacy_by_new.setdefault(new, old)
+    with SessionLocal() as db:
+        rows = db.query(models.EventRule).filter_by(builtin=True).all()
+        before = {}
+        for r in rows:
+            r.name = legacy_by_new.get(r.name, r.name)        # includes names identical in both languages
+            before[r.id] = (r.name, r.threshold)
+            r.threshold = 7
+        wan = next(r for r in rows if r.name == "Gateway WAN down (pfSense)")
+        db.commit()
+        events.seed_rules(db)
+        events.seed_rules(db)
+        after = {r.id: r for r in db.query(models.EventRule).filter_by(builtin=True)}
+        assert set(after) == set(before), "rule IDs must be preserved (no delete/re-create)"
+        assert all(r.threshold == 7 for r in after.values()), "admin settings must be preserved"
+        assert not [r.name for r in after.values() if events._VI_TEXT.search(r.name)]
+        assert after[wan.id].name == "Gateway WAN down (pfSense)"
+        for rid, (_, thr) in before.items():                 # restore shared rules for the tests that follow
+            after[rid].threshold = thr
+        db.commit()

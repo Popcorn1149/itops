@@ -1,4 +1,4 @@
-"""Gửi cảnh báo: Telegram, Email (SMTP), Webhook (Slack/Teams/Google Chat/Discord...)."""
+"""Deliver notifications through Telegram, SMTP email, and webhook channels."""
 import logging
 import os
 from email.message import EmailMessage
@@ -52,10 +52,15 @@ async def send_webhook(cfg: dict, subject: str, text: str):
 
 
 async def notify(subject: str, text: str, severity: str = "critical", only: str | None = None) -> dict:
-    """Trả về {kênh: 'ok' | lỗi}."""
+    """Trả về {kênh: 'ok' | error}."""
+    # Chạy song song với v1: v1 vẫn là bản gửi cảnh báo, v2 chỉ ghi nhận → do not send trùng.
+    # Nút "Gửi thử" (only=...) vẫn chạy để kiểm cấu hình kênh.
+    if not only and os.environ.get("DISABLE_NOTIFY", "").lower() in ("1", "true", "yes"):
+        log.info("Notifications are disabled (DISABLE_NOTIFY): %s", subject)
+        return {"all": "disabled (DISABLE_NOTIFY – running alongside v1)"}
     cfg = load_notify_settings()
     results = {}
-    severity = {"down": "critical", "trouble": "warning", "attention": "warning"}.get(severity, severity)   # mức cảnh báo mới → kênh gửi
+    severity = {"down": "critical", "trouble": "warning", "attention": "warning"}.get(severity, severity)   # mức alerts mới → kênh gửi
     icon = {"critical": "🔴", "warning": "🟠", "resolved": "🟢", "info": "🔵"}.get(severity, "🔔")
     for ch in CHANNELS:
         c = cfg.get(ch) or {}
@@ -73,11 +78,11 @@ async def notify(subject: str, text: str, severity: str = "critical", only: str 
             elif ch == "webhook" and c.get("url"):
                 await send_webhook(c, f"{icon} {subject}", text)
             else:
-                results[ch] = "Chưa cấu hình đủ"
+                results[ch] = "Incomplete channel configuration"
                 continue
             results[ch] = "ok"
         except Exception as e:
-            log.warning("notify %s failed: %s", ch, e)
+            log.warning("Notification channel %s failed: %s", ch, e)
             results[ch] = f"{type(e).__name__}: {e}"[:200]
     return results
 

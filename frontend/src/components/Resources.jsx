@@ -1,4 +1,4 @@
-// Thành phần dùng chung cho giám sát CPU / RAM / Disk
+// Shared component for CPU / RAM / disk monitoring
 import React, { useEffect, useRef, useState } from "react";
 import * as echarts from "echarts";
 import { useUi, chartColors } from "../theme";
@@ -12,7 +12,7 @@ const DEF = {
   disk_attention: 80, disk_trouble: 90, disk_critical: 95, disk_rearm: 75,
 };
 
-/** Mức theo threshold: critical / trouble / attention / ok (để trống = tắt mức đó). */
+/** Threshold levels: critical / trouble / attention / ok (leave blank to disable that level). */
 export function levelOf(v, t, key) {
   if (v == null) return null;
   for (const lv of ["critical", "trouble", "attention"]) {
@@ -25,7 +25,7 @@ export function levelOf(v, t, key) {
 const gb = (v) => (v == null ? "" : v >= 1024 ? `${(v / 1024).toFixed(1)} TB` : `${v} GB`);
 export const fmtGb = gb;
 
-/** Khối CPU / RAM / Disk cho một thiết bị (data.res từ collector, hoặc dòng của /api/resources). */
+/** CPU / RAM / disk panel for a device (data.res from the collector or a row from /api/resources). */
 export function ResourcePanel({ res, thresholds = {}, compact }) {
   if (!res) return null;
   const t = { ...DEF, ...thresholds };
@@ -42,15 +42,15 @@ export function ResourcePanel({ res, thresholds = {}, compact }) {
         <div className="res-cell">
           <div className="res-label">RAM{res.mem_total_gb ? <span className="faint"> · {gb(res.mem_total_gb)}</span> : null}</div>
           <UsageBar pct={res.mem} level={L("mem", res.mem)} width={compact ? 70 : 110} />
-          {res.mem_note && <div className="small faint" title={res.mem_note} style={{ cursor: "help" }}>ước tính ⓘ</div>}
+          {res.mem_note && <div className="small faint" title={res.mem_note} style={{ cursor: "help" }}>Estimated ⓘ</div>}
           {res.swap != null && res.swap > 0 && <div className="small faint">swap {Math.round(res.swap)}%</div>}
         </div>
         <div className="res-cell">
-          <div className="res-label">Disk{disks.length > 1 ? <span className="faint"> · {disks.length} ổ</span> : null}</div>
+          <div className="res-label">Disk{disks.length > 1 ? <span className="faint"> · {disks.length} drives</span> : null}</div>
           <UsageBar pct={res.disk} level={L("disk", res.disk)} width={compact ? 70 : 110} sub={res.disk_name && disks.length > 1 ? res.disk_name : null} />
         </div>
       </div>
-      {!compact && res.source && <div className="small faint" style={{ marginTop: 8 }}>Nguồn: {res.source}</div>}
+      {!compact && res.source && <div className="small faint" style={{ marginTop: 8 }}>Source: {res.source}</div>}
       {!compact && disks.length > 0 && (
         <div className="res-disks">
           {disks.map((d, i) => (
@@ -66,8 +66,8 @@ export function ResourcePanel({ res, thresholds = {}, compact }) {
   );
 }
 
-/** Biểu đồ lịch sử CPU / RAM / Disk của một check. */
-// Dòng "Current" – giá trị hiện tại: CPU %, RAM đã dùng / tổng (GB), Disk đã dùng / tổng (GB)
+/** CPU / RAM / disk history chart for a check. */
+// “Current” row — current values: CPU %, used / total RAM (GB), and used / total disk (GB)
 function currentLine(cur) {
   if (!cur) return null;
   const parts = [];
@@ -92,7 +92,7 @@ export function ResourceChart({ checkId, thresholds = {}, height = 200, current 
   useEffect(() => {
     if (!el.current || !pts.length) return;
     const c = echarts.init(el.current);
-    const T = chartColors();   // màu chữ / lưới / tooltip theo giao diện Sáng-Tối
+    const T = chartColors();   // text, grid, and tooltip colors based on the Light/Dark theme
     const t = { ...DEF, ...thresholds };
     c.setOption({
       grid: { left: 36, right: 12, top: 30, bottom: 24 },
@@ -121,7 +121,7 @@ export function ResourceChart({ checkId, thresholds = {}, height = 200, current 
         </div>
         {data?.stats && Object.keys(data.stats).length > 0 && <button className={`btn sm ${showSum ? "on" : ""}`} onClick={() => setShowSum(!showSum)}>Summarize</button>}
         <div className="seg">
-          {[[6, "6 giờ"], [24, "24 giờ"], [168, "7 ngày"]].map(([h, l]) => <button key={h} className={hours === h ? "on" : ""} onClick={() => setHours(h)}>{l}</button>)}
+          {[[6, "6 hours"], [24, "24 hours"], [168, "7 days"]].map(([h, l]) => <button key={h} className={hours === h ? "on" : ""} onClick={() => setHours(h)}>{l}</button>)}
         </div>
       </div>
       {showSum && data?.stats && <div className="res-sum">
@@ -129,8 +129,8 @@ export function ResourceChart({ checkId, thresholds = {}, height = 200, current 
           <tbody>{Object.entries(data.stats).map(([k, s]) => <tr key={k}><td><b style={{ color: RES_COLORS[k] }}>{RES_NAMES[k]}</b></td>
             <td>{s.avg}%</td><td>{s.min}%</td><td>{s.max}%</td></tr>)}</tbody></table>
       </div>}
-      {data && !pts.length ? <div className="small muted">Chưa có lịch sử – số liệu sẽ được ghi lại từ lần chạy tới.</div> : <div ref={el} style={{ height }} />}
-      <div className="small faint" style={{ marginTop: 2 }}>Đường nét đứt = threshold Attention (mức thấp nhất).</div>
+      {data && !pts.length ? <div className="small muted">No history yet — metrics will be recorded starting with the next run.</div> : <div ref={el} style={{ height }} />}
+      <div className="small faint" style={{ marginTop: 2 }}>Dashed line = Attention threshold (lowest alert level).</div>
     </div>
   );
 }

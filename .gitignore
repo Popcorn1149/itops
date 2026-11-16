@@ -1,15 +1,38 @@
-data/
+# ---- BÍ MẬT / DỮ LIỆU THẬT – không bao giờ đưa lên Git
 .env
+.env.local
+data/
+backend/data*/
+_migration/
+_chuyen-may/
+_backup/
+*.enc_key
+.enc_key
+.secret_key
+*.key
+itops-backup-*.zip
+itops-backup-*.zip.*
+itops-chuyen-may-*.zip
+itops-migration-*.zip
+MANIFEST.sha256.bak
+
+# ---- tạo lại được (build / cài đặt)
 frontend/node_modules/
 frontend/dist/
 backend/static/
 __pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
 backend/.venv/
-backend/data-dev/
-backend/data-local/
-backend/data-v2-dev/
-backend/data-v2-local/
-.env.local
 backend/tools/pgsql/
+backend/tools/goflow2/goflow2*
 agent/dist/
+agent/third_party/
 backend/agent_dist/
+
+# ---- máy cá nhân
+.vscode/
+*.log
+Thumbs.db
+desktop.ini

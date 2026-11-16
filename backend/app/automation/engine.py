@@ -1,14 +1,13 @@
-"""Bộ chạy tự động hoá.
+"""Automation engine.
 
-- Kịch bản = bản ghi `Automation` với `spec` khai báo:
+- A workflow is an `Automation` record with a declarative `spec`:
     trigger: {type: schedule, cron: "30 7 * * *"} | {type: interval, minutes: 5} | {type: event, on: [alert_opened, ...]} | {type: hook}
     scope:   {sites: all | [id], asset_types: [...], severities: [...], name_contains: "..."}
-    params:  tham số riêng của template
+    params:  template-specific parameters
     actions: [{type: default} | {type: telegram, chat: "-100..."} | {type: email, to: "a@b.vn"} | {type: webhook, url: "..."}]
-    level:   L0 chỉ báo · L1 báo kèm gợi ý · L2 cần duyệt · L3 tự làm (chỉ hành động đảo ngược được)
-- Giờ trong cron là giờ Việt Nam (UTC+7, đổi bằng APP_TZ_OFFSET).
-- Không kịch bản nào được xoá dữ liệu hay tắt thiết bị.
-"""
+    level:   L0 notify · L1 notify with suggestion · L2 approval required · L3 execute (reversible actions only)
+- Cron times use Vietnam time (UTC+7, adjusted by APP_TZ_OFFSET).
+- No workflow may delete data or disable devices."""
 import asyncio
 import copy
 import logging
@@ -33,7 +32,7 @@ def local_now() -> datetime:
 
 
 def to_local(dt: datetime | None) -> datetime | None:
-    """DB lưu UTC không múi giờ → giờ VN."""
+    """DB lưu UTC không múi hours → hours VN."""
     return dt.replace(tzinfo=timezone.utc).astimezone(TZ) if dt else None
 
 
@@ -41,9 +40,9 @@ def to_utc_naive(dt_local: datetime) -> datetime:
     return dt_local.astimezone(timezone.utc).replace(tzinfo=None)
 
 
-# ---------------------------------------------------------------- cron 5 trường (phút giờ ngày tháng thứ)
+# ---------------------------------------------------------------- five-field cron expressions (minute hour day month weekday)
 _CRON_RANGES = [(0, 59), (0, 23), (1, 31), (1, 12), (0, 7)]
-_CRON_NAMES = ["phút", "giờ", "ngày", "tháng", "thứ"]
+_CRON_NAMES = ["minute", "hour", "day", "month", "weekday"]
 
 
 def _cron_field(expr: str, lo: int, hi: int, name: str) -> set[int]:
@@ -53,21 +52,21 @@ def _cron_field(expr: str, lo: int, hi: int, name: str) -> set[int]:
         if "/" in part:
             part, st = part.split("/", 1)
             if not st.isdigit() or int(st) < 1:
-                raise ValueError(f"cron: bước '/{st}' của {name} không hợp lệ")
+                raise ValueError(f"cron: step '/{st}' of {name} is invalid")
             step = int(st)
         if part in ("*", ""):
             a, b = lo, hi
         elif "-" in part:
             x, y = part.split("-", 1)
             if not (x.isdigit() and y.isdigit()):
-                raise ValueError(f"cron: khoảng '{part}' của {name} không hợp lệ")
+                raise ValueError(f"cron: in approximately '{part}' of {name} is invalid")
             a, b = int(x), int(y)
         elif part.isdigit():
             a = b = int(part)
         else:
-            raise ValueError(f"cron: '{part}' của {name} không hợp lệ")
+            raise ValueError(f"cron: '{part}' of {name} is invalid")
         if a < lo or b > hi or a > b:
-            raise ValueError(f"cron: {name} phải trong {lo}–{hi}")
+            raise ValueError(f"cron: {name} must be between {lo} and {hi}")
         vals.update(range(a, b + 1, step))
     return vals
 
@@ -75,10 +74,10 @@ def _cron_field(expr: str, lo: int, hi: int, name: str) -> set[int]:
 def parse_cron(expr: str) -> list[set[int]]:
     parts = str(expr or "").split()
     if len(parts) != 5:
-        raise ValueError("cron cần đúng 5 trường: phút giờ ngày tháng thứ (VD '30 7 * * *' = 07:30 mỗi ngày)")
+        raise ValueError("cron must contain exactly five fields: minute hour day month weekday (e.g. '30 7 * * *' = 07:30 every day)")
     f = [_cron_field(p, lo, hi, n) for p, (lo, hi), n in zip(parts, _CRON_RANGES, _CRON_NAMES, strict=True)]
     if 7 in f[4]:
-        f[4].add(0)               # 0 và 7 đều là Chủ nhật
+        f[4].add(0)               # 0 and 7 đều là Sunday
     f.append({"dom": parts[2] != "*", "dow": parts[4] != "*"})
     return f
 
@@ -87,7 +86,7 @@ def cron_match(expr: str, dt: datetime) -> bool:
     m, h, dom, mon, dow, flags = parse_cron(expr)
     if dt.minute not in m or dt.hour not in h or dt.month not in mon:
         return False
-    wd = (dt.weekday() + 1) % 7   # Python: Thứ Hai = 0 → cron: Chủ nhật = 0
+    wd = (dt.weekday() + 1) % 7   # Python: Monday = 0 → cron: Sunday = 0
     d_ok, w_ok = dt.day in dom, wd in dow
     if flags["dom"] and flags["dow"]:
         return d_ok or w_ok        # chuẩn cron: cả hai bị giới hạn → một trong hai
@@ -114,19 +113,19 @@ def describe_cron(expr: str) -> str:
         m, h, dom, mon, dow = expr.split()
     except ValueError:
         return expr
-    days = {"0": "Chủ nhật", "1": "Thứ Hai", "2": "Thứ Ba", "3": "Thứ Tư", "4": "Thứ Năm", "5": "Thứ Sáu", "6": "Thứ Bảy", "7": "Chủ nhật"}
+    days = {"0": "Sunday", "1": "Monday", "2": "Tuesday", "3": "Wednesday", "4": "Thursday", "5": "Friday", "6": "Saturday", "7": "Sunday"}
     if m.isdigit() and h.isdigit():
         at = f"{int(h):02d}:{int(m):02d}"
         if dom == "*" and mon == "*" and dow == "*":
-            return f"{at} hằng ngày"
+            return f"{at} daily"
         if dom == "*" and mon == "*" and dow in days:
-            return f"{at} {days[dow]} hằng tuần"
+            return f"{at} {days[dow]} weekly"
         if dom == "*" and mon == "*" and dow == "1-5":
-            return f"{at} Thứ Hai–Thứ Sáu"
+            return f"{at} Monday–Friday"
         if dom.isdigit() and mon == "*" and dow == "*":
-            return f"{at} ngày {dom} hằng tháng"
+            return f"{at} day {dom} monthly"
         if dom.isdigit() and dow == "*" and "," in mon:
-            return f"{at} ngày {dom} các tháng {mon}"
+            return f"{at} day {dom} in months {mon}"
     return f"cron {expr}"
 
 
@@ -177,25 +176,25 @@ async def send_to(targets: list | None, subject: str, text: str, severity: str =
         try:
             if kind == "default":
                 r = await nt.notify(subject, text, severity if severity in ("critical", "warning", "resolved", "info") else "info")
-                res.update({f"default/{k}": v for k, v in r.items()} or {"default": "chưa bật kênh nào ở Cài đặt"})
+                res.update({f"default/{k}": v for k, v in r.items()} or {"default": "no notification channels are enabled in Settings"})
                 continue
             if kind == "telegram":
                 tg = cfg.get("telegram") or {}
                 if not tg.get("bot_token"):
-                    raise RuntimeError("chưa cấu hình bot Telegram ở Cài đặt")
+                    raise RuntimeError("Telegram bot is not configured in Settings")
                 await nt.send_telegram({**tg, "chat_id": t.get("chat") or tg.get("chat_id")}, f"{icon} <b>{_esc(subject)}</b>\n{_esc(text)}")
             elif kind == "email":
                 em = cfg.get("email") or {}
                 if not em.get("host"):
-                    raise RuntimeError("chưa cấu hình SMTP ở Cài đặt")
+                    raise RuntimeError("SMTP is not configured in Settings")
                 await nt.send_email({**em, "to": t.get("to") or em.get("to")}, f"{icon} {subject}", text)
             elif kind == "webhook":
                 await nt.send_webhook({"url": t.get("url") or (cfg.get("webhook") or {}).get("url")}, f"{icon} {subject}", text)
             else:
-                raise RuntimeError(f"loại người nhận '{kind}' không hỗ trợ")
+                raise RuntimeError(f"recipient type '{kind}' is not supported")
             res[key or str(i)] = "ok"
         except Exception as e:
-            res[key or str(i)] = f"lỗi: {type(e).__name__} {e}"[:200]
+            res[key or str(i)] = f"error: {type(e).__name__} {e}"[:200]
     return res
 
 
@@ -205,7 +204,7 @@ class Msg:
     subject: str
     text: str
     severity: str = "info"
-    targets: list | None = None      # None = theo actions của kịch bản
+    targets: list | None = None      # None = theo actions of workflow
 
 
 @dataclass
@@ -223,7 +222,7 @@ class Ctx:
     spec: dict
     params: dict
     scope: dict
-    now: datetime                    # giờ VN
+    now: datetime                    # hours VN
     trigger: str
     dry_run: bool
     state: dict
@@ -239,7 +238,7 @@ def _templates():
 
 
 def effective_spec(auto) -> dict:
-    """Spec đầy đủ = mặc định của template + phần người dùng sửa."""
+    """Full spec = mặc định of template + phần người dùng sửa."""
     t = _templates().get(auto.code)
     base = copy.deepcopy(t["spec"]) if t else {}
     user = copy.deepcopy(auto.spec or {})
@@ -249,12 +248,12 @@ def effective_spec(auto) -> dict:
 
 
 async def run_automation(auto_id: int, trigger: str = "manual", dry_run: bool = False, event: dict | None = None) -> dict:
-    """Chạy 1 kịch bản. dry_run = chỉ xem trước, không gửi, không ghi bộ nhớ status."""
+    """Run one automation. dry_run = chỉ xem trước, do not send, không ghi bộ nhớ status."""
     db = SessionLocal()
     try:
         auto = db.get(models.Automation, auto_id)
         if not auto:
-            raise ValueError("Không tìm thấy kịch bản")
+            raise ValueError("Not found workflow")
         spec = effective_spec(auto)
         state = copy.deepcopy(auto.state or {})
         ctx = Ctx(db=db, auto=auto, spec=spec, params=spec.get("params") or {}, scope=spec.get("scope") or {},
@@ -263,21 +262,21 @@ async def run_automation(auto_id: int, trigger: str = "manual", dry_run: bool = 
         fn = (t.get("preview") if trigger in ("test", "manual") and t.get("preview") else t.get("run")) if t else None
         try:
             if fn is None:
-                raise ValueError(f"Template {auto.code} không tồn tại")
+                raise ValueError(f"Template {auto.code} does not exist")
             res: RunResult = fn(ctx, event) if t.get("wants_event") else fn(ctx)
             if trigger in ("test", "manual") and t.get("hook") and res.messages:
                 res.messages = [Msg(m.subject, m.text, m.severity) for m in res.messages]
                 if trigger == "manual":      # template hook không có tin để gửi – chỉ xem
                     dry_run = True
         except Exception as e:
-            log.exception("automation %s lỗi", auto.code)
-            res = RunResult("error", f"Lỗi: {type(e).__name__} {e}"[:300])
+            log.exception("automation %s error", auto.code)
+            res = RunResult("error", f"Error: {type(e).__name__} {e}"[:300])
         sent = {}
         if res.messages and res.status == "ok":
             preview = "\n\n".join(f"■ {m.subject}\n{m.text}" for m in res.messages)
             res.output = res.output or preview
             if not dry_run:
-                db.commit()       # lưu thay đổi của template (VD đánh dấu leo thang) trước khi gửi
+                db.commit()       # lưu thay đổi of template (VD đánh dấu leo thang) trước khi gửi
                 for m in res.messages:
                     r = await send_to(m.targets or spec.get("actions"), m.subject, m.text, m.severity)
                     sent.update(r)
@@ -323,7 +322,7 @@ def due(auto, spec: dict, t: datetime) -> bool:
 
 
 async def tick(t: datetime | None = None):
-    """Gọi mỗi ~30 giây: chạy kịch bản tới lịch, phần định kỳ của template 'hook', gộp uptime theo ngày."""
+    """Gọi every ~30 giây: chạy workflow tới lịch, phần định kỳ of template 'hook', gộp uptime theo days."""
     t = t or local_now()
     db = SessionLocal()
     try:
@@ -351,16 +350,16 @@ async def loop():
         try:
             await tick()
         except Exception:
-            log.exception("automation tick lỗi")
+            log.exception("automation tick error")
         await asyncio.sleep(30)
 
 
-# ---------------------------------------------------------------- gộp uptime theo ngày (giờ VN)
+# ---------------------------------------------------------------- gộp uptime theo days (hours VN)
 _ROLLED: dict = {}
 
 
 def rollup_uptime(force: bool = False):
-    """Gộp check_results thành daily_uptime cho các ngày đã qua (chạy tối đa 1 lần/giờ)."""
+    """Gộp check_results thành daily_uptime cho các days đã qua (chạy tối đa 1  changes/hours)."""
     key = local_now().strftime("%Y-%m-%d %H")
     if _ROLLED.get("k") == key and not force:
         return
@@ -393,14 +392,14 @@ def rollup_uptime(force: bool = False):
 
 
 def _down_expr():
-    """down = True, hoặc bản ghi cũ (NULL) lỗi mà không có số liệu."""
+    """down = True, hoặc bản ghi cũ (NULL) error mà không có số liệu."""
     from sqlalchemy import and_, case, or_
     CR = models.CheckResult
     return case((or_(CR.down == True, and_(CR.down.is_(None), CR.status == "fail", CR.metrics.is_(None))), 1), else_=0)  # noqa: E712
 
 
 def uptime_between(db, check_ids: list[int], start_local: datetime, end_local: datetime) -> dict:
-    """{check_id: (total, down, down_minutes)} – dùng daily_uptime cho ngày đã gộp, bản ghi thô cho phần còn lại."""
+    """{check_id: (total, down, down_minutes)} – dùng daily_uptime cho days đã gộp, bản ghi thô cho phần remaining lại."""
     from sqlalchemy import func
     out = {cid: [0, 0, 0.0] for cid in check_ids}
     if not check_ids:
@@ -418,7 +417,7 @@ def uptime_between(db, check_ids: list[int], start_local: datetime, end_local: d
         o[0] += r.total; o[1] += r.down; o[2] += r.down_minutes
         rolled_days.add((r.check_id, r.day))
     CR = models.CheckResult
-    # ngày theo giờ địa phương. Dùng literal (không bind param) để biểu thức trong SELECT và GROUP BY giống hệt nhau – PostgreSQL bắt buộc
+    # days theo hours địa phương. Use literal (không bind param) để biểu thức trong SELECT and GROUP BY giống hệt nhau – PostgreSQL required
     from sqlalchemy import literal_column
     off_min = int(TZ.utcoffset(None).total_seconds() // 60)
     day_expr = func.to_char(CR.ts + literal_column(f"interval '{off_min} minutes'"), literal_column("'YYYY-MM-DD'"))
@@ -432,15 +431,15 @@ def uptime_between(db, check_ids: list[int], start_local: datetime, end_local: d
     return {k: tuple(v) for k, v in out.items()}
 
 
-# ---------------------------------------------------------------- xử lý thông báo cảnh báo (hook)
+# ---------------------------------------------------------------- xử lý thông báo alerts (hook)
 HOOK_ORDER = ["LCM-01", "INC-01", "INC-02", "INC-05"]
 
 
 async def dispatch(items: list):
-    """Nhận danh sách thông báo từ bộ giám sát / bộ nhận log rồi:
-    1) cho các template hook xử lý (bảo trì → gom nguyên nhân gốc → chống chập chờn → gắn runbook),
+    """Nhận danh sách thông báo from bộ giám sát / bộ nhận log rồi:
+    1) cho các template hook xử lý (bảo trì → gom nguyên nhân gốc → chống flapping → gắn runbook),
     2) chạy kịch bản tự tạo theo sự kiện,
-    3) gửi phần còn lại qua các kênh mặc định."""
+    3) gửi phần remaining lại qua các kênh mặc định."""
     from ..notify import notify
     norm = []
     for it in items:
@@ -467,7 +466,7 @@ async def dispatch(items: list):
                 try:
                     verdict = tpls[code]["hook"](ctx, it)
                 except Exception:
-                    log.exception("hook %s lỗi", code)
+                    log.exception("hook %s error", code)
                     continue
                 a.state = ctx.state
                 if verdict and verdict.get("note"):
@@ -491,60 +490,60 @@ async def dispatch(items: list):
         try:
             await notify(it["subject"], it["text"], it["severity"])
         except Exception:
-            log.exception("notify lỗi")
+            log.exception("Notification failed")
     for aid in evs:
         for it in norm:
             try:
                 await run_automation(aid, "event", event=it)
             except Exception:
-                log.exception("event automation lỗi")
+                log.exception("event automation error")
 
 
 # ---------------------------------------------------------------- kiểm tra spec (form + YAML)
 def validate_spec(code: str, spec: dict) -> dict:
-    """Trả về spec đã chuẩn hoá; lỗi → ValueError với câu tiếng Việt."""
+    """Trả về spec đã chuẩn hoá; error → ValueError với câu tiếng Việt."""
     if not isinstance(spec, dict):
-        raise ValueError("Kịch bản phải là một khối khoá: giá trị (trigger, scope, params, actions...)")
+        raise ValueError("Automation must be a key-value object: expected (trigger, scope, params, actions...)")
     t = _templates().get(code)
     if not t:
-        raise ValueError(f"Template {code} không tồn tại")
+        raise ValueError(f"Template {code} does not exist")
     full = {**copy.deepcopy(t["spec"]), **spec}
     trg = full.get("trigger") or {}
     kind = trg.get("type")
     allowed = t.get("triggers") or ["schedule", "interval", "event"]
     if kind not in allowed:
-        raise ValueError(f"trigger.type phải là một trong: {', '.join(allowed)}")
+        raise ValueError(f"trigger.type must be one of: {', '.join(allowed)}")
     if kind == "schedule":
         parse_cron(trg.get("cron", ""))
     if kind == "interval":
         m = trg.get("minutes")
         if not isinstance(m, int) or not 1 <= m <= 10080:
-            raise ValueError("trigger.minutes phải là số phút 1–10080")
+            raise ValueError("trigger.minutes must be a number of minutes 1–10080")
     if kind == "event":
         on = trg.get("on") or []
         bad = [x for x in on if x not in EVENTS]
         if not on or bad:
-            raise ValueError(f"trigger.on phải là danh sách trong: {', '.join(EVENTS)}")
+            raise ValueError(f"trigger.on must be a list containing values from: {', '.join(EVENTS)}")
     acts = full.get("actions") or [{"type": "default"}]
     full["actions"] = acts
     if not isinstance(acts, list):
-        raise ValueError("actions phải là danh sách người nhận")
+        raise ValueError("actions must be a recipient list")
     for a in acts:
         if isinstance(a, dict) and isinstance(a.get("to"), list):      # mẫu trong tài liệu: to: [a@b.vn, c@d.vn]
             a["to"] = ", ".join(str(x) for x in a["to"])
         if isinstance(a, dict) and a.get("chat") is not None:
             a["chat"] = str(a["chat"])
         if not isinstance(a, dict) or a.get("type") not in ("default", "telegram", "email", "webhook"):
-            raise ValueError("Mỗi người nhận cần type: default / telegram / email / webhook")
+            raise ValueError("Each recipient requires a type: default / telegram / email / webhook")
         if a["type"] == "email" and a.get("to") and not re.fullmatch(r"[^@\s,]+@[^@\s,]+(\s*,\s*[^@\s,]+@[^@\s,]+)*", str(a["to"])):
-            raise ValueError(f"Email '{a['to']}' không hợp lệ")
+            raise ValueError(f"Email '{a['to']}' is invalid")
         if a["type"] == "webhook" and a.get("url") and not str(a["url"]).startswith(("http://", "https://")):
-            raise ValueError("Webhook phải bắt đầu bằng http:// hoặc https://")
+            raise ValueError("Webhook URL must start with http:// or https://")
     lvl = full.get("level", "L0")
     if lvl not in ("L0", "L1", "L2", "L3"):
-        raise ValueError("level phải là L0 / L1 / L2 / L3")
+        raise ValueError("level must be L0 / L1 / L2 / L3")
     if lvl in ("L2", "L3") and not t.get("reversible"):
-        raise ValueError("Template này chỉ báo tin – mức L2/L3 chỉ dành cho hành động đảo ngược được")
+        raise ValueError("This template only sends notifications – L2/L3 levels are only for reversible actions")
     if t.get("validate"):
         t["validate"](full)
     return {k: full[k] for k in ("trigger", "scope", "params", "actions", "level") if k in full} | (

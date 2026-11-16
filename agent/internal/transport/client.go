@@ -35,6 +35,29 @@ func (e *ErrRejected) Error() string {
 	return fmt.Sprintf("server từ chối (%d): %s", e.Status, e.Body)
 }
 
+// ErrPending: đăng ký ĐÈ lên một máy đã có trong IT Ops → chờ IT duyệt (server ≥ 2.8.0 trả 429 + "pending").
+// Giữ nguyên token, thử lại sau RetryS giây; IT duyệt xong thì lần thử kế tiếp nhận được khoá.
+type ErrPending struct {
+	Msg    string
+	RetryS int
+}
+
+func (e *ErrPending) Error() string { return "đang chờ IT duyệt: " + e.Msg }
+
+func pendingFrom(data []byte) *ErrPending {
+	var v struct {
+		Detail struct {
+			Msg     string `json:"msg"`
+			Pending bool   `json:"pending"`
+			Retry   int    `json:"retry_seconds"`
+		} `json:"detail"`
+	}
+	if json.Unmarshal(data, &v) != nil || !v.Detail.Pending {
+		return nil
+	}
+	return &ErrPending{Msg: v.Detail.Msg, RetryS: v.Detail.Retry}
+}
+
 type Client struct {
 	cfg  *config.File
 	http *http.Client
@@ -106,6 +129,8 @@ func (c *Client) do(method, path string, body []byte, gz bool, out any) (int, er
 		return 401, ErrAuth
 	case resp.StatusCode == 204:
 		return 204, nil
+	case resp.StatusCode == 429 && pendingFrom(data) != nil:
+		return 429, pendingFrom(data)
 	case resp.StatusCode == 429 || resp.StatusCode >= 500:
 		return resp.StatusCode, fmt.Errorf("server bận/lỗi %d", resp.StatusCode)
 	case resp.StatusCode >= 400:

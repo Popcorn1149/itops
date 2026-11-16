@@ -79,7 +79,7 @@ Tạo tài khoản chỉ đọc cho từng loại thiết bị:
   (`test_trap_acl_uses_real_sender_not_agent_address` – lỗ hổng tìm ra khi test bằng gói tin thật).
 - Trap v1/v2c sai community và trap v3 sai user / sai mật khẩu bị loại, không lưu. Mật khẩu SNMPv3 lưu mã hoá, giao diện chỉ hiện `••••••`.
 - Nên dùng **SNMPv3 authPriv** thay cho community `public` (bước P1 còn lại).
-- Kiểm tra đường nhận log: `python tools/mo_phong_thiet_bi.py --host <IP-IT-Ops>` (gửi gói tin thật, chạy được từ máy khác).
+- Kiểm tra đường nhận log: `python tools/simulate_devices.py --host <IP-IT-Ops>` (gửi gói tin thật, chạy được từ máy khác).
 
 ## 6. Sao lưu
 

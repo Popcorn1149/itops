@@ -50,7 +50,7 @@ def smtp():
 
 
 class Port:
-    """Cổng TCP bật/tắt được để giả lập dịch vụ sống/chết."""
+    """Port TCP bật/tắt được để giả lập service sống/chết."""
     def __init__(self):
         self.port = S.free_port()
         self.sock = None
@@ -81,13 +81,13 @@ def test_alert_lifecycle_with_notifications(client, admin, clean, notify_all, sm
         assert r["status"] == "ok"
         assert get(client, admin, f"/api/assets/{a['id']}")["status"] == "up"
         p.down()
-        await scheduler.run_check(c["id"])  # lỗi lần 1: chưa báo
+        await scheduler.run_check(c["id"])  # error lần 1: chưa báo
         assert get(client, admin, "/api/alerts") == []
         assert get(client, admin, f"/api/assets/{a['id']}")["status"] == "down"
-        await scheduler.run_check(c["id"])  # lỗi lần 2: mở cảnh báo + gửi
+        await scheduler.run_check(c["id"])  # error lần 2: mở cảnh báo + gửi
         al = get(client, admin, "/api/alerts")
         assert len(al) == 1 and al[0]["severity"] == "down" and al[0]["asset_name"] == "ERP-APP" and al[0]["site_name"] == "HQ"
-        await scheduler.run_check(c["id"])  # lỗi lần 3: không gửi trùng
+        await scheduler.run_check(c["id"])  # error lần 3: do not send trùng
         assert len(get(client, admin, "/api/alerts")) == 1
         assert len(S.STATE["telegram"]) == 1 and len(S.STATE["webhook"]) == 1 and len(smtp["messages"]) == 1
         tg = S.STATE["telegram"][0]
@@ -101,7 +101,7 @@ def test_alert_lifecycle_with_notifications(client, admin, clean, notify_all, sm
     assert get(client, admin, "/api/alerts") == []
     res = get(client, admin, "/api/alerts?status=resolved")
     assert res[0]["resolved_at"] is not None
-    assert len(S.STATE["telegram"]) == 2 and "hoạt động lại" in S.STATE["telegram"][1]["text"]
+    assert len(S.STATE["telegram"]) == 2 and "has recovered" in S.STATE["telegram"][1]["text"]
     assert len(smtp["messages"]) == 2 and "Subject:" in smtp["messages"][0]
     chk = get(client, admin, f"/api/checks/{c['id']}")
     assert chk["fail_count"] == 0
@@ -119,7 +119,7 @@ def test_warning_then_escalation(client, admin, clean, notify_all, sim_port):
         await scheduler.run_check(c["id"])
         al = get(client, admin, "/api/alerts")
         assert al[0]["severity"] == "trouble" and "Trouble" in al[0]["title"]
-        assert len(S.STATE["webhook"]) == 0, "webhook đặt include_warnings=False → không gửi cảnh báo vàng"
+        assert len(S.STATE["webhook"]) == 0, "webhook đặt include_warnings=False → do not send cảnh báo andng"
         assert len(S.STATE["telegram"]) == 1
         client.put(f"/api/checks/{c['id']}", headers=admin, json={"target": f"http://127.0.0.1:{sim_port}/web/500"})
         await scheduler.run_check(c["id"])
@@ -165,7 +165,7 @@ def test_deleting_or_disabling_check_closes_alert(client, admin, clean):
     assert len(get(client, admin, "/api/alerts")) == 2
     client.delete(f"/api/checks/{c1['id']}", headers=admin)
     client.put(f"/api/checks/{c2['id']}", json={"enabled": False}, headers=admin)
-    assert get(client, admin, "/api/alerts") == [], "Cảnh báo của check đã xoá/tắt không được treo mãi"
+    assert get(client, admin, "/api/alerts") == [], "Warning of check đã xoá/tắt không được treo mãi"
 
 
 def test_change_check_type_keeps_history(client, admin, clean):
@@ -175,10 +175,10 @@ def test_change_check_type_keeps_history(client, admin, clean):
     hist_before = get(client, admin, f"/api/checks/{c['id']}/history")
     r = client.put(f"/api/checks/{c['id']}", json={"type": "ping", "config": {"alert_after": 1}}, headers=admin)
     assert r.status_code == 200 and r.json()["type"] == "ping" and r.json()["status"] == "unknown"
-    assert get(client, admin, "/api/alerts") == [], "Cảnh báo của loại cũ phải đóng"
+    assert get(client, admin, "/api/alerts") == [], "Warning of loại cũ phải đóng"
     assert len(get(client, admin, f"/api/checks/{c['id']}/history")) >= 1 and hist_before, "Lịch sử phải giữ"
     log = get(client, admin, "/api/audit")
-    assert any("loại tcp → ping" in (a.get("detail") or "") for a in log)
+    assert any("type tcp → ping" in (a.get("detail") or "") for a in log)
     bad = client.put(f"/api/checks/{c['id']}", json={"type": "xyz"}, headers=admin)
     assert bad.status_code == 400
 
@@ -190,7 +190,7 @@ def test_esxi_discovery_into_map(client, admin, clean, monkeypatch):
     sw = mk(client, admin, "assets", name="SW-CORE", type="switch", site_id=s["id"])
     c = mk(client, admin, "checks", name="vCenter", type="esxi", target="vc.lab", site_id=s["id"], enabled=False,
            config={"username": "ro", "password": S.ESXI["password"]})
-    client.put(f"/api/checks/{c['id']}", json={"asset_id": sw["id"]}, headers=admin)  # vCenter gắn vào switch
+    client.put(f"/api/checks/{c['id']}", json={"asset_id": sw["id"]}, headers=admin)  # vCenter gắn ando switch
     asyncio.run(scheduler.run_check(c["id"]))
     assets = get(client, admin, "/api/assets")
     by = {a["name"]: a for a in assets}
@@ -216,7 +216,7 @@ def test_esxi_discovery_into_map(client, admin, clean, monkeypatch):
     client.put(f"/api/checks/{c['id']}", json={"enabled": True}, headers=admin)  # rủi ro chỉ tính từ check đang bật
     risks = get(client, admin, "/api/risks")
     kinds = {(r["kind"], r["title"]) for r in risks}
-    assert ("Không còn thấy", "OLD-CENTOS") in kinds and ("Snapshot cũ", "ERP-DB") in kinds and ("Datastore đầy", "ds-ssd") in kinds
+    assert ("No longer detected", "OLD-CENTOS") in kinds and ("Old snapshot", "ERP-DB") in kinds and ("Datastore full", "ds-ssd") in kinds
 
     # xoá check → tài sản giữ lại thành "manual"
     client.delete(f"/api/checks/{c['id']}", headers=admin)

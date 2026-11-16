@@ -21,7 +21,7 @@ def test_migrations_match_models():
 
 
 def test_downgrade_then_upgrade_roundtrip():
-    """Migration phải đi ngược được (để rollback khi nâng cấp lỗi) và đi lại không lỗi."""
+    """Migration phải đi ngược được (để rollback khi nâng cấp error) and đi lại không error."""
     from alembic import command
     from sqlalchemy import inspect, text
     from app import db as dbm

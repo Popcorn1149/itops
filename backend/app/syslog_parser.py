@@ -1,8 +1,8 @@
-"""Phân tích dòng syslog: RFC5424, RFC3164 (BSD), biến thể pfSense / Cisco IOS / ESXi / Synology."""
+"""Parse syslog lines: RFC5424, RFC3164 (BSD), variants pfSense / Cisco IOS / ESXi / Synology."""
 import re
 
 SEVERITY = ["emerg", "alert", "crit", "err", "warning", "notice", "info", "debug"]
-SEV_VI = ["Khẩn cấp", "Báo động", "Nghiêm trọng", "Lỗi", "Cảnh báo", "Lưu ý", "Thông tin", "Debug"]
+SEV_VI = ["Emergency", "Alert", "Critical", "Error", "Warning", "Notice", "Informational", "Debug"]
 
 _PRI = re.compile(r"^<(\d{1,3})>")
 _5424 = re.compile(r"^1 (\S+) (\S+) (\S+) (\S+) (\S+) (-|(?:\[.*?\])+) ?(.*)$", re.S)
@@ -52,7 +52,7 @@ def parse(raw: str) -> dict:
 
 
 def _cisco(out: dict) -> dict:
-    """Cisco/Aruba dạng %LINK-3-UPDOWN: lấy mnemonic làm app và mức độ từ mã."""
+    """Cisco/Aruba dạng %LINK-3-UPDOWN: lấy mnemonic làm app and mức độ from mã."""
     m = _CISCO_MNEM.search(out["message"])
     if m and (not out["app"] or out["app"].isdigit()):
         out["app"] = f"{m.group(1)}-{m.group(3)}"

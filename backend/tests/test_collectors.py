@@ -1,4 +1,4 @@
-"""Collector thập: chạy với thiết bị giả lập (pfSense/OPNsense/ESXi) và dịch vụ thật trong máy (HTTP, TCP, ping)."""
+"""Collector thập: chạy với devices giả lập (pfSense/OPNsense/ESXi) and service thật trong machines (HTTP, TCP, ping)."""
 import asyncio
 import socket
 
@@ -56,7 +56,7 @@ def test_pfsense_wrong_key_and_missing_package(sim_port):
 
 def test_pfsense_unreachable():
     r = run("pfsense", "https://127.0.0.1:1", {"api_key": "x", "timeout": 3})
-    assert r.status == "fail" and "Không kết nối" in r.message
+    assert r.status == "fail" and "Unable to connect" in r.message
 
 
 def test_pfsense_dhcp_discovery(sim_port):
@@ -79,9 +79,9 @@ def test_esxi_inventory(monkeypatch):
     S.patch_pyvmomi(monkeypatch)
     S.esxi_default()
     r = run("esxi", "vcenter.lab", {"username": "ro", "password": S.ESXI["password"]})
-    assert r.status == "warn", r.message  # host vàng + snapshot 20 ngày + datastore 92%
-    assert "2 host" in r.message and "3/4 VM chạy" in r.message
-    assert "Datastore ds-ssd 92% (Trouble ≥ 90%)" in r.message and "snapshot 20 ngày" in r.message
+    assert r.status == "warn", r.message  # host andng + snapshot 20 days + datastore 92%
+    assert "2 host" in r.message and "3/4 running VMs" in r.message
+    assert "Datastore ds-ssd 92% (Trouble ≥ 90%)" in r.message and "snapshot older than 20 days" in r.message
     types = [d["type"] for d in r.discovered]
     assert types.count("host") == 2 and types.count("vm") == 4  # template bị bỏ qua
     vm = next(d for d in r.discovered if d["name"] == "OLD-CENTOS")
@@ -124,13 +124,13 @@ def test_http_variants(sim_port):
     base = f"http://127.0.0.1:{sim_port}"
     assert run("http", base + "/web/ok", {"keyword": "healthy"}).status == "ok"
     r = run("http", base + "/web/ok", {"keyword": "KHONG-CO"})
-    assert r.status == "fail" and "không thấy" in r.message
+    assert r.status == "fail" and "was not found" in r.message
     r = run("http", base + "/web/500", {})
     assert r.status == "fail" and "HTTP 500" in r.message
     assert run("http", base + "/web/500", {"expected_status": "500"}).status == "ok"
     assert run("http", base + "/web/slow", {"warn_ms": 500}).status == "warn"
     r = run("http", "http://127.0.0.1:1/", {"timeout": 2})
-    assert r.status == "fail" and "Không truy cập được" in r.message
+    assert r.status == "fail" and "Unable to access" in r.message
     assert run("http", base + "/web/ok", {"expected_status": "200,204"}).status == "ok"
 
 
@@ -148,7 +148,7 @@ def test_tcp_open_closed():
 
 def test_ping_local_and_unreachable():
     assert run("ping", "127.0.0.1", {"count": 2}).status == "ok"
-    r = run("ping", "192.0.2.123", {"count": 1, "timeout": 1})  # TEST-NET-1: không bao giờ phản hồi
+    r = run("ping", "192.0.2.123", {"count": 1, "timeout": 1})  # TEST-NET-1: không bao hours phản hồi
     assert r.status == "fail"
     r = run("ping", "khong-ton-tai.invalid", {"count": 1, "timeout": 1})
     assert r.status == "fail"
@@ -161,7 +161,7 @@ def test_snmp_no_agent_fails_fast():
 
 def test_ssh_refused():
     r = run("ssh", "127.0.0.1", {"port": 1, "username": "x", "password": "y", "timeout": 3})
-    assert r.status == "fail" and "SSH lỗi" in r.message
+    assert r.status == "fail" and "SSH error" in r.message
 
 
 # ---------------- Ping trên Windows (đầu ra tiếng Anh / tiếng Việt) ----------------
@@ -234,3 +234,31 @@ def test_wan_and_virtual_detection():
     for n in ["lo0", "pflog0", "pfsync0", "enc0", "lo"]:
         assert VIRTUAL_IF.match(n), n
     assert not VIRTUAL_IF.match("ovpns1") and not VIRTUAL_IF.match("em0")
+
+
+def test_aruba_instant_wifi_clients_join():
+    """Aruba Instant (AI-AP-MIB): client rows joined with WLAN (BSSID → ESSID) and AP (IP → name) tables."""
+    import importlib
+    S = importlib.import_module("app.collectors.snmp")
+    ap = {"2.0.11.134.1.2.3": "F1-W.02", "3.0.11.134.1.2.3": "172.17.15.61"}
+    wlan = {"3.0.11.134.1.2.3.1": "Staff", "4.0.11.134.1.2.3.1": "0x000b86aabb10",
+            "3.0.11.134.1.2.3.2": "Guest", "4.0.11.134.1.2.3.2": "0x000b86aabb11"}
+    idx = "170.187.204.1.2.3"
+    cl = {f"1.{idx}": "0xaabbcc010203", f"2.{idx}": "0x000b86aabb10", f"3.{idx}": "172.17.20.5", f"4.{idx}": "172.17.15.61",
+          f"5.{idx}": "lan.nt", f"6.{idx}": "Win 10", f"7.{idx}": 38, f"11.{idx}": 866, f"15.{idx}": 650,
+          "2.1.2.3.4.5.6": "0x000b86aabb11", "3.1.2.3.4.5.6": "10.9.0.7", "4.1.2.3.4.5.6": "172.17.15.61", "6.1.2.3.4.5.6": "iOS"}
+    rows = {c["mac"]: c for c in S.parse_aruba_clients(ap, wlan, cl)}
+    assert rows["aa:bb:cc:01:02:03"] == {"name": "lan.nt", "ip": "172.17.20.5", "mac": "aa:bb:cc:01:02:03", "os": "Win 10",
+                                         "essid": "Staff", "ap": "F1-W.02", "ap_ip": "172.17.15.61",
+                                         "snr": 38, "tx_rate": 866, "rx_rate": 650}
+    assert rows["01:02:03:04:05:06"]["essid"] == "Guest" and rows["01:02:03:04:05:06"]["name"] == ""   # MAC taken from the index
+    assert rows["01:02:03:04:05:06"]["snr"] is None and rows["01:02:03:04:05:06"]["tx_rate"] is None
+
+
+def test_enterprise_from_sysobjectid_both_forms():
+    import importlib
+    S = importlib.import_module("app.collectors.snmp")
+    assert S._enterprise("1.3.6.1.4.1.14823.1.2.78") == 14823
+    assert S._enterprise("SNMPv2-SMI::enterprises.14823.1.2.78") == 14823     # pysnmp may resolve the OID to a name
+    assert S._enterprise("SNMPv2-SMI::enterprises.6876.4.1") == 6876
+    assert S._enterprise("1.3.6.1.2.1.1") is None and S._enterprise("") is None

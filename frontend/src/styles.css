@@ -69,6 +69,8 @@ code, .mono { font-family: "JetBrains Mono", ui-monospace, Menlo, Consolas, mono
 .nav-item { display: flex; align-items: center; gap: 11px; padding: 9px 10px; border-radius: 9px; color: var(--text-2); margin-bottom: 2px; cursor: pointer; border: 0; background: none; width: 100%; text-align: left; font-size: 14.5px; }
 .nav-item:hover { background: var(--bg); }
 .nav-item.active { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+.nav-item > svg { flex-shrink: 0; }   /* long labels must never squeeze the icon out */
+.nav-item > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-item .count { margin-left: auto; font-size: 11.5px; color: var(--muted); }
 .nav-item.active .count { color: var(--accent-ink); }
 .collapsed .nav-item span, .collapsed .nav-group, .collapsed .side-foot span, .collapsed .nav-item .count { display: none; }
@@ -443,3 +445,38 @@ pre.json { background: var(--code-bg); border: 1px solid var(--border); border-r
 .top-link { white-space: nowrap; }
 @media (max-width: 1500px) { .clock { display: none; } }
 @media (min-width: 761px) and (max-width: 1280px) { .search { width: 240px; } }
+
+/* Wi-Fi client table inside the check drawer: compact so all 8 columns fit */
+.wifi-tbl th, .wifi-tbl td { padding-left: 6px !important; padding-right: 6px !important; font-size: 12.5px; }
+.wifi-tbl .mono { font-size: 11.5px; }
+/* keep column headers visible while scrolling a long client list */
+.wifi-tbl thead th { position: sticky; top: 0; z-index: 1; background: var(--panel); }
+.wifi-tbl > div { max-height: 420px; overflow: auto; }   /* Table's own scroll box → sticky header works */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 1s linear infinite; vertical-align: -2px; }
+
+/* ---------- monitoring report (printable) ---------- */
+.report-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 18px 0 6px; }
+.report-kpis > div { border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; display: flex; flex-direction: column; gap: 4px; }
+.report-kpis b { font-size: 22px; }
+.t-ok { color: var(--ok); } .t-warn { color: var(--warn); } .t-fail { color: var(--fail); }
+.report h3 { margin: 22px 0 8px; }
+.report-tbl th, .report-tbl td { padding: 7px 10px; }
+.report-tbl .num { text-align: right; white-space: nowrap; }
+.report-msg { max-width: 420px; word-break: break-word; }
+@media print {
+  @page { size: A4 landscape; margin: 10mm; }
+  .topbar, .sidebar, .nav-backdrop, .no-print { display: none !important; }
+  .app, .main { display: block !important; padding: 0 !important; margin: 0 !important; width: auto !important; }
+  body { background: #fff !important; color: #000; }
+  .report-sheet { border: 0 !important; box-shadow: none !important; padding: 0 !important; }
+  .report-tbl tr { break-inside: avoid; }
+  .report-tbl { width: 100% !important; min-width: 0 !important; font-size: 11px; }
+  .report-tbl th, .report-tbl td { padding: 4px 6px !important; white-space: normal; }
+  .report-tbl td.num, .report-tbl th.num { white-space: nowrap; }
+  .report h1 { font-size: 22px; }
+  .report-kpis b { font-size: 18px; }
+  .report-tbl thead { display: table-header-group; }
+  .badge { border: 1px solid currentColor; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

@@ -1,4 +1,4 @@
-"""Đợt bảo mật P1 (bản v2): phiên + cookie HttpOnly + CSRF, 2FA (TOTP) bắt buộc với admin, khoá theo IP,
+"""Đợt bảo mật P1 (bản v2): sessions + cookie HttpOnly + CSRF, 2FA (TOTP) bắt buộc với admin, khoá theo IP,
 audit 5W1H chỉ ghi thêm, tách khoá ký / khoá mã hoá (AES-256-GCM), khoá lệnh SSH tuỳ chỉnh."""
 import asyncio
 import os
@@ -46,7 +46,7 @@ def secret_of(name):
 
 
 def next_code(secret):
-    """Mã của bước 30s KẾ TIẾP (vẫn hợp lệ nhờ cửa sổ ±1) – tránh trùng bước vừa dùng khi bật 2FA."""
+    """Mã of step 30s KẾ TIẾP (vẫn hợp lệ nhờ cửa sdisk ±1) – tránh trùng step vừa dùng khi bật 2FA."""
     return sec.totp_now(secret, time.time() + sec.TOTP_STEP)
 
 
@@ -66,7 +66,7 @@ def test_web_login_uses_httponly_cookie_not_token(client, admin):
     sc = r.headers["set-cookie"].lower()
     assert sec.COOKIE_NAME in sc and "httponly" in sc and "samesite=strict" in sc
     assert client.get("/api/auth/me").json()["username"] == "web1"            # cookie tự gửi kèm
-    # ghi bằng cookie mà thiếu header chống CSRF → chặn; có header → được
+    # ghi bằng cookie mà missing header chống CSRF → chặn; có header → được
     assert client.post("/api/auth/password", json={"old_password": "x", "new_password": "y" * 8}).status_code == 403
     assert client.post("/api/auth/password", json={"old_password": "x", "new_password": "y" * 8}, headers=WEB).status_code == 400
 
@@ -84,7 +84,7 @@ def test_logout_revokes_session(client, admin):
     assert client.get("/api/auth/me", headers=h).status_code == 401
 
 
-# ---------------------------------------------------------------- phiên: liệt kê, thu hồi, idle, đổi mật khẩu
+# ---------------------------------------------------------------- sessions: liệt kê, thu hồi, idle, change the password
 def test_sessions_list_and_revoke(client, admin):
     mkuser(client, admin, "ss1")
     h1, h2 = bearer(login(client, "ss1")), bearer(login(client, "ss1"))
@@ -93,7 +93,7 @@ def test_sessions_list_and_revoke(client, admin):
     other = [s for s in mine if not s["current"]][0]
     assert client.delete(f"/api/auth/sessions/{other['id']}", headers=h1).status_code == 200
     assert client.get("/api/auth/me", headers=h2).status_code == 401 and client.get("/api/auth/me", headers=h1).status_code == 200
-    # admin thấy phiên của mọi người; người thường không thu hồi được phiên người khác
+    # admin thấy sessions of mọi người; người thường không thu hồi được sessions người khác
     allp = client.get("/api/auth/sessions?all=1", headers=admin).json()
     assert {"ss1", "admin"} <= {s["username"] for s in allp}
     adm_sid = [s for s in allp if s["username"] == "admin"][0]["id"]
@@ -123,7 +123,7 @@ def test_idle_timeout_and_background_requests(client, admin):
     assert last_seen() > before
     age(sec.IDLE_MINUTES + 1)
     r = client.get("/api/dashboard", headers=h)
-    assert r.status_code == 401 and "không thao tác" in r.text
+    assert r.status_code == 401 and "idle" in r.text
     assert client.get("/api/auth/me", headers=h).status_code == 401      # đã bị thu hồi hẳn
 
 
@@ -132,7 +132,7 @@ def test_password_change_revokes_other_sessions(client, admin):
     h1, h2 = bearer(login(client, "pw1")), bearer(login(client, "pw1"))
     assert client.post("/api/auth/password", json={"old_password": "Matkhau@123", "new_password": "MoiMoi@456"}, headers=h1).status_code == 200
     assert client.get("/api/auth/me", headers=h1).status_code == 200 and client.get("/api/auth/me", headers=h2).status_code == 401
-    # admin đặt lại mật khẩu → mọi phiên của người đó bị thu hồi
+    # admin đặt lại password → mọi sessions of người đó bị thu hồi
     uid = client.get("/api/auth/me", headers=h1).json()["id"]
     assert client.put(f"/api/users/{uid}", json={"password": "Admin@Reset1"}, headers=admin).status_code == 200
     assert client.get("/api/auth/me", headers=h1).status_code == 401
@@ -145,7 +145,7 @@ def test_totp_rfc6238_vector():
     secret = base64.b32encode(b"12345678901234567890").decode()
     assert sec.totp_now(secret, 59) == "287082"
     assert sec.totp_match(secret, "287082", 0, at=59) == 1
-    assert sec.totp_match(secret, "287082", 1, at=59) is None          # bước đã dùng → chống replay
+    assert sec.totp_match(secret, "287082", 1, at=59) is None          # step đã dùng → chống replay
     assert sec.totp_match(secret, "000000", 0, at=59) is None
 
 
@@ -162,7 +162,7 @@ def test_2fa_setup_enable_login_and_replay(client, admin):
     # bí mật lưu đã mã hoá
     raw = sql("select totp_secret from users where username='tf1'")[0][0]
     assert raw.startswith("enc2:") and st["secret"] not in raw
-    # đăng nhập: thiếu mã → yêu cầu mã (không tính là sai); sai mã → 401; đúng mã → vào được
+    # sign-in: missing mã → yêu cầu mã (không tính là sai); sai mã → 401; đúng mã → ando được
     r = login(client, "tf1")
     assert r.status_code == 401 and r.json()["detail"]["need_otp"] is True
     assert login(client, "tf1", otp="000000").status_code == 401
@@ -171,7 +171,7 @@ def test_2fa_setup_enable_login_and_replay(client, admin):
     assert r.status_code == 200
     assert client.get("/api/auth/me", headers=bearer(r)).json()["session"]["mfa"] is True
     assert login(client, "tf1", otp=code).status_code == 401, "mã đã dùng không được dùng lại"
-    # viewer tự tắt 2FA được (cần mật khẩu + mã)
+    # viewer tự tắt 2FA được (cần password + mã)
     assert client.post("/api/auth/2fa/disable", json={"password": "sai", "code": "1"}, headers=bearer(r)).status_code == 400
 
 
@@ -184,7 +184,7 @@ def test_admin_must_enroll_2fa(client, admin, monkeypatch):
     h = bearer(r)
     blocked = client.get("/api/dashboard", headers=h)
     assert blocked.status_code == 403 and blocked.json()["detail"]["code"] == "2fa_required"
-    assert client.get("/api/auth/me", headers=h).status_code == 200            # vẫn vào được màn hình bật 2FA
+    assert client.get("/api/auth/me", headers=h).status_code == 200            # vẫn ando được màn hình bật 2FA
     secret = enable_2fa(client, h)
     assert client.get("/api/dashboard", headers=h).status_code == 200
     # admin không tự tắt được khi bắt buộc
@@ -198,8 +198,8 @@ def test_admin_reset_2fa_of_other_user(client, admin):
     h = bearer(login(client, "lost1"))
     enable_2fa(client, h)
     assert client.post(f"/api/users/{u['id']}/reset-2fa", headers=admin).status_code == 200
-    assert client.get("/api/auth/me", headers=h).status_code == 401           # phiên cũ bị thu hồi
-    assert login(client, "lost1").status_code == 200                          # đăng nhập lại không cần mã
+    assert client.get("/api/auth/me", headers=h).status_code == 401           # sessions cũ bị thu hồi
+    assert login(client, "lost1").status_code == 200                          # sign-in lại without requiring mã
     me_id = client.get("/api/auth/me", headers=admin).json()["id"]
     assert client.post(f"/api/users/{me_id}/reset-2fa", headers=admin).status_code == 400
 
@@ -210,7 +210,7 @@ def test_lockout_per_ip_across_usernames(client, admin, monkeypatch):
     for i in range(4):
         assert login(client, f"khongco{i}", pw="sai").status_code == 401
     r = login(client, "admin", pw="Admin@12345")
-    assert r.status_code == 429 and "testclient" in r.text      # cả tài khoản đúng cũng bị chặn từ IP này
+    assert r.status_code == 429 and "testclient" in r.text      # cả account đúng cũng bị chặn từ IP này
 
 
 # ---------------------------------------------------------------- audit 5W1H + chỉ ghi thêm
@@ -230,16 +230,16 @@ def test_audit_append_only(client, admin):
     n = sql("select count(*) from audit_logs")[0][0]
     assert n > 0
     for q in ("update audit_logs set detail='sua'", "delete from audit_logs", "truncate audit_logs"):
-        with pytest.raises(psycopg.errors.InsufficientPrivilege, match="chi duoc ghi them"):
+        with pytest.raises(psycopg.errors.InsufficientPrivilege, match="append-only"):
             sql(q)
     assert sql("select count(*) from audit_logs")[0][0] >= n
     trig = {r[0] for r in sql("select tgname from pg_trigger where tgrelid='audit_logs'::regclass and not tgisinternal")}
     assert {"audit_logs_no_update_delete", "audit_logs_no_truncate"} <= trig
-    # ORM cũng bị chặn (vd. code lỗi gọi db.delete trên bản ghi audit)
+    # ORM cũng bị chặn (vd. code error gọi db.delete trên bản ghi audit)
     from sqlalchemy.exc import DBAPIError
     db = SessionLocal()
     try:
-        with pytest.raises(DBAPIError, match="chi duoc ghi them"):
+        with pytest.raises(DBAPIError, match="append-only"):
             db.query(models.AuditLog).filter(models.AuditLog.id > 0).update({"detail": "x"})
     finally:
         db.rollback(); db.close()
@@ -282,14 +282,14 @@ def test_ssh_custom_command_locked_by_default(client, admin, clean, monkeypatch)
     monkeypatch.delenv("ALLOW_SSH_COMMAND", raising=False)
     body = {"name": "ssh-cmd", "type": "ssh", "target": "127.0.0.1", "enabled": False, "config": {"username": "u", "command": "rm -rf /tmp/x"}}
     r = client.post("/api/checks", json=body, headers=admin)
-    assert r.status_code == 400 and "chỉ để đọc" in r.text
+    assert r.status_code == 400 and "read-only" in r.text
     assert client.post("/api/checks-test", json=body, headers=admin).status_code == 400
     ok = client.post("/api/checks", json={**body, "config": {"username": "u"}}, headers=admin)
     assert ok.status_code == 200
     assert client.put(f"/api/checks/{ok.json()['id']}", json={"config": {"username": "u", "command": "id"}}, headers=admin).status_code == 400
     from app.collectors.ssh import ssh
     res = asyncio.run(ssh("127.0.0.1", {"username": "u", "command": "id"}))
-    assert res.status == "fail" and "bị khoá" in res.message                  # chặn cả ở collector (check cũ đã lưu)
+    assert res.status == "fail" and "locked" in res.message                  # chặn cả ở collector (check cũ đã lưu)
     monkeypatch.setenv("ALLOW_SSH_COMMAND", "1")
     assert client.post("/api/checks-test", json={**body, "config": {"username": "u", "command": "id", "timeout": 1}, "target": "127.0.0.1"},
                        headers=admin).status_code == 200
@@ -330,7 +330,7 @@ def test_backup_contains_db_and_keys_and_restores(client, admin, clean, tmp_path
         monkeypatch.setattr(admin_tools, "SessionLocal", sessionmaker(bind=eng))
         monkeypatch.setattr(admin_tools, "DATA_DIR", str(keys_dir))
         msg = admin_tools.restore(str(out))
-        assert "Đã khôi phục" in msg
+        assert "Restored" in msg
         assert (keys_dir / ".enc_key").read_bytes() == z.read(".enc_key")
         with eng.connect() as conn:
             for t, n in man["tables"].items():
@@ -342,15 +342,15 @@ def test_backup_contains_db_and_keys_and_restores(client, admin, clean, tmp_path
             assert conn.execute(text("select version_num from alembic_version")).scalar() == head_revision()
             nid = conn.execute(text("select nextval(pg_get_serial_sequence('checks','id'))")).scalar()
             assert nid > max(r["id"] for r in rows), "sequence phải nối tiếp id lớn nhất đã nạp"
-        with pytest.raises(SystemExit, match="đang có dữ liệu"):
+        with pytest.raises(SystemExit, match="not empty"):
             admin_tools.restore(str(out))                       # không ghi đè khi chưa --wipe
-        assert "Đã khôi phục" in admin_tools.restore(str(out), wipe=True)
-        # bản sao lưu hỏng + --wipe → báo lỗi, dữ liệu đang có KHÔNG bị xoá (wipe và nạp chung một transaction)
+        assert "Restored" in admin_tools.restore(str(out), wipe=True)
+        # bản sao lưu hỏng + --wipe → báo error, dữ liệu đang có KHÔNG bị xoá (wipe and nạp chung một transaction)
         bad = tmp_path / "hong.zip"
         with zipfile.ZipFile(bad, "w") as zb:
             for n in z.namelist():
                 zb.writestr(n, z.read(n) if n != "db/checks.jsonl" else b"")
-        with pytest.raises(SystemExit, match="không khớp"):
+        with pytest.raises(SystemExit, match="mismatch"):
             admin_tools.restore(str(bad), wipe=True)
         with eng.connect() as conn:
             assert conn.execute(text("select count(*) from checks")).scalar() == man["tables"]["checks"]
@@ -366,5 +366,5 @@ def test_cli_reset_password(client, admin):
     pw = out.split(": ", 1)[1].split("\n")[0]
     assert login(client, "quenmk", pw="Matkhau@123").status_code == 401
     assert login(client, "quenmk", pw=pw).status_code == 200
-    with pytest.raises(SystemExit, match="Tài khoản đang có"):
+    with pytest.raises(SystemExit, match="Existing accounts"):
         admin_tools.reset_password("khong-ton-tai")

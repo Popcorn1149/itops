@@ -1,4 +1,4 @@
-"""Bộ nhận Syslog (UDP + TCP) và SNMP Trap (v1/v2c/v3)."""
+"""Syslog receiver (UDP + TCP) and SNMP Trap (v1/v2c/v3)."""
 import asyncio
 import logging
 import os
@@ -22,7 +22,7 @@ def syslog_event(raw: str, ip: str) -> dict:
 
 
 class SyslogUDP(asyncio.DatagramProtocol):
-    """Vòng nhận chỉ đẩy dữ liệu thô vào hàng đợi; phân tích làm ở luồng nền để không làm tràn bộ đệm UDP."""
+    """Vòng nhận chỉ đẩy dữ liệu thô ando hàng đợi; phân tích làm ở luồng nền để không làm tràn bộ đệm UDP."""
     def connection_made(self, transport):
         sock = transport.get_extra_info("socket")
         try:
@@ -37,7 +37,7 @@ class SyslogUDP(asyncio.DatagramProtocol):
 
 
 async def _tcp_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-    """Hỗ trợ cả 2 kiểu đóng gói RFC6587: octet-counting ('123 <34>...') và xuống dòng."""
+    """Hỗ trợ cả 2 kiểu đóng gói RFC6587: octet-counting ('123 <34>...') and xuống dòng."""
     ip = (writer.get_extra_info("peername") or ("?",))[0]
     buf = b""
     try:
@@ -151,7 +151,7 @@ class TrapReceiver:
         ntfrcv.NotificationReceiver(e, cb)
         e.transport_dispatcher.job_started(1)
         self.engine = e
-        log.info("SNMP trap đang nghe UDP %s", self.port)
+        log.info("SNMP trap listener is listening on UDP %s", self.port)
 
     def stop(self):
         if self.engine:
@@ -173,13 +173,13 @@ async def start_all(trap_cfg: dict):
         L["syslog_udp"] = {**L.get("syslog_udp", {}), "port": SYSLOG_UDP_PORT, "ok": True}
     except OSError as e:
         L["syslog_udp"] = {"port": SYSLOG_UDP_PORT, "ok": False, "error": str(e)}
-        log.error("Không mở được syslog UDP %s: %s", SYSLOG_UDP_PORT, e)
+        log.error("Unable to open syslog UDP %s: %s", SYSLOG_UDP_PORT, e)
     try:
         _state["tcp"] = await asyncio.start_server(_tcp_client, BIND, SYSLOG_TCP_PORT)
         L["syslog_tcp"] = {"port": SYSLOG_TCP_PORT, "ok": True}
     except OSError as e:
         L["syslog_tcp"] = {"port": SYSLOG_TCP_PORT, "ok": False, "error": str(e)}
-        log.error("Không mở được syslog TCP %s: %s", SYSLOG_TCP_PORT, e)
+        log.error("Unable to open syslog TCP %s: %s", SYSLOG_TCP_PORT, e)
     restart_trap(trap_cfg)
 
 
@@ -195,7 +195,7 @@ def restart_trap(trap_cfg: dict):
     except Exception as e:
         _state["trap"] = None
         L["snmp_trap"] = {"port": TRAP_PORT, "ok": False, "error": f"{type(e).__name__}: {e}"}
-        log.error("Không mở được SNMP trap %s: %s", TRAP_PORT, e)
+        log.error("Unable to open SNMP trap %s: %s", TRAP_PORT, e)
 
 
 async def stop_all():

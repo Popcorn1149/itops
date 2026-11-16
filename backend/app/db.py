@@ -7,7 +7,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 
 def _database_url() -> str:
-    """Chỉ dùng PostgreSQL.
+    """PostgreSQL only.
     - DATABASE_URL=postgresql+psycopg://user:pass@host:5432/itops  → PostgreSQL thật (Linux/Docker)
     - PG_LOCAL=1                                                     → PostgreSQL kèm theo, tự chạy (demo VS Code)"""
     url = os.environ.get("DATABASE_URL", "").strip()
@@ -15,23 +15,23 @@ def _database_url() -> str:
         if url.startswith("postgres://") or url.startswith("postgresql://"):
             url = "postgresql+psycopg://" + url.split("://", 1)[1]
         if not url.startswith("postgresql+psycopg://"):
-            raise SystemExit("DATABASE_URL phải là PostgreSQL (postgresql+psycopg://...). Bản v2 không còn dùng SQLite – "
-                             "dữ liệu SQLite cũ chuyển sang bằng:  python -m app.admin_tools import-sqlite <itops.db>")
+            raise SystemExit("DATABASE_URL must point to PostgreSQL (postgresql+psycopg://...). v2 no longer uses SQLite – "
+                             "migrate legacy SQLite data with: python -m app.admin_tools import-sqlite <itops.db>")
         return url
     if os.environ.get("PG_LOCAL", "").lower() in ("1", "true", "yes"):
         from . import pg_local
         try:
             return pg_local.ensure_running(DATA_DIR)
         except pg_local.PgLocalError as e:
-            raise SystemExit(f"PostgreSQL kèm theo: {e}") from None
-    raise SystemExit("Chưa cấu hình CSDL: đặt PG_LOCAL=1 (demo, PostgreSQL tự chạy) hoặc DATABASE_URL=postgresql+psycopg://...")
+            raise SystemExit(f"Bundled PostgreSQL: {e}") from None
+    raise SystemExit("Database is not configured: set PG_LOCAL=1 (demo, bundled PostgreSQL) or DATABASE_URL=postgresql+psycopg://...")
 
 
 DATABASE_URL = _database_url()
 
 engine = create_engine(
     DATABASE_URL,
-    pool_pre_ping=True,                 # bỏ kết nối chết (PostgreSQL restart, mạng chập chờn)
+    pool_pre_ping=True,                 # bỏ kết nối chết (PostgreSQL restart, mạng flapping)
     pool_size=int(os.environ.get("DB_POOL_SIZE", "10")),
     max_overflow=int(os.environ.get("DB_MAX_OVERFLOW", "20")),
     pool_recycle=1800,
@@ -67,9 +67,9 @@ def _alembic_config(connection=None):
 
 
 def run_migrations() -> dict:
-    """Gọi khi app khởi động: luôn `alembic upgrade head`. Trả về thông tin để ghi log."""
+    """Called at application startup: always run `alembic upgrade head`. Returns information for logging."""
     import logging
-    logging.getLogger("alembic").setLevel(logging.WARNING)   # app tự ghi 1 dòng tóm tắt (main.init_db)
+    logging.getLogger("alembic").setLevel(logging.WARNING)   # app tự ghi 1 dòng tóm disabled (main.init_db)
     from alembic import command
     from alembic.runtime.migration import MigrationContext
     info = {"from": None, "to": None}

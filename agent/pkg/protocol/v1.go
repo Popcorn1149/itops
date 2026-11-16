@@ -22,6 +22,9 @@ type SystemInfo struct {
 	BootTime     *time.Time `json:"boot_time,omitempty"`
 	IPs          []string   `json:"ips,omitempty"`
 	LoggedUser   string     `json:"logged_user"`
+	UserSource   string     `json:"user_source,omitempty"` // console | rdp | ssh
+	MachineID    string     `json:"machine_id,omitempty"`  // MachineGuid / /etc/machine-id: nhận ra máy khi cài lại agent
+	MACs         []string   `json:"macs,omitempty"`        // MAC các card mạng đang có IP (agent ≥ 1.0.4)
 }
 
 type Disk struct {
@@ -51,6 +54,7 @@ type Software struct {
 	Publisher   string `json:"publisher,omitempty"`
 	InstalledOn string `json:"installed_on,omitempty"`
 	Source      string `json:"source,omitempty"`
+	SourcePkg   string `json:"source_pkg,omitempty"` // gói nguồn Linux (dpkg Source / SRPM) để khớp OVAL/USN
 }
 
 type Event struct {
@@ -79,10 +83,11 @@ type Report struct {
 }
 
 type EnrollRequest struct {
-	Token        string     `json:"token"`
 	UID          string     `json:"uid"`
 	OSFamily     string     `json:"os_family"`
 	AgentVersion string     `json:"agent_version"`
+	Site         string     `json:"site,omitempty"` // tên site trong IT Ops (tuỳ chọn) – server gắn máy vào site trùng tên
+	Tags         string     `json:"tags,omitempty"`
 	System       SystemInfo `json:"system"`
 }
 

@@ -1,6 +1,6 @@
 // itops-agent: agent máy trạm của IT Ops Workspace – CHỈ ĐỌC, CHỈ GỬI LÊN (ADR 0004).
 //
-//	itops-agent install --server https://itops.cty.local:8443 --token itk_xxx [--ca-pin <sha256>] [--update-pubkey <base64>]
+//	itops-agent install --server https://itops.cty.local:8443 [--site TÊN] [--ca-pin <sha256>] [--update-pubkey <base64>]
 //	itops-agent uninstall [--purge]
 //	itops-agent status | collect | pin --server URL | version
 //	itops-agent run            (dịch vụ gọi; chạy tay để xem log trực tiếp)
@@ -40,7 +40,9 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `IT Ops Agent %s – chỉ đọc thông tin máy và gửi lên server, không nhận lệnh từ xa.
 
 Cài đặt (quyền Administrator/root):
-  itops-agent install --server https://itops.cty.local:8443 --token itk_xxx [--ca-pin SHA256] [--update-pubkey KHOA]
+  itops-agent install --server https://itops.cty.local:8443 [--site TÊN] [--tags a,b] [--ca-pin SHA256] [--update-pubkey KHOA]
+      đăng ký mở: chỉ cần địa chỉ server. Máy trùng một máy đã có sẽ chờ IT duyệt (Endpoints → Pending approvals).
+      --re-enroll: máy đã cài đăng ký lại (vd. server chuyển đi); server không nhận thì giữ nguyên như cũ
   itops-agent uninstall [--purge]       gỡ dịch vụ (--purge: xoá cả cấu hình, khoá máy, hàng đợi)
 
 Kiểm tra:
@@ -50,7 +52,7 @@ Kiểm tra:
   itops-agent version
 
 Chạy thử (không cần quyền admin, không cài gì):
-  itops-agent simulate --server URL --token itk_xxx [--windows 3] [--macos 2] [--allow-http]
+  itops-agent simulate --server URL [--windows 3] [--macos 2] [--allow-http]
       giả lập nhiều máy Windows/macOS gửi dữ liệu thật lên server (Ctrl+C để dừng)
 `, Version)
 }
@@ -132,7 +134,9 @@ func runForeground() error {
 func install(args []string) error {
 	fs := flag.NewFlagSet("install", flag.ExitOnError)
 	server := fs.String("server", "", "địa chỉ server, vd. https://itops.cty.local:8443")
-	token := fs.String("token", "", "token đăng ký (tạo ở trang Máy trạm → Token đăng ký)")
+	site := fs.String("site", "", "tên site trong IT Ops để gắn máy vào (tuỳ chọn)")
+	tags := fs.String("tags", "", "nhãn cho máy, phân cách bằng dấu phẩy (tuỳ chọn)")
+	reenroll := fs.Bool("re-enroll", false, "máy đã cài: đăng ký lại với server (vd. server chuyển sang máy khác)")
 	pinV := fs.String("ca-pin", "", "SHA-256 khoá công khai chứng chỉ server (chứng chỉ tự ký)")
 	pub := fs.String("update-pubkey", "", "khoá công khai Ed25519 (base64) để kiểm chữ ký bản cập nhật")
 	allowHTTP := fs.Bool("allow-http", false, "CHỈ DEMO: cho phép server http://")
@@ -154,6 +158,12 @@ func install(args []string) error {
 		cfg.UpdatePubKey = *pub
 	}
 	cfg.AllowHTTP = *allowHTTP
+	if *site != "" {
+		cfg.Site = *site
+	}
+	if *tags != "" {
+		cfg.Tags = *tags
+	}
 	if cfg.UID == "" {
 		cfg.UID = config.NewUID()
 	}
@@ -161,12 +171,11 @@ func install(args []string) error {
 		return err
 	}
 	logx.Setup(config.Dir(), true)
-	switch {
-	case *token != "" && cfg.AgentID != 0:
-		// máy ĐÃ đăng ký, chạy lại với token mới (vd. GPO đổi token): thử đăng ký lại TRƯỚC, chỉ lưu khi server nhận.
-		// Token sai / hết hạn → giữ nguyên khoá cũ, máy vẫn chạy bình thường.
+	if *reenroll && cfg.AgentID != 0 {
+		// máy ĐÃ đăng ký, muốn đăng ký lại (vd. đổi server): thử TRƯỚC, chỉ lưu khi server nhận.
+		// Server không nhận → giữ nguyên khoá cũ, agent vẫn chạy như trước.
 		trial := *cfg
-		trial.EnrollToken, trial.AgentID, trial.Key = *token, 0, ""
+		trial.AgentID, trial.Key = 0, ""
 		a, err := agent.New(Version, &trial)
 		if err != nil {
 			return err
@@ -175,10 +184,6 @@ func install(args []string) error {
 			return fmt.Errorf("đăng ký lại không được (%v) – GIỮ NGUYÊN cấu hình cũ, agent vẫn chạy như trước", errText(err))
 		}
 		cfg = &trial
-	case *token != "":
-		cfg.EnrollToken = *token
-	case cfg.AgentID == 0 && cfg.EnrollToken == "":
-		return errors.New("thiếu --token")
 	}
 	exe, err := installBinary()
 	if err != nil {
@@ -187,7 +192,7 @@ func install(args []string) error {
 	if err := cfg.Save(); err != nil {
 		return err
 	}
-	if cfg.AgentID == 0 { // máy mới: đăng ký ngay để admin thấy lỗi (token sai, sai địa chỉ...) thay vì dịch vụ âm thầm thử lại
+	if cfg.AgentID == 0 { // máy mới: đăng ký ngay để admin thấy lỗi (sai địa chỉ, bị chặn...) thay vì dịch vụ âm thầm thử lại
 		a, err := agent.New(Version, cfg)
 		if err != nil {
 			return err
@@ -195,11 +200,15 @@ func install(args []string) error {
 		if err := a.Enroll(); err != nil {
 			var rej *transport.ErrRejected
 			if errors.As(err, &rej) {
-				cfg.EnrollToken = "" // không để token sai trong cấu hình (dịch vụ sẽ chết lặp lại)
-				_ = cfg.Save()
 				return fmt.Errorf("server từ chối đăng ký: %s", errText(err))
 			}
-			fmt.Fprintf(os.Stderr, "CẢNH BÁO: chưa kết nối được server (%v) – dịch vụ sẽ tự thử lại.\n", err)
+			var pend *transport.ErrPending
+			if errors.As(err, &pend) {
+				fmt.Fprintf(os.Stderr, "CHỜ DUYỆT: %s\nMáy này trùng một máy đã có trong IT Ops nên IT phải duyệt (trang Endpoints → Pending approvals). "+
+					"Dịch vụ sẽ tự hỏi lại; duyệt xong agent tự chạy, không cần cài lại.\n", pend.Msg)
+			} else {
+				fmt.Fprintf(os.Stderr, "CẢNH BÁO: chưa kết nối được server (%v) – dịch vụ sẽ tự thử lại.\n", err)
+			}
 		}
 	}
 	if err := installService(exe); err != nil {
@@ -296,6 +305,10 @@ func errText(err error) string {
 	if errors.As(err, &rej) {
 		return rej.Body
 	}
+	var pend *transport.ErrPending
+	if errors.As(err, &pend) {
+		return "đang chờ IT duyệt – " + pend.Msg
+	}
 	return err.Error()
 }
 
@@ -304,7 +317,6 @@ func errText(err error) string {
 func simulate(args []string) error {
 	fs := flag.NewFlagSet("simulate", flag.ExitOnError)
 	server := fs.String("server", "", "địa chỉ server")
-	token := fs.String("token", "", "token đăng ký (số lượt ≥ số máy giả lập)")
 	pinV := fs.String("ca-pin", "", "ca_pin (server HTTPS chứng chỉ tự ký)")
 	allowHTTP := fs.Bool("allow-http", false, "cho phép http:// (demo)")
 	nWin := fs.Int("windows", 3, "số máy Windows giả lập")
@@ -342,12 +354,6 @@ func simulate(args []string) error {
 		}
 		if cfg.UID == "" {
 			cfg.UID = "sim-" + strings.ToLower(sim.Host) + "-" + config.NewUID()[:8]
-		}
-		if cfg.AgentID == 0 {
-			if *token == "" {
-				return errors.New("thiếu --token (lần đầu chạy giả lập)")
-			}
-			cfg.EnrollToken = *token
 		}
 		if err := cfg.Validate(); err != nil {
 			return err

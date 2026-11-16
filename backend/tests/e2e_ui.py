@@ -1,6 +1,6 @@
 """E2E giao diện bằng Playwright, chạy với server thật (uvicorn) + dữ liệu mẫu.
 
-Chạy:  python3 tests/e2e_ui.py   (cần đã build frontend vào backend/static)
+Chạy:  python3 tests/e2e_ui.py   (cần đã build frontend ando backend/static)
 """
 import json
 import os
@@ -75,7 +75,7 @@ def _e2e_database(data_dir):
 
 
 def db_url(data_dir):
-    """URL psycopg tới CSDL của server E2E đang chạy (dùng cho bước cần sửa dữ liệu trực tiếp)."""
+    """URL psycopg tới CSDL of server E2E đang chạy (dùng cho step cần sửa dữ liệu trực tiếp)."""
     return E2E_DB_URL
 
 
@@ -89,7 +89,7 @@ def start_server(demo=True, extra_env=None):
     env = {**os.environ, "SYSLOG_UDP_PORT": str(RX_UDP), "SYSLOG_TCP_PORT": str(RX_UDP), "TRAP_PORT": str(RX_TRAP), "DATA_DIR": d, "DEMO_DATA": "true" if demo else "false", "ADMIN_PASSWORD": "Admin@12345", "LOG_LEVEL": "WARNING",
            "REQUIRE_2FA_ADMIN": os.environ.get("E2E_REQUIRE_2FA", "0"),
            "DEMO_LOGS": "0",   # E2E cần dữ liệu cố định: tắt bộ phát log mẫu
-           "DEMO_AGENTS": "0",  # máy trạm mẫu kiểm riêng ở e2e_agents.py
+           "DEMO_AGENTS": "0",  # machines trạm mẫu kiểm riêng ở e2e_agents.py
            **dbenv, **(extra_env or {})}
     if "DATABASE_URL" not in dbenv:
         env.pop("DATABASE_URL", None)
@@ -139,19 +139,19 @@ def main():
             page.fill("input[type=password]", "sai-mat-khau")
             page.click("button.primary")
             page.wait_for_selector(".alert-box.fail")
-            check("Sai mật khẩu hiện thông báo lỗi", "Sai tài khoản" in page.inner_text(".alert-box.fail"))
+            check("Sai password hiện thông báo error", "Sai account" in page.inner_text(".alert-box.fail"))
             login(page)
             page.wait_for_selector("h1:has-text('Bảng điều khiển')", timeout=5000)
-            check("Đăng nhập thành công vào bảng điều khiển", True)
-            errors.clear()  # 401 từ bước cố ý nhập sai mật khẩu là hợp lệ
+            check("Đăng nhập thành công ando bảng điều khiển", True)
+            errors.clear()  # 401 từ step cố ý nhập incorrect password là hợp lệ
             token = api("POST", "/api/auth/login", {"username": "admin", "password": "Admin@12345"})["token"]   # token cho gọi API trong test
             check("Giao diện không lưu token trong localStorage", page.evaluate("Object.keys(localStorage).filter(k => /token/i.test(k)).length") == 0)
-            check("Cookie phiên là HttpOnly (JS không đọc được)", "itops_session" not in page.evaluate("document.cookie"))
+            check("Cookie sessions là HttpOnly (JS không đọc được)", "itops_session" not in page.evaluate("document.cookie"))
 
             print("[2] Duyệt mọi trang")
-            pages = {"dashboard": "Bảng điều khiển", "map": "Bản đồ hệ thống", "sites": "Sites", "assets": "Tất cả tài sản",
-                     "assets?type=firewall": "Firewall", "assets?type=vm,container": "Máy ảo & container", "critical": "Hệ thống trọng yếu",
-                     "checks": "Giám sát", "alerts": "Cảnh báo", "audit": "Audit log", "settings": "Cài đặt"}
+            pages = {"dashboard": "Bảng điều khiển", "map": "System topology", "sites": "Sites", "assets": "Tất cả tài sản",
+                     "assets?type=firewall": "Firewall", "assets?type=vm,container": "Máy ảo & container", "critical": "System trọng yếu",
+                     "checks": "Giám sát", "alerts": "Warning", "audit": "Audit log", "settings": "Cài đặt"}
             for path, title in pages.items():
                 page.goto(f"{BASE}/#/{path}")
                 page.wait_for_selector(f"h1:has-text('{title}')", timeout=5000)
@@ -160,7 +160,7 @@ def main():
             page.wait_for_selector("table.tbl tbody tr")
             check("Lọc VM chỉ hiện VM/container", all(t in ("Máy ảo (VM)", "Container") or "tự đồng bộ" in t
                   for t in page.locator("table.tbl tbody tr td:nth-child(2) .cell-sub").all_inner_texts()))
-            check("Menu bên trái tô sáng đúng mục", "Máy ảo & container" in page.inner_text(".nav-item.active"))
+            check("Menu bên trái tô sáng đúng items", "Máy ảo & container" in page.inner_text(".nav-item.active"))
 
             print("[3] Tìm kiếm toàn cục")
             page.fill(".topbar .search input", "10.0.20.31")
@@ -202,7 +202,7 @@ def main():
             page.wait_for_selector(".toast:has-text('Đã lưu check')")
             time.sleep(2.5)
             fw = [a for a in api("GET", "/api/assets?type=firewall", token=token) if a["name"] == "pfSense-KHO"][0]
-            check("Check mới chạy ngay và cập nhật status firewall = up", fw["status"] == "up", fw["status"])
+            check("Check mới chạy ngay and cập nhật status firewall = up", fw["status"] == "up", fw["status"])
             page.keyboard.press("Escape")
 
             print("[5] Form pfSense hiển thị đúng trường theo lựa chọn")
@@ -218,7 +218,7 @@ def main():
             check("SNMPv3: hiện user/auth/privacy", md.locator("label:has-text('SNMPv3 user')").count() == 1 and md.locator("label:has-text('Privacy password')").count() == 1)
             page.keyboard.press("Escape")
 
-            print("[6] Mật khẩu thiết bị không lộ ra giao diện")
+            print("[6] Mật khẩu devices không lộ ra giao diện")
             page.click("button:has-text('Thêm check')")
             md = page.locator(".modal")
             md.locator("select").first.select_option("esxi")
@@ -232,10 +232,10 @@ def main():
             page.wait_for_selector(".modal")
             pw_input = page.locator(".modal label:has-text('Mật khẩu') + input")
             check("Mật khẩu đã lưu hiện dạng ••••• (không trả về)", pw_input.input_value() == "" and "đã lưu" in pw_input.get_attribute("placeholder"))
-            check("Không có mật khẩu trong HTML trang", "PassBiMat" not in page.content())
+            check("Không có password trong HTML trang", "PassBiMat" not in page.content())
             page.keyboard.press("Escape")
 
-            print("[7] Hệ thống trọng yếu")
+            print("[7] System trọng yếu")
             page.goto(BASE + "/#/critical")
             page.wait_for_selector("table.tbl tbody tr")
             before = page.locator(".tab:has-text('Chưa ghép') .n").inner_text()
@@ -245,9 +245,9 @@ def main():
             md.locator("button:has-text('Lưu')").click()
             page.wait_for_selector("td:has-text('Phần mềm HR')")
             after = page.locator(".tab:has-text('Chưa ghép') .n").inner_text()
-            check("Hệ thống mới chưa gán máy → tăng bộ đếm 'Chưa ghép'", int(after) == int(before) + 1, f"{before}->{after}")
-            page.click(".tab:has-text('Chưa backup')")
-            check("Tab 'Chưa backup' lọc đúng", all("Chưa" in t for t in page.locator("table.tbl tbody tr td:nth-child(6)").all_inner_texts()))
+            check("System mới chưa gán machines → increasing by bộ đếm 'Chưa ghép'", int(after) == int(before) + 1, f"{before}->{after}")
+            page.click(".tab:has-text('No backup')")
+            check("Tab 'No backup' lọc đúng", all("Chưa" in t for t in page.locator("table.tbl tbody tr td:nth-child(6)").all_inner_texts()))
 
             print("[8] Bản đồ: các chế độ xem + xuất ảnh")
             page.goto(BASE + "/#/map")
@@ -263,9 +263,9 @@ def main():
             check("Xuất ảnh PNG bản đồ", f and os.path.getsize(f) > 20000 and open(f, "rb").read(4) == b"\x89PNG")
             page.click(".tab:has-text('Điểm rủi ro')")
             page.wait_for_selector(".risk-item")
-            check("Danh sách điểm rủi ro có dữ liệu", page.locator(".risk-item").count() >= 5)
+            check("Danh sách risk score có dữ liệu", page.locator(".risk-item").count() >= 5)
 
-            print("[9] Cảnh báo: nhận xử lý / đóng")
+            print("[9] Warning: nhận xử lý / đóng")
             time.sleep(3)  # chờ check mẫu chạy
             page.goto(BASE + "/#/alerts")
             page.wait_for_selector("table.tbl tbody tr")
@@ -288,20 +288,20 @@ def main():
             page.wait_for_selector("#res-uncovered")
             check("Trang Tài nguyên hiện thống kê CPU/RAM/Disk", page.locator(".stat:has-text('RAM cao')").count() == 1)
             nrow = page.locator("table.tbl tbody tr").count()
-            check("Bảng tài nguyên có dữ liệu hoặc hướng dẫn", nrow >= 1 or page.locator("text=Chưa có số liệu tài nguyên").count() == 1)
+            check("Bảng tài nguyên có dữ liệu hoặc hướng dẫn", nrow >= 1 or page.locator("text=None số liệu tài nguyên").count() == 1)
             if nrow:
                 page.locator("table.tbl tbody tr").first.click()
                 page.wait_for_selector(".drawer .res-grid")
-                check("Chi tiết thiết bị hiện CPU/RAM/Disk", page.locator(".drawer .res-cell").count() == 3)
+                check("Chi tiết devices hiện CPU/RAM/Disk", page.locator(".drawer .res-cell").count() == 3)
                 page.keyboard.press("Escape")
 
-            print("[9a2] Tự động hoá")
+            print("[9a2] Automation")
             page.goto(BASE + "/#/automation")
-            page.wait_for_selector("h1:has-text('Tự động hoá')")
+            page.wait_for_selector("h1:has-text('Automation')")
             check("Thư viện có đủ 18 template theo 4 nhóm", page.locator(".auto-card").count() == 18)
             page.locator(".auto-card").filter(has_text="RPT-01").locator("button:has-text('Dùng template này')").click()
             page.wait_for_selector(".modal :text('Bản tin sáng')")
-            page.click("button:has-text('Chạy thử (không gửi)')")
+            page.click("button:has-text('Chạy thử (do not send)')")
             page.wait_for_selector(".auto-out")
             check("Chạy thử RPT-01 ra bản tin", "Bản tin IT" in page.locator(".auto-out").inner_text())
             page.click(".modal button:has-text('YAML')")
@@ -311,9 +311,9 @@ def main():
             page.wait_for_selector("text=Đã thêm kịch bản")
             check("Lưu kịch bản từ YAML", page.locator("td :text('Bản tin sáng')").count() >= 1)
 
-            print("[9b] Log thiết bị (syslog/trap)")
+            print("[9b] Log devices (syslog/trap)")
             page.goto(BASE + "/#/logs")
-            page.wait_for_selector("h1:has-text('Log thiết bị')")
+            page.wait_for_selector("h1:has-text('Log devices')")
             page.wait_for_selector(".chip.green >> nth=2", timeout=8000)
             check("Bộ nhận syslog/trap đang nghe", page.locator(".chip.green").count() == 3)
             page.click("button:has-text('Gửi thử syslog')")
@@ -334,23 +334,23 @@ def main():
             page.wait_for_selector(".modal:has-text('Nội dung')")
             page.click(".modal button:has-text('Tạo rule cảnh báo')")
             page.wait_for_selector(".modal:has-text('Tạo rule')")
-            page.click(".modal button:has-text('Thử rule')")
+            page.click(".modal button:has-text('Test rule')")
             page.wait_for_selector(".modal .alert-box:has-text('khớp')")
             check("Tạo rule từ log: dòng mẫu khớp", "Dòng mẫu khớp" in page.inner_text(".modal").replace("\n", " ") or "khớp" in page.inner_text(".modal .alert-box"))
             page.keyboard.press("Escape")
             page.click(".tab:has-text('Rule cảnh báo')")
-            page.wait_for_selector("td:has-text('Cổng switch down')")
+            page.wait_for_selector("td:has-text('Switch port down')")
             check("Danh sách rule mặc định", page.locator("table.tbl tbody tr").count() >= 10)
-            page.click(".tab:has-text('Nguồn lạ')")
+            page.click(".tab:has-text('Unknown source')")
             page.wait_for_selector(".main :text('Không có nguồn lạ'), td:has-text('127.0.0.1')")
-            check("Tab nguồn lạ: log 127.0.0.1 đã gắn vào firewall pfSense-KHO (tạo ở bước 4) nên không còn là nguồn lạ",
+            check("Tab nguồn lạ: log 127.0.0.1 đã gắn ando firewall pfSense-KHO (tạo ở step 4) nên không remaining là nguồn lạ",
                   page.locator(".main :text('Không có nguồn lạ')").count() == 1)
             page.click(".tab:has-text('Hướng dẫn')")
             page.click("h3:has-text('VMware ESXi')")
             check("Hướng dẫn ESXi có lệnh esxcli", "esxcli system syslog" in page.inner_text(".main"))
             page.goto(BASE + "/#/alerts")
-            page.wait_for_selector("td:has-text('Cổng switch down')")
-            check("Cảnh báo từ log xuất hiện ở trang Cảnh báo", True)
+            page.wait_for_selector("td:has-text('Switch port down')")
+            check("Warning từ log xuất hiện ở trang Warning", True)
 
             print("[9c] Máy ảo trên host ảo hoá")
             page.goto(BASE + "/#/assets?type=host,server")
@@ -358,25 +358,25 @@ def main():
             check("Danh sách host có cột Máy ảo / container", page.locator("th:has-text('Máy ảo / container')").count() == 1)
             page.click("td:has-text('PVE-01')")
             page.wait_for_selector("text=Máy ảo & container trên host")
-            check("Host Proxmox hiện bảng máy ảo + LXC", page.locator(".drawer td:has-text('gitlab')").count() == 1 and page.locator(".drawer td:has-text('pihole')").count() == 1)
+            check("Host Proxmox hiện bảng machines ảo + LXC", page.locator(".drawer td:has-text('gitlab')").count() == 1 and page.locator(".drawer td:has-text('pihole')").count() == 1)
             check("Tóm tắt vCPU cấp phát so với core host", page.locator(".drawer :text('CPU đã chia cho VM')").count() >= 1)
             page.locator(".drawer .tab:has-text('Đã tắt')").click()
             time.sleep(0.3)
-            check("Lọc máy đã tắt chỉ còn backup-test", page.locator(".drawer tbody tr").count() == 1 and page.locator(".drawer td:has-text('backup-test')").count() == 1)
-            check("Không còn cột/tab Snapshot", page.locator(".drawer th:has-text('Snapshot')").count() == 0)
+            check("Lọc machines đã tắt chỉ remaining backup-test", page.locator(".drawer tbody tr").count() == 1 and page.locator(".drawer td:has-text('backup-test')").count() == 1)
+            check("Không remaining cột/tab Snapshot", page.locator(".drawer th:has-text('Snapshot')").count() == 0)
             page.screenshot(path="/tmp/guests.png", full_page=False)
             page.keyboard.press("Escape")
 
-            print("[9b] Giám sát an ninh + log source")
+            print("[9b] Security Monitoring + log source")
             page.goto(BASE + "/#/settings")
             page.click(".tab:has-text('Nhận Syslog / Trap')")
             page.wait_for_selector("text=Nguồn đang gửi tới IT Ops")
             check("Bảng log source hiện IP đã gửi", page.locator("td:has-text('127.0.0.1')").count() >= 1)
-            page.click(".tab:has-text('Giám sát an ninh')")
-            page.wait_for_selector("text=Business hours và SLA xử lý")
-            check("Tab Giám sát an ninh hiển thị 4 khối", all(page.locator(f"h3:has-text('{t}')").count() for t in
-                  ["Business hours và SLA", "Cảnh báo thao tác của quản trị viên", "Log source im lặng", "Archive log và chuỗi hash"]))
-            page.locator("button:has-text('Lưu ngay các ngày còn thiếu')").click()
+            page.click(".tab:has-text('Security Monitoring')")
+            page.wait_for_selector("text=Business hours and SLA xử lý")
+            check("Tab Security Monitoring hiển thị 4 khối", all(page.locator(f"h3:has-text('{t}')").count() for t in
+                  ["Business hours and SLA", "Warning thao tác of administrator", "Silent log source", "Archive log and chuỗi hash"]))
+            page.locator("button:has-text('Lưu ngay các days remaining missing')").click()
             time.sleep(1)
             page.locator("button:has-text('Lưu cấu hình')").click()
             page.wait_for_selector("text=Đã lưu cấu hình giám sát an ninh")
@@ -387,7 +387,7 @@ def main():
 
             print("[10] Cài đặt + người dùng chỉ xem")
             page.goto(BASE + "/#/settings")
-            page.click(".tab:has-text('Người dùng')")
+            page.click(".tab:has-text('User')")
             page.click("button:has-text('Thêm')")
             md = page.locator(".modal")
             md.locator("input").nth(0).fill("helpdesk")
@@ -403,12 +403,12 @@ def main():
                 v.goto(f"{BASE}/#/{path}"); time.sleep(0.6)
                 check(f"Viewer không thấy nút '{btn}'", v.locator(f"button:has-text('{btn}')").count() == 0)
             v.goto(BASE + "/#/settings"); time.sleep(0.5)
-            check("Viewer chỉ có tab 'Tài khoản của tôi'", v.locator(".tab").count() == 1)
+            check("Viewer chỉ có tab 'Tài khoản of tôi'", v.locator(".tab").count() == 1)
 
             print("[11] Đăng xuất")
             page.click(".avatar"); page.click("text=Đăng xuất")
             page.wait_for_selector("h2:has-text('Đăng nhập')")
-            check("Đăng xuất: phiên bị vô hiệu ở server", page.context.request.get(BASE + "/api/auth/me").status == 401)
+            check("Đăng xuất: sessions bị vô hiệu ở server", page.context.request.get(BASE + "/api/auth/me").status == 401)
             check("Đăng xuất: xoá cookie gợi ý", "itops_auth=1" not in page.evaluate("document.cookie"))
 
             print("[12] Giao diện điện thoại")
@@ -422,7 +422,7 @@ def main():
             check("Mobile: nút menu mở thanh điều hướng", mob.is_visible(".sidebar"))
             mob.screenshot(path="/tmp/shots/e2e_mobile_menu.png")
             b.close()
-        check("Không có lỗi JavaScript trong suốt phiên test", not errors, "; ".join(errors[:5]))
+        check("Không có error JavaScript trong suốt sessions test", not errors, "; ".join(errors[:5]))
     finally:
         proc.terminate()
         log = open(os.path.join(data_dir, "server.log")).read()

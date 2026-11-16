@@ -27,7 +27,7 @@ func TestOfflineQueueAndRevoke(t *testing.T) {
 		case "/api/agent/v1/enroll":
 			var req protocol.EnrollRequest
 			_ = json.NewDecoder(r.Body).Decode(&req)
-			if req.Token != "itk_dung" || req.UID == "" || req.OSFamily == "" {
+			if req.Site != "HCMC" || req.UID == "" || req.OSFamily == "" {
 				w.WriteHeader(403)
 				return
 			}
@@ -60,7 +60,7 @@ func TestOfflineQueueAndRevoke(t *testing.T) {
 	}))
 	defer srv.Close()
 	cert := srv.Certificate()
-	cfg := &config.File{ServerURL: srv.URL, CAPin: transport.SPKIPin(cert), UID: "may-test-01", EnrollToken: "itk_dung"}
+	cfg := &config.File{ServerURL: srv.URL, CAPin: transport.SPKIPin(cert), UID: "may-test-01", Site: "HCMC"}
 	a, err := New("1.0.0", cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -68,8 +68,8 @@ func TestOfflineQueueAndRevoke(t *testing.T) {
 	if err := a.Enroll(); err != nil {
 		t.Fatal("đăng ký:", err)
 	}
-	if cfg.EnrollToken != "" || cfg.AgentID != 7 {
-		t.Fatal("token phải bị xoá khỏi cấu hình sau khi đăng ký")
+	if cfg.AgentID != 7 {
+		t.Fatal("đăng ký xong phải lưu agent_id")
 	}
 	for i := 0; i < 3; i++ {
 		a.Tick() // server tắt → nằm trong hàng đợi

@@ -44,7 +44,7 @@ func (l *linux) System() protocol.SystemInfo {
 	rel := osRelease()
 	s := protocol.SystemInfo{Hostname: host, Domain: dom, OSName: rel["PRETTY_NAME"], OSVersion: rel["VERSION_ID"],
 		Arch: runtime.GOARCH, Manufacturer: readFile("/sys/class/dmi/id/sys_vendor"), Model: readFile("/sys/class/dmi/id/product_name"),
-		Serial: readFile("/sys/class/dmi/id/product_serial"), CPUCores: runtime.NumCPU(), IPs: LocalIPs(), OSKind: "server"}
+		Serial: readFile("/sys/class/dmi/id/product_serial"), MachineID: strings.TrimSpace(readFile("/etc/machine-id")), CPUCores: runtime.NumCPU(), IPs: LocalIPs(), MACs: LocalMACs(), OSKind: "server"}
 	if out, err := run(5*time.Second, "systemctl", "get-default"); err == nil && strings.Contains(string(out), "graphical") {
 		s.OSKind = "client"
 	}
@@ -68,7 +68,10 @@ func (l *linux) System() protocol.SystemInfo {
 	if out, err := run(5*time.Second, "who"); err == nil {
 		for _, line := range strings.Split(string(out), "\n") {
 			if f := strings.Fields(line); len(f) > 0 {
-				s.LoggedUser = f[0]
+				s.LoggedUser, s.UserSource = f[0], "console"
+				if strings.Contains(line, "pts/") && !strings.Contains(line, "(:") {
+					s.UserSource = "ssh"
+				}
 				if strings.Contains(line, "(:0") || strings.Contains(line, "tty7") || strings.Contains(line, "seat") {
 					break // ưu tiên người đang ngồi máy (phiên đồ hoạ)
 				}
@@ -189,24 +192,32 @@ func (l *linux) Services() ([]protocol.Service, error) {
 func (l *linux) Software() ([]protocol.Software, error) {
 	var res []protocol.Software
 	if _, err := exec.LookPath("dpkg-query"); err == nil {
-		out, err := run(60*time.Second, "dpkg-query", "-W", "-f", "${Package}\t${Version}\t${Maintainer}\t${db:Status-Abbrev}\n")
+		out, err := run(60*time.Second, "dpkg-query", "-W", "-f", "${Package}\t${Version}\t${Maintainer}\t${db:Status-Abbrev}\t${source:Package}\n")
 		if err != nil {
 			return nil, err
 		}
 		for _, line := range strings.Split(string(out), "\n") {
 			f := strings.Split(line, "\t")
 			if len(f) >= 4 && strings.HasPrefix(f[3], "ii") {
-				res = append(res, protocol.Software{Name: f[0], Version: f[1], Publisher: trunc(f[2], 255), Source: "dpkg"})
+				sw := protocol.Software{Name: f[0], Version: f[1], Publisher: trunc(f[2], 255), Source: "dpkg"}
+				if len(f) >= 5 {
+					sw.SourcePkg = trunc(f[4], 255)
+				}
+				res = append(res, sw)
 			}
 		}
 	} else if _, err := exec.LookPath("rpm"); err == nil {
-		out, err := run(60*time.Second, "rpm", "-qa", "--qf", "%{NAME}\t%{VERSION}-%{RELEASE}\t%{VENDOR}\t%{INSTALLTIME:date}\n")
+		out, err := run(60*time.Second, "rpm", "-qa", "--qf", "%{NAME}\t%{VERSION}-%{RELEASE}\t%{VENDOR}\t%{INSTALLTIME:date}\t%{SOURCERPM}\n")
 		if err != nil {
 			return nil, err
 		}
 		for _, line := range strings.Split(string(out), "\n") {
 			if f := strings.Split(line, "\t"); len(f) >= 3 && f[0] != "" && !strings.HasPrefix(f[0], "gpg-pubkey") {
-				res = append(res, protocol.Software{Name: f[0], Version: f[1], Publisher: trunc(f[2], 255), Source: "rpm"})
+				sw := protocol.Software{Name: f[0], Version: f[1], Publisher: trunc(f[2], 255), Source: "rpm"}
+				if len(f) >= 5 {
+					sw.SourcePkg = trunc(srpmName(f[4]), 255)
+				}
+				res = append(res, sw)
 			}
 		}
 	}
@@ -349,5 +360,19 @@ func uncleanShutdown(st *EventState) *protocol.Event {
 		}
 	}
 	return &protocol.Event{Channel: "journal", Provider: "agent", Kind: "unclean_shutdown", TS: time.Now().UTC(),
-		Data: map[string]string{}, Message: "Lần khởi động trước kết thúc không có bước tắt máy"}
+		Data: map[string]string{}, Message: "The previous boot ended without a clean shutdown"}
+}
+
+// srpmName: "openssl-3.0.7-25.el9.src.rpm" → "openssl" (bỏ phiên bản-bản phát hành).
+func srpmName(s string) string {
+	s = strings.TrimSuffix(strings.TrimSpace(s), ".src.rpm")
+	if s == "(none)" {
+		return ""
+	}
+	for i := 0; i < 2; i++ {
+		if j := strings.LastIndex(s, "-"); j > 0 {
+			s = s[:j]
+		}
+	}
+	return s
 }

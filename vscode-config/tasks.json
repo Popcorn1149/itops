@@ -89,8 +89,8 @@
       "label": "10. Mô phỏng thiết bị gửi Syslog/Trap thật (vào cấu hình dữ liệu mẫu)",
       "type": "shell",
       "options": { "cwd": "${workspaceFolder}/backend", "env": { "PYTHONUTF8": "1" } },
-      "windows": { "command": ".\\.venv\\Scripts\\python.exe tools\\mo_phong_thiet_bi.py --host 127.0.0.1 --syslog-port 6514 --trap-port 6162" },
-      "command": "./.venv/bin/python tools/mo_phong_thiet_bi.py --host 127.0.0.1 --syslog-port 6514 --trap-port 6162",
+      "windows": { "command": ".\\.venv\\Scripts\\python.exe tools\\simulate_devices.py --host 127.0.0.1 --syslog-port 6514 --trap-port 6162" },
+      "command": "./.venv/bin/python tools/simulate_devices.py --host 127.0.0.1 --syslog-port 6514 --trap-port 6162",
       "problemMatcher": []
     },
     {
@@ -149,22 +149,39 @@
       "label": "18. Kiểm tra mã nguồn (bị sửa / thiếu / lỗi thụt lề)",
       "type": "shell",
       "options": { "cwd": "${workspaceFolder}" },
-      "windows": { "command": "backend\\.venv\\Scripts\\python.exe backend\\tools\\kiem_tra_file.py" },
-      "command": "backend/.venv/bin/python backend/tools/kiem_tra_file.py",
+      "windows": { "command": "backend\\.venv\\Scripts\\python.exe backend\\tools\\verify_files.py" },
+      "command": "backend/.venv/bin/python backend/tools/verify_files.py",
       "problemMatcher": []
     },
     {
       "label": "17. Giả lập agent: 3 máy Windows + 2 máy macOS (dữ liệu mẫu, cổng 8100)",
-      // Cần app đang chạy (F5). Tạo token ở Máy trạm → Cài đặt agent (số lượt ≥ 5) rồi dán vào ô hỏi. Ctrl+C để dừng.
+      // Cần app đang chạy (F5). Đăng ký mở – không cần token. Ctrl+C để dừng.
       "type": "shell",
       "options": { "cwd": "${workspaceFolder}/backend/agent_dist" },
-      "windows": { "command": ".\\itops-agent-windows-amd64.exe simulate --server http://127.0.0.1:8100 --allow-http --windows 3 --macos 2 --token ${input:agentToken}" },
-      "command": "./itops-agent-linux-amd64 simulate --server http://127.0.0.1:8100 --allow-http --windows 3 --macos 2 --token ${input:agentToken}",
+      "windows": { "command": ".\\itops-agent-windows-amd64.exe simulate --server http://127.0.0.1:8100 --allow-http --windows 3 --macos 2" },
+      "command": "./itops-agent-linux-amd64 simulate --server http://127.0.0.1:8100 --allow-http --windows 3 --macos 2",
+      "problemMatcher": []
+    },
+    {
+      "label": "19. Chuyển dữ liệu v1 ĐANG CHẠY (..\\itops) → v2 – không cần dừng v1, XOÁ dữ liệu v2 hiện có",
+      // Dừng app v2 (Shift+F5) trước. Chụp CSDL v1 an toàn khi v1 đang ghi, chép .secret_key, nạp vào PostgreSQL v2.
+      "type": "shell",
+      "options": { "cwd": "${workspaceFolder}/backend", "env": { "PYTHONUTF8": "1" } },
+      "windows": { "command": ".\\.venv\\Scripts\\python.exe tools\\migrate_v1.py" },
+      "command": "./.venv/bin/python tools/migrate_v1.py",
+      "problemMatcher": []
+    },
+    {
+      "label": "20. Báo cáo so sánh v1 ↔ v2 (24 giờ gần nhất)",
+      // Chỉ đọc. Báo cáo HTML ở backend\data-v2-local\reports\
+      "type": "shell",
+      "options": { "cwd": "${workspaceFolder}/backend", "env": { "PYTHONUTF8": "1" } },
+      "windows": { "command": ".\\.venv\\Scripts\\python.exe tools\\compare_v1_v2.py --hours 24" },
+      "command": "./.venv/bin/python tools/compare_v1_v2.py --hours 24",
       "problemMatcher": []
     }
   ],
   "inputs": [
-    { "id": "agentToken", "type": "promptString", "description": "Token đăng ký agent (itk_...) – tạo ở Máy trạm → Cài đặt agent" },
     { "id": "backupZip", "type": "promptString", "description": "Đường dẫn file itops-backup-....zip" },
     { "id": "sqliteFile", "type": "promptString", "description": "Đường dẫn file itops.db của bản v1 (chỉ đọc, không bị sửa)" }
   ]

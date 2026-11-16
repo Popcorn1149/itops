@@ -35,7 +35,7 @@ func (m *mac) System() protocol.SystemInfo {
 	s := protocol.SystemInfo{Hostname: host, Domain: dom, OSName: out("sw_vers", "-productName") + " " + out("sw_vers", "-productVersion"),
 		OSVersion: out("sw_vers", "-buildVersion"), OSKind: "client", Arch: runtime.GOARCH, Manufacturer: "Apple",
 		Model: out("sysctl", "-n", "hw.model"), CPUModel: out("sysctl", "-n", "machdep.cpu.brand_string"), CPUCores: runtime.NumCPU(),
-		IPs: LocalIPs(), LoggedUser: out("stat", "-f", "%Su", "/dev/console")}
+		IPs: LocalIPs(), MACs: LocalMACs(), LoggedUser: out("stat", "-f", "%Su", "/dev/console")}
 	if s.LoggedUser == "root" {
 		s.LoggedUser = "" // màn hình đăng nhập, chưa ai dùng
 	}

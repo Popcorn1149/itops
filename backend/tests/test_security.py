@@ -1,4 +1,4 @@
-"""Bảo mật API: chống dò mật khẩu, path traversal, header, ẩn tài liệu API."""
+"""Bảo mật API: chống dò password, path traversal, header, ẩn tài liệu API."""
 import os
 
 import pytest
@@ -9,8 +9,8 @@ def test_login_lockout_after_5_failures(client, admin):
     for _ in range(5):
         assert client.post("/api/auth/login", json={"username": "victim", "password": "doan-sai"}).status_code == 401
     r = client.post("/api/auth/login", json={"username": "victim", "password": "Victim@123"})
-    assert r.status_code == 429 and "Thử lại" in r.json()["detail"], "Mật khẩu đúng cũng bị chặn khi đang khoá"
-    assert client.post("/api/auth/login", json={"username": "admin", "password": "Admin@12345"}).status_code == 200, "Khoá theo từng tài khoản, không khoá admin"
+    assert r.status_code == 429 and "Try again" in r.json()["detail"], "Mật khẩu đúng cũng bị chặn khi đang khoá"
+    assert client.post("/api/auth/login", json={"username": "admin", "password": "Admin@12345"}).status_code == 200, "Khoá theo từng account, không khoá admin"
     logs = client.get("/api/audit", headers=admin).json()
     assert sum(1 for l in logs if l["action"] == "login_failed" and l["user"] == "victim") == 5
     from app import main
@@ -28,7 +28,7 @@ def test_static_path_traversal_blocked(client, path):
         pytest.skip("chưa build frontend")
     r = client.get(path)
     body = r.text
-    assert "SECRET_KEY" not in body and "def " not in body and "root:" not in body, f"{path} lộ file ngoài thư mục static"
+    assert "SECRET_KEY" not in body and "def " not in body and "root:" not in body, f"{path} lộ file ngoài thư items static"
 
 
 def test_security_headers_and_no_api_docs(client, admin):

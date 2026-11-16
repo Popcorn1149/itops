@@ -1,4 +1,4 @@
-"""E2E trang Máy trạm (chạy trình duyệt thật): máy trạm mẫu + 1 agent Linux THẬT (file build từ agent/) gửi lên server.
+"""E2E trang Máy trạm (chạy trình duyệt thật): machines trạm mẫu + 1 agent Linux THẬT (file build từ agent/) gửi lên server.
 
     python tests/e2e_agents.py           (cần agent/dist/itops-agent-linux-amd64 – build bằng agent/scripts/build.sh)
 """
@@ -37,7 +37,7 @@ def main():
     try:
         tok = json.loads(urllib.request.urlopen(urllib.request.Request(E.BASE + "/api/auth/login", data=json.dumps(
             {"username": "admin", "password": "Admin@12345"}).encode(), headers={"Content-Type": "application/json"})).read())["token"]
-        # ---- agent Linux thật: đăng ký bằng token, gửi báo cáo lên server E2E
+        # ---- agent Linux thật: registered with token, gửi báo cáo lên server E2E
         if os.path.exists(AGENT):
             api("/agent-policy", tok, {"report_seconds": 30}, "PUT")
             et = api("/agent-tokens", tok, {"name": "E2E Linux", "days": 1, "max_uses": 1})["token"]
@@ -54,7 +54,7 @@ def main():
                     break
             E.check("agent Linux thật đăng ký + gửi số liệu", real and real["status"] == "online" and real.get("cpu") is not None, str(real)[:200])
             E.check("agent thật: token đã bị xoá khỏi agent.json", "enroll_token" not in open(os.path.join(adir, "agent.json")).read())
-            # ---- giả lập Windows + macOS bằng chính file agent (đi qua đọc XML Event Log / log macOS của agent)
+            # ---- giả lập Windows + macOS bằng chính file agent (đi qua đọc XML Event Log / log macOS of agent)
             st = api("/agent-tokens", tok, {"name": "E2E giả lập", "days": 1, "max_uses": 5})["token"]
             sim_proc = subprocess.Popen([AGENT, "simulate", "--server", E.BASE, "--allow-http", "--token", st, "--windows", "3", "--macos", "2",
                                          "--dir", tempfile.mkdtemp(prefix="sim-e2e-")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -78,17 +78,17 @@ def main():
             page.on("pageerror", lambda e: errors.append(str(e)))
             E.login(page)
             page.click(".nav-item:has-text('Máy trạm')")
-            page.wait_for_selector("text=Danh sách máy")
+            page.wait_for_selector("text=Danh sách machines")
             page.wait_for_selector("text=PC-KD03")
             rows = page.locator(".tbl tbody tr").count()
-            E.check("danh sách có 12 máy mẫu (+ agent thật + 5 giả lập)", rows >= 18, f"{rows} dòng")
+            E.check("danh sách có 12 machines mẫu (+ agent thật + 5 giả lập)", rows >= 18, f"{rows} dòng")
             E.check("thẻ thống kê: Defender tắt = 2 (PC-LA + SIM-WIN02)", page.locator(".stat:has-text('Defender tắt') .stat-value").inner_text().strip() == "2")
             E.check("PC-LA hiện 'Defender TẮT'", page.locator("tr:has-text('PC-LA') >> text=Defender TẮT").count() == 1)
             E.check("SRV-FILE01 hiện phần mềm diệt virus khác", page.locator("tr:has-text('SRV-FILE01') >> text=Kaspersky").count() == 1)
             page.screenshot(path=f"{SHOTS}/1-danh-sach.png")
-            # ---- chi tiết máy có mã độc
+            # ---- chi tiết machines có mã độc
             page.click("tr:has-text('PC-KD03')")
-            page.wait_for_selector(".drawer >> text=Tổng quan")
+            page.wait_for_selector(".drawer >> text=Overview")
             E.check("chi tiết: người đang dùng", page.locator(".drawer >> text=CTY\\minh.lq").count() >= 1)
             E.check("chi tiết: cảnh báo đang mở 'Phát hiện mã độc'", page.locator(".drawer .alert-box >> text=Phát hiện mã độc").count() >= 1)
             page.wait_for_timeout(600)
@@ -96,25 +96,25 @@ def main():
             page.click(".drawer .tab:has-text('Sự kiện')")
             page.wait_for_selector(".drawer >> text=Chuyện gì")
             txt = page.locator(".drawer .drawer-body").inner_text()
-            E.check("sự kiện mã độc dịch tiếng Việt", "Windows Defender PHÁT HIỆN mã độc" in txt and "Trojan:Win32/Wacatac.B!ml" in txt and "Nên làm gì" in txt)
+            E.check("sự kiện mã độc dịch tiếng Việt", "Windows Defender DETECTED malware" in txt and "Trojan:Win32/Wacatac.B!ml" in txt and "Recommended action gì" in txt)
             page.screenshot(path=f"{SHOTS}/3-su-kien.png")
             page.click(".drawer .tab:has-text('Phần mềm')")
             page.wait_for_selector(".drawer >> text=AnyDesk")
-            E.check("phần mềm của máy", page.locator(".drawer td >> text=AnyDesk").count() >= 1)
+            E.check("phần mềm of machines", page.locator(".drawer td >> text=AnyDesk").count() >= 1)
             page.keyboard.press("Escape")
-            # ---- sự kiện toàn bộ máy: dò mật khẩu gộp ×14, không có đăng nhập thành công
+            # ---- sự kiện toàn bộ machines: dò password gộp ×14, không có sign-in thành công
             page.click(".tab:has-text('Sự kiện')")
             page.wait_for_selector("text=Tài khoản bị khoá")
             body = page.locator(".main").inner_text()
-            E.check("sự kiện toàn bộ: khoá tài khoản + thêm nhóm quản trị", "Tài khoản bị khoá" in body and "Thêm vào nhóm QUẢN TRỊ" in body)
-            E.check("không có sự kiện đăng nhập thành công", "4624" not in body and "Đăng nhập thành công" not in body)
+            E.check("sự kiện toàn bộ: khoá account + thêm nhóm quản trị", "Tài khoản bị khoá" in body and "Thêm ando nhóm QUẢN TRỊ" in body)
+            E.check("không có sự kiện sign-in thành công", "4624" not in body and "Đăng nhập thành công" not in body)
             page.screenshot(path=f"{SHOTS}/4-su-kien-tat-ca.png", full_page=True)
             # ---- tìm phần mềm
             page.click(".tab:has-text('Phần mềm')")
             page.fill("input[placeholder^='vd. AnyDesk']", "teamviewer")
             page.wait_for_selector("text=TeamViewer")
             page.click("tr:has-text('TeamViewer')")
-            E.check("tìm phần mềm → ra máy PC-LA", page.locator(".chip:has-text('PC-LA')").count() == 1)
+            E.check("tìm phần mềm → ra machines PC-LA", page.locator(".chip:has-text('PC-LA')").count() == 1)
             # ---- cài đặt agent: tạo token, lệnh cài
             page.click(".tab:has-text('Cài đặt agent')")
             page.wait_for_selector("text=Token đăng ký")
@@ -127,7 +127,7 @@ def main():
             E.check("cảnh báo khi server http://", "chỉ dùng để demo" in cmds)
             page.screenshot(path=f"{SHOTS}/5-token.png")
             page.click(".modal button:has-text('Đã lưu')")
-            E.check("danh mục sự kiện trong chính sách", page.locator("text=Nhật ký bảo mật bị xoá").count() >= 1)
+            E.check("danh items events in chính sách", page.locator("text=Nhật ký bảo mật bị xoá").count() >= 1)
             # ---- giao diện tối
             page.evaluate("localStorage.setItem('itops_theme','dark')")
             page.goto(E.BASE + "/#/agents")
@@ -137,13 +137,13 @@ def main():
             page.click("tr:has-text('SRV-FILE01')")
             page.wait_for_timeout(800)
             page.screenshot(path=f"{SHOTS}/6-toi.png")
-            # ---- cảnh báo agent xuất hiện ở trang Cảnh báo chung
+            # ---- cảnh báo agent xuất hiện ở trang Warning chung
             page.keyboard.press("Escape")
-            page.click(".nav-item:has-text('Cảnh báo')")
-            page.wait_for_selector("text=Nghi dò mật khẩu")
-            E.check("cảnh báo agent ở trang Cảnh báo", page.locator("text=Nghi dò mật khẩu: SRV-DC01").count() >= 1)
+            page.click(".nav-item:has-text('Warning')")
+            page.wait_for_selector("text=Nghi dò password")
+            E.check("cảnh báo agent ở trang Warning", page.locator("text=Nghi dò password: SRV-DC01").count() >= 1)
             b.close()
-        E.check("không lỗi JavaScript", not errors, "; ".join(errors[:3]))
+        E.check("không error JavaScript", not errors, "; ".join(errors[:3]))
     finally:
         if agent_proc:
             agent_proc.terminate()
@@ -151,7 +151,7 @@ def main():
     ok = sum(1 for _, c, _ in E.RESULTS if c)
     for n, c, d in E.RESULTS:
         print(("PASS " if c else "FAIL ") + n + (f" – {d}" if d and not c else ""))
-    print(f"E2E máy trạm: {ok}/{len(E.RESULTS)}")
+    print(f"E2E machines trạm: {ok}/{len(E.RESULTS)}")
     sys.exit(0 if ok == len(E.RESULTS) else 1)
 
 

@@ -64,16 +64,16 @@ def test_thresholds_levels_legacy_and_off():
     data, st, notes = {}, ["ok"], []
     m = apply_resources(data, {}, st, notes, cpu=82, mem=93, disks=[{"name": "/", "pct": 96}, {"name": "/data", "pct": 87}])
     assert m == {"cpu": 82, "mem": 93, "disk": 96}
-    assert st == ["ok"]                                   # vượt threshold không làm check lỗi (không trừ uptime)
+    assert st == ["ok"]                                   # vượt threshold không làm check error (không trừ uptime)
     assert data["res"]["levels"] == {"cpu": "attention", "mem": "trouble", "disk": "critical"} and data["res"]["level"] == "critical"
-    assert any("CPU 82% (Attention ≥ 80%)" in n for n in notes) and any("Ổ khác vượt threshold: /data 87%" in n for n in notes)
+    assert any("CPU 82% (Attention ≥ 80%)" in n for n in notes) and any("Other disks above threshold: /data 87%" in n for n in notes)
     d2 = {}
     apply_resources(d2, {"cpu_attention": 40, "mem_attention": "", "mem_trouble": "", "mem_critical": "", "disk_attention": 0,
                          "disk_trouble": 0, "disk_critical": 0}, [], [], cpu=50, mem=99, disks=[{"name": "/", "pct": 99}])
     assert d2["res"]["levels"] == {"cpu": "attention", "mem": "ok", "disk": "ok"}     # để trống/0 = tắt mức đó
     d3 = {}
     apply_resources(d3, {"datastore_warn": 60}, [], [], disks=[{"name": "ds1", "pct": 70}])
-    assert d3["res"]["levels"]["disk"] == "trouble"       # khoá cũ của ESXi: warn → Trouble
+    assert d3["res"]["levels"]["disk"] == "trouble"       # khoá cũ of ESXi: warn → Trouble
     d4 = {}
     apply_resources(d4, {"cpu_warn": 85, "cpu_fail": 95}, [], [], cpu=82)
     assert d4["res"]["levels"]["cpu"] == "ok"             # check cũ chỉ có 2 mức → không tự thêm Attention
@@ -116,7 +116,7 @@ def test_resources_api_with_demo_and_history(client, admin, clean):
     d = client.get("/api/dashboard", headers=admin).json()["resources"]
     assert d["total"] == r["total"] and d["top"] and d["top"][0]["level"] != "ok"
 
-    # tắt check → thiết bị không còn trong danh sách tài nguyên
+    # tắt check → devices không remaining trong danh sách tài nguyên
     cid = names["ERP-DB"]["check_id"]
     client.put(f"/api/checks/{cid}", headers=admin, json={"enabled": False})
     r2 = client.get("/api/resources", headers=admin).json()
@@ -214,7 +214,7 @@ def test_pfsense_snmp_plus_cli(monkeypatch):
         raise OSError("Permission denied")
     monkeypatch.setattr(pf, "freebsd_resources", bad_cli)
     r2 = asyncio.run(pf.pfsense("172.17.11.1", {"mode": "snmp", "cli_enabled": True}))
-    assert r2.status == "warn" and "CLI lỗi" in r2.message
+    assert r2.status == "warn" and "CLI error" in r2.message
 
 
 # ---------------------------------------------------------------- Đường Internet + status site/API
@@ -260,27 +260,27 @@ def test_internet_check_states(monkeypatch):
 
     n = _inet(monkeypatch, {"1.1.1.1": ok, "8.8.8.8": {**ok, "rtt": 30.0}}, ip="5.6.7.8")
     r = asyncio.run(n.internet("1.1.1.1, 8.8.8.8", {}))
-    assert r.status == "warn" and "đổi đường ra: 1.2.3.4 → 5.6.7.8" in r.message          # WAN failover
+    assert r.status == "warn" and "WAN egress path changed: 1.2.3.4 → 5.6.7.8" in r.message          # WAN failover
 
     n = _inet(monkeypatch, {"1.1.1.1": ok, "8.8.8.8": dead}, ip=None)
     r = asyncio.run(n.internet("1.1.1.1, 8.8.8.8", {"public_ip": False}))
-    assert r.status == "warn" and "1/2 đích không phản hồi: 8.8.8.8" in r.message
+    assert r.status == "warn" and "1/2 targets did not respond: 8.8.8.8" in r.message
 
     n = _inet(monkeypatch, {"1.1.1.1": {"loss": 40.0, "rtt": 220.0, "jitter": 55.0}})
     r = asyncio.run(n.internet("1.1.1.1", {"public_ip": False}))
-    assert r.status == "warn" and "độ trễ cao" in r.message and "jitter 55" in r.message
+    assert r.status == "warn" and "high latency" in r.message and "jitter 55" in r.message
 
     n = _inet(monkeypatch, {"1.1.1.1": dead}, dns_ok=True, http_ok=True)
     r = asyncio.run(n.internet("1.1.1.1", {"public_ip": False}))
-    assert r.status == "warn" and "ICMP bị chặn" in r.message                              # ping bị chặn nhưng web vẫn ra được
+    assert r.status == "warn" and "ICMP blocked" in r.message                              # ping bị chặn nhưng web vẫn ra được
 
     n = _inet(monkeypatch, {"1.1.1.1": dead, "8.8.8.8": dead}, dns_ok=False, http_ok=False)
     r = asyncio.run(n.internet("1.1.1.1, 8.8.8.8", {"public_ip": False}))
-    assert r.status == "fail" and r.message.startswith("Mất Internet")
+    assert r.status == "fail" and r.message.startswith("Internet outage")
 
 
 def test_internet_real_ping_localhost():
-    """Ping thật: 127.0.0.1 phản hồi, tên miền .invalid (không tồn tại theo RFC 6761) thì không."""
+    """Ping thật: 127.0.0.1 phản hồi, tên miền .invalid (does not exist theo RFC 6761) thì không."""
     from app.collectors.network import internet
     r = asyncio.run(internet("127.0.0.1, khong-ton-tai.invalid", {"count": 2, "timeout": 1, "dns_name": "", "http_url": "", "public_ip": False}))
     t = {x["target"]: x for x in r.data["targets"]}
@@ -290,7 +290,7 @@ def test_internet_real_ping_localhost():
 
 def test_site_health_map_internet_and_api_health(client, admin, clean):
     topo = client.get("/api/topology", headers=admin).json()["tree"]
-    assert topo["status"] == "unknown" and topo["sub"] == "chưa gán Line Internet"    # chưa có line → không tô xanh
+    assert topo["status"] == "unknown" and topo["sub"] == "no Internet line assigned"    # none line → không tô xanh
     h = client.get("/api/health").json()
     assert h["db"] is True and h["scheduler"] in ("off", "ok", "starting") and "receivers_ok" in h
     s1 = client.post("/api/sites", headers=admin, json={"name": "Site trống"}).json()
@@ -304,13 +304,13 @@ def test_site_health_map_internet_and_api_health(client, admin, clean):
     topo = client.get("/api/topology", headers=admin).json()["tree"]
     assert topo["status"] == "down" and topo["sub"] == "0/1 line · 1 down"
     sn = {x["name"]: x for x in topo["children"]}
-    assert sn["HQ"]["status"] == "down" and sn["Site trống"]["sub"] == "chưa giám sát" and sn["Site trống"]["status"] == "unknown"
+    assert sn["HQ"]["status"] == "down" and sn["Site trống"]["sub"] == "not monitored" and sn["Site trống"]["status"] == "unknown"
     assert {x["name"]: x for x in client.get("/api/sites", headers=admin).json()}["HQ"]["health"] == "fail"
     _ = s1
 
 
 def test_cpu_levels_rearm_and_uptime_not_affected(client, admin, clean, monkeypatch):
-    """Kịch bản FW01: CPU dao động 82–96%. Không được có 'DOWN', uptime vẫn 100%, cảnh báo chỉ đóng khi < Rearm (75%)."""
+    """Workflow FW01: CPU dao động 82–96%. Không được có 'DOWN', uptime vẫn 100%, cảnh báo chỉ đóng khi < Rearm (75%)."""
     from app import scheduler as sch
     from app.collectors import COLLECTORS
     from app.collectors.base import Result
@@ -319,7 +319,7 @@ def test_cpu_levels_rearm_and_uptime_not_affected(client, admin, clean, monkeypa
     async def fake(target, cfg):
         v = next(seq)
         if v is None:
-            return Result("fail", "SNMP không phản hồi")           # mất kết nối thật
+            return Result("fail", "SNMP not responding")           # mất kết nối thật
         data, notes = {}, []
         apply_resources(data, cfg, [], notes, cpu=v)
         return Result("ok", "FW · " + " · ".join(notes), 2, v, data)
@@ -343,7 +343,7 @@ def test_cpu_levels_rearm_and_uptime_not_affected(client, admin, clean, monkeypa
     assert cpu_alert()[0]["severity"] == "critical"
     step(); step()                                                      # 88%, 78% (dưới Attention nhưng ≥ Rearm 75) → vẫn mở
     al = cpu_alert()
-    assert len(al) == 1 and "Rearm" in al[0]["message"]
+    assert len(al) == 1 and "rearm threshold" in al[0]["message"]
     step()                                                              # 74% < Rearm → đóng
     assert cpu_alert() == []
     lst = next(x for x in client.get("/api/checks", headers=admin).json() if x["id"] == c["id"])
@@ -357,7 +357,7 @@ def test_cpu_levels_rearm_and_uptime_not_affected(client, admin, clean, monkeypa
 
 
 def test_map_counts_internet_lines(client, admin, clean):
-    """Mỗi check gán "Line Internet" = 1 line. x/y = số line không DOWN / tổng. Không tự đoán, WAN của firewall không tính."""
+    """Mỗi check gán "Line Internet" = 1 line. x/y = số line không DOWN / tổng. Không tự đoán, WAN of firewall không tính."""
     from app.db import SessionLocal
     from app import models
     s = client.post("/api/sites", headers=admin, json={"name": "Trustifytechnology"}).json()

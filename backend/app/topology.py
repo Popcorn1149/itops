@@ -1,4 +1,4 @@
-"""Bản đồ hệ thống, hệ thống trọng yếu và điểm rủi ro – tính từ dữ liệu tài sản/check/cảnh báo."""
+"""System topology, critical systems and risk score – calculated from asset/check/alert data."""
 from datetime import timedelta
 
 from sqlalchemy.orm import Session
@@ -54,27 +54,27 @@ def _node(a: models.Asset, crit_level: dict) -> dict:
     live = (a.meta or {}).get("live", {})
     sub = a.ip or ""
     if a.type == "vm" and (a.meta or {}).get("power") == "poweredOff":
-        sub = (sub + " · tắt").strip(" ·")
+        sub = (sub + " · disabled").strip(" ·")
     return {"id": f"a{a.id}", "asset_id": a.id, "name": a.name, "type": a.type, "status": a.status, "ip": a.ip,
             "sub": sub, "model": a.model, "vendor": a.vendor, "critical": crit_level.get(a.id), "backup": a.backup,
             "cpu": live.get("cpu"), "children": []}
 
 
-# ---------------------------------------------------------------- đường Internet / WAN (tự nhận, không cần phân loại tay)
+# ---------------------------------------------------------------- đường Internet / WAN (tự nhận, without requiring phân loại tay)
 import ipaddress as _ip
 
 def is_public(target: str) -> bool:
-    """IP public (dùng để GỢI Ý gán Line Internet, không tự gán)."""
+    """IP public (dùng để GỢI Ý assign an Internet line, không tự gán)."""
     t = (target or "").strip().split("://")[-1].split("/")[0].split(":")[0]
     try:
         a = _ip.ip_address(t)
     except ValueError:
-        return False          # tên miền: không tự đoán (có thể là website/dịch vụ)
+        return False          # tên miền: không tự đoán (có thể là website/service)
     return a.is_global
 
 
 def wan_role(chk) -> str | None:
-    """Check có phải "Line Internet" không – do người dùng gán khi thêm check (mỗi check = 1 line).
+    """Check có phải "Line Internet" không – do người dùng gán khi thêm check (every check = 1 line).
 
     - Loại check "Line Internet" (internet) → luôn là line.
     - Loại khác (ping, tcp...) → chỉ khi chọn "Vai trò: Line Internet" (map_role = 'wan').
@@ -82,12 +82,12 @@ def wan_role(chk) -> str | None:
     if chk.type == "internet":
         return "check Line Internet"
     if (chk.config or {}).get("map_role") == "wan":
-        return "gán Line Internet"
+        return "assign an Internet line"
     return None
 
 
 def internet_lines(db: Session) -> dict:
-    """{site_id: [line]} – mỗi check được gán "Line Internet" là 1 line."""
+    """{site_id: [line]} – every check được gán "Line Internet" là 1 line."""
     assets = {a.id: a for a in db.query(models.Asset).all()}
     out: dict = {}
     for c in db.query(models.Check).filter(models.Check.enabled == True).order_by(models.Check.name).all():  # noqa: E712
@@ -108,12 +108,12 @@ def internet_lines(db: Session) -> dict:
 
 def line_status(lines: list) -> tuple[str | None, str]:
     """x/y line: x = số line không DOWN, y = tổng số line.
-    Tất cả DOWN → down · có line DOWN hoặc chập chờn → warning · còn lại → up."""
+    Tất cả DOWN → down · có line DOWN hoặc flapping → warning · remaining lại → up."""
     if not lines:
         return None, ""
     known = [x for x in lines if x["status"] != "unknown"]
     if not known:
-        return "unknown", f"0/{len(lines)} line · chưa chạy"
+        return "unknown", f"0/{len(lines)} line · not running"
     n_down = sum(1 for x in known if x["down"])
     n_up = len(lines) - n_down - (len(lines) - len(known))
     text = f"{n_up}/{len(lines)} line" + (f" · {n_down} down" if n_down else "")
@@ -150,14 +150,14 @@ def build_topology(db: Session) -> dict:
         n["count"] = 1 + sum(ch["count"] for ch in n["children"])
         return n["worst"]
 
-    # ---- đường Internet: tự gom từ check Internet/ping WAN và WAN của firewall ----
+    # ---- đường Internet: tự gom from check Internet/ping WAN and WAN of firewall ----
     amap_site = {a.id: a.site_id for a in assets}
     lines = internet_lines(db)
 
     all_checks = db.query(models.Check.site_id, models.Check.asset_id).filter(models.Check.enabled == True).all()  # noqa: E712
     site_has_checks = {sid or amap_site.get(aid) for sid, aid in all_checks}
     site_nodes = []
-    groups = [(s.id, s.name, s.kind) for s in sites] + [(None, "Chưa gán site", "none")]
+    groups = [(s.id, s.name, s.kind) for s in sites] + [(None, "No site assigned", "none")]
     for sid, sname, kind in groups:
         roots = [nodes[a.id] for a in assets if a.site_id == sid and (a.parent_id not in ids or a.parent_id == a.id)]
         if sid is None and not roots:
@@ -171,9 +171,9 @@ def build_topology(db: Session) -> dict:
             roots = [r for r in roots if r["type"] in ("firewall", "website", "cloud")]
         s_inet = lines.get(sid, [])
         st, sub = line_status(s_inet)
-        if st is None:   # chưa có check Internet cho site này
+        if st is None:   # none check Internet cho site này
             st = "up" if roots else "unknown"
-            sub = "" if (roots or sid in site_has_checks) else "chưa giám sát"
+            sub = "" if (roots or sid in site_has_checks) else "not monitored"
         else:
             sub = f"Internet {sub}"
         sn = {"id": f"s{sid}", "site_id": sid, "name": sname, "type": "site", "kind": kind, "status": st, "sub": sub,
@@ -182,12 +182,12 @@ def build_topology(db: Session) -> dict:
 
     ext = [c for c in crit if c.hosted_externally]
     if ext:
-        site_nodes.append({"id": "ext", "name": "Dịch vụ bên ngoài", "type": "site", "kind": "cloud", "status": "unknown",
+        site_nodes.append({"id": "ext", "name": "External service", "type": "site", "kind": "cloud", "status": "unknown",
                            "children": [{"id": f"c{c.id}", "name": c.name, "type": "service", "status": "unknown",
                                          "sub": c.external_note, "critical": c.level, "children": []} for c in ext]})
     r_st, r_sub = line_status([x for v in lines.values() for x in v])
     root = {"id": "internet", "name": "Internet", "type": "internet", "status": r_st or "unknown",
-            "sub": r_sub if r_st else "chưa gán Line Internet", "children": site_nodes}
+            "sub": r_sub if r_st else "no Internet line assigned", "children": site_nodes}
     sort_children_root = root["children"]
     for s in sort_children_root:
         for ch in s["children"]:
@@ -205,16 +205,16 @@ def build_topology(db: Session) -> dict:
             seen.add(f"a{aid}")
             gnodes.append({"id": f"a{aid}", "name": a.name, "kind": "asset", "type": a.type, "status": a.status, "asset_id": aid})
             if a.parent_id and a.parent_id in amap:
-                edges.append({"source": f"a{aid}", "target": f"a{a.parent_id}", "label": "nằm trên"})
+                edges.append({"source": f"a{aid}", "target": f"a{a.parent_id}", "label": "hosted on"})
             aid = a.parent_id
 
     for c in cv:
         gnodes.append({"id": f"c{c['id']}", "name": c["name"], "kind": "critical", "level": c["level"], "status": c["status"], "layer": c["layer"]})
         if c["asset_id"]:
             add_asset(c["asset_id"])
-            edges.append({"source": f"c{c['id']}", "target": f"a{c['asset_id']}", "label": "chạy trên"})
+            edges.append({"source": f"c{c['id']}", "target": f"a{c['asset_id']}", "label": "runs on"})
         for d in c["depends_on"]:
-            edges.append({"source": f"c{c['id']}", "target": f"c{d}", "label": "phụ thuộc"})
+            edges.append({"source": f"c{c['id']}", "target": f"c{d}", "label": "depends on"})
     valid = {n["id"] for n in gnodes}
     edges = [e for e in edges if e["source"] in valid and e["target"] in valid]
     return {"tree": root, "flow": {"nodes": gnodes, "edges": edges}}
@@ -233,14 +233,14 @@ def build_risks(db: Session) -> list[dict]:
     for c in cv:
         lv = "high" if c["level"] == "High" else "medium"
         if not c["backup_ok"]:
-            add(lv, "Chưa backup", c["name"], f"Hệ thống mức {c['level']} chưa được đánh dấu có backup"
-                + (f" (chạy trên {c['asset']['name']})" if c["asset"] else ""), {"page": "critical", "id": c["id"]})
+            add(lv, "No backup", c["name"], f"System with {c['level']} is not marked as backed up"
+                + (f" (running on {c['asset']['name']})" if c["asset"] else ""), {"page": "critical", "id": c["id"]})
         if not c["asset_id"] and not c["hosted_externally"]:
-            add("medium", "Chưa ghép máy chủ", c["name"], "Không biết hệ thống này chạy trên máy nào", {"page": "critical", "id": c["id"]})
+            add("medium", "No server mapped", c["name"], "Unable to determine which host runs this system", {"page": "critical", "id": c["id"]})
         if not c["checks"]:
-            add("medium" if c["level"] == "High" else "low", "Chưa giám sát", c["name"], "Không có check nào theo dõi hệ thống này", {"page": "critical", "id": c["id"]})
+            add("medium" if c["level"] == "High" else "low", "Not monitored", c["name"], "No check monitors this system", {"page": "critical", "id": c["id"]})
         if c["status"] == "fail":
-            add("high", "Đang lỗi", c["name"], "Hệ thống trọng yếu đang có check lỗi", {"page": "critical", "id": c["id"]})
+            add("high", "Failing", c["name"], "A critical system has a failing check", {"page": "critical", "id": c["id"]})
 
     # điểm tập trung: một host gánh nhiều hệ thống High
     per_host = {}
@@ -253,32 +253,32 @@ def build_risks(db: Session) -> list[dict]:
             per_host.setdefault(host.id, []).append(c["name"])
     for hid, names in per_host.items():
         if len(names) >= 2:
-            add("medium", "Điểm tập trung", amap[hid].name, f"{len(names)} hệ thống High cùng phụ thuộc: {', '.join(names)}", {"page": "asset", "id": hid})
+            add("medium", "Concentration risk", amap[hid].name, f"{len(names)}  High-level systems share the same dependency: {', '.join(names)}", {"page": "asset", "id": hid})
 
     for a in assets:
         if a.status == "down" and a.type not in ("vm", "container"):
-            add("high", "Thiết bị down", a.name, f"{a.type} {a.ip}".strip(), {"page": "asset", "id": a.id})
+            add("high", "Device down", a.name, f"{a.type} {a.ip}".strip(), {"page": "asset", "id": a.id})
         meta = a.meta or {}
         if a.type == "vm" and (meta.get("oldest_snapshot_days") or 0) > 7:
-            add("low", "Snapshot cũ", a.name, f"Snapshot đã {meta['oldest_snapshot_days']} ngày – dễ đầy datastore", {"page": "asset", "id": a.id})
+            add("low", "Old snapshot", a.name, f"Snapshot is {meta['oldest_snapshot_days']} days old – datastore may run out of space", {"page": "asset", "id": a.id})
         if meta.get("missing"):
-            add("low", "Không còn thấy", a.name, "Tài sản không còn xuất hiện ở nguồn đồng bộ (đã xoá/di chuyển?)", {"page": "asset", "id": a.id})
+            add("low", "No longer detected", a.name, "Asset is no longer present in the sync source (deleted/moved?)", {"page": "asset", "id": a.id})
 
     t = now()
     for k in checks:
         d = k.last_data or {}
         if k.type == "http" and isinstance(d.get("cert_days"), int) and d["cert_days"] < 21:
-            add("high" if d["cert_days"] < 7 else "medium", "SSL sắp hết hạn", k.name, f"Chứng chỉ còn {d['cert_days']} ngày ({k.target})", {"page": "check", "id": k.id})
+            add("high" if d["cert_days"] < 7 else "medium", "SSL expiring soon", k.name, f"Certificate expires in {d['cert_days']} days ({k.target})", {"page": "check", "id": k.id})
         for ds in d.get("datastores", []) or []:
             if ds.get("used_pct", 0) >= 85:
-                add("high" if ds["used_pct"] >= 95 else "medium", "Datastore đầy", ds["name"], f"Đã dùng {ds['used_pct']}% (còn {ds.get('free_gb')} GB)", {"page": "check", "id": k.id})
+                add("high" if ds["used_pct"] >= 95 else "medium", "Datastore full", ds["name"], f"Used {ds['used_pct']}% ({ds.get('free_gb')} GB)", {"page": "check", "id": k.id})
         for g in d.get("gateways", []) or []:
             if str(g.get("status")).lower() not in ("online", "none", ""):
-                add("high", "WAN lỗi", f"{k.name} – {g.get('name')}", f"Gateway {g.get('status')} · loss {g.get('loss')}", {"page": "check", "id": k.id})
+                add("high", "WAN failure", f"{k.name} – {g.get('name')}", f"Gateway {g.get('status')} · loss {g.get('loss')}", {"page": "check", "id": k.id})
         if k.last_checked and (t - k.last_checked) > timedelta(seconds=max(300, (k.interval or 60) * 5)):
-            add("medium", "Nguồn không cập nhật", k.name, f"Lần chạy cuối {int((t - k.last_checked).total_seconds() // 60)} phút trước", {"page": "check", "id": k.id})
+            add("medium", "Source is stale", k.name, f"Last run {int((t - k.last_checked).total_seconds() // 60)} minutes ago", {"page": "check", "id": k.id})
         if k.status == "fail":
-            add("high", "Check lỗi", k.name, k.last_message[:200], {"page": "check", "id": k.id})
+            add("high", "Check failure", k.name, k.last_message[:200], {"page": "check", "id": k.id})
 
     order = {"high": 0, "medium": 1, "low": 2}
     risks.sort(key=lambda r: order[r["severity"]])

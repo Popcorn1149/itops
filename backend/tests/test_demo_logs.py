@@ -1,4 +1,4 @@
-"""Dữ liệu mẫu có log "như thật": lịch sử 24h đi qua pipeline thật, có sự cố đã đóng và còn mở, không gửi thông báo."""
+"""Demo data có log "như thật": lịch sử 24h đi qua pipeline thật, có sự cố đã đóng and remaining mở, do not send thông báo."""
 from datetime import timedelta
 
 from app import demo_logs, models
@@ -15,27 +15,27 @@ def test_demo_history_realistic(client, admin, clean):
         assert out["events"] > 2000 and out["alerts_open"] >= 5 and out["alerts_resolved"] >= 5
         with SessionLocal() as db:
             evs = db.query(models.Event)
-            assert evs.filter(models.Event.asset_id.is_(None)).count() == 0          # mọi log gắn đúng thiết bị mẫu
+            assert evs.filter(models.Event.asset_id.is_(None)).count() == 0          # mọi log gắn đúng devices mẫu
             first, last = db.query(models.Event.ts).order_by(models.Event.ts).first()[0], db.query(models.Event.ts).order_by(models.Event.ts.desc()).first()[0]
-            assert last - first > timedelta(hours=20)                                  # trải đều 24 giờ
+            assert last - first > timedelta(hours=20)                                  # trải đều 24 hours
             kinds = {k for (k,) in db.query(models.Event.kind).distinct()}
             assert {"syslog", "trap", "winlog"} <= kinds
             titles = {a.title for a in db.query(models.Alert).filter_by(source="event")}
-            for must in ("Gateway WAN down", "Cổng switch down", "Mất kết nối datastore", "UPS chuyển sang chạy pin",
-                         "Đăng nhập sai liên tục", "Ổ cứng / RAID lỗi", "Windows: thêm vào admin group", "IP đổi MAC"):
+            for must in ("Gateway WAN down", "Switch port down", "Datastore connection lost", "UPS switched to battery",
+                         "Repeated failed sign-ins", "Disk / RAID failure", "Windows: added to administrators group", "IP-to-MAC address change"):
                 assert any(t.startswith(must) for t in titles), must
             wan = db.query(models.Alert).filter(models.Alert.title.like("Gateway WAN down%"), models.Alert.status == "resolved").first()
             assert wan and wan.resolved_at > wan.opened_at and (wan.resolved_at - wan.opened_at) < timedelta(minutes=15)
-            trap = db.query(models.Alert).filter(models.Alert.title.like("Cổng down (SNMP trap)%")).first()
+            trap = db.query(models.Alert).filter(models.Alert.title.like("Port down (SNMP trap)%")).first()
             assert "(1/1/" in trap.title                                             # khoá theo tên cổng, không phải ifIndex
-        assert simulators.STATE["telegram"] == [] and simulators.STATE["webhook"] == []   # lịch sử không gửi thông báo
-        # trang Log thiết bị và Cảnh báo có dữ liệu
+        assert simulators.STATE["telegram"] == [] and simulators.STATE["webhook"] == []   # lịch sử do not send thông báo
+        # trang Log devices and Warning có dữ liệu
         assert len(client.get("/api/events?limit=50", headers=admin).json()) == 50
         assert any(a["source"] == "event" for a in client.get("/api/alerts?status=active&limit=500", headers=admin).json())
     finally:
         client.post("/api/reset-data", json={"confirm": "XOA"}, headers=admin)
         with SessionLocal() as db:        # trả rule UC-10 về mặc định (dữ liệu mẫu đã bật nó) – không ảnh hưởng test khác
-            r = db.query(models.EventRule).filter(models.EventRule.name.like("IP đổi MAC%")).first()
+            r = db.query(models.EventRule).filter(models.EventRule.name.like("IP-to-MAC address change%")).first()
             r.enabled, r.key_filter = False, ""
             db.commit()
         from app import events
@@ -52,7 +52,7 @@ def test_demo_logs_off_by_default(monkeypatch):
 
 
 def test_live_incident_scenarios_build_valid_events():
-    """Mọi kịch bản sự cố dùng cho log trực tiếp đều tạo được sự kiện hợp lệ cho thiết bị mẫu có trong CSDL."""
+    """Mọi kịch bản sự cố dùng cho log trực tiếp đều tạo được sự kiện hợp lệ cho devices mẫu có trong CSDL."""
     import random
     from datetime import datetime
     dev = demo_logs.Devices()
@@ -65,7 +65,7 @@ def test_live_incident_scenarios_build_valid_events():
 
 
 def test_tried_usernames_extracted_from_common_formats():
-    """Lỗi tìm ra nhờ log mẫu: pfSense ghi "for user 'x'" → trước đây bắt nhầm chữ "user"."""
+    """Error tìm ra nhờ log mẫu: pfSense ghi "for user 'x'" → trước đây bắt nhầm chữ "user"."""
     from app.events import USER_RE
     skip = ("from", "port", "ssh2", "failed", "success")
     def users(m):

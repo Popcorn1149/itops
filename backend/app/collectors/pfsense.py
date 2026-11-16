@@ -1,10 +1,9 @@
 """pfSense / OPNsense.
 
-- pfSense: dùng gói REST API (pfrest.org, API v2) → CPU/RAM/disk, gateway WAN (loss/latency),
-  status interface, VPN (IPsec/OpenVPN), tuỳ chọn lấy DHCP lease để đưa thiết bị lên bản đồ.
-- OPNsense: API có sẵn (key + secret).
-- Không cài API được thì chọn mode "snmp" (bật SNMP trong pfSense: Services > SNMP).
-"""
+- pfSense: uses the REST API package (pfrest.org, API v2) → CPU/RAM/disk, WAN gateway (loss/latency),
+  interface status, VPN (IPsec/OpenVPN), optionally retrieves DHCP leases to add devices to the topology map.
+- OPNsense: built-in API (key + secret).
+- If the API cannot be installed, select mode "snmp" (enable SNMP in pfSense: Services > SNMP)."""
 import time
 
 import httpx
@@ -34,8 +33,8 @@ async def pfsense(target: str, cfg: dict) -> Result:
         try:
             b = await freebsd_resources(host, cfg, prefix="cli_")
         except Exception as e:
-            r2 = await snmp_collect(target, cfg)     # CLI lỗi → quay về số liệu SNMP
-            r2.message += f" · CLI lỗi: {type(e).__name__} {e}"[:200]
+            r2 = await snmp_collect(target, cfg)     # CLI error → quay về số liệu SNMP
+            r2.message += f" · CLI error: {type(e).__name__} {e}"[:200]
             r2.status = worst(r2.status, "warn")
             return r2
         statuses, notes = [res.status], []
@@ -160,10 +159,10 @@ async def pfsense(target: str, cfg: dict) -> Result:
                                            "status": "up" if online else "unknown", "ip": l.get("ip", ""), "meta": {"mac": l["mac"], "dhcp": True}})
     except httpx.HTTPStatusError as e:
         code = e.response.status_code
-        hint = " (sai API key/mật khẩu?)" if code in (401, 403) else " (chưa cài gói REST API?)" if code == 404 else ""
-        return Result("fail", f"pfSense API trả về {code}{hint}")
+        hint = " (incorrect API key/password?)" if code in (401, 403) else " (REST API package may not be installed)" if code == 404 else ""
+        return Result("fail", f"pfSense API returned {code}{hint}")
     except Exception as e:
-        return Result("fail", f"Không kết nối pfSense: {type(e).__name__} {e}"[:300])
+        return Result("fail", f"Unable to connect to pfSense: {type(e).__name__} {e}"[:300])
 
     ms = (time.perf_counter() - t0) * 1000
     return Result(worst(*statuses), " · ".join(notes) or "OK", ms, value, data, discovered)
